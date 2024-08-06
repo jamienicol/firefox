@@ -30,6 +30,8 @@
 #  include "AndroidSurfaceTexture.h"
 #  include "GLImages.h"
 #  include "GLLibraryEGL.h"
+#  include "mozilla/layers/AndroidHardwareBuffer.h"
+#  include "mozilla/layers/AndroidImage.h"
 #endif
 
 #ifdef XP_MACOSX
@@ -974,6 +976,12 @@ bool GLBlitHelper::BlitSdToFramebuffer(const layers::SurfaceDescriptor& asd,
       return Blit((EGLImage)sd.image(), (EGLSync)sd.fence(), sd.size(),
                   destRect, destOrigin, fbSize, convertAlpha);
     }
+    case layers::SurfaceDescriptor::TSurfaceDescriptorAndroidHardwareBuffer: {
+      const auto& sd = asd.get_SurfaceDescriptorAndroidHardwareBuffer();
+      RefPtr<layers::AndroidHardwareBuffer> buffer =
+          layers::AndroidHardwareBuffer::FromSurfaceDescriptor(sd);
+      return Blit(buffer, destSize, destOrigin);
+    }
 #endif
 #ifdef MOZ_WIDGET_GTK
     case layers::SurfaceDescriptor::TSurfaceDescriptorDMABuf: {
@@ -1006,6 +1014,17 @@ bool GLBlitHelper::BlitImageToFramebuffer(layers::Image* const srcImage,
           java::GeckoSurfaceTexture::Lookup(image->GetHandle());
       return Blit(surfaceTexture, image->GetSize(), destRect, destOrigin,
                   fbSize);
+#else
+      MOZ_ASSERT(false);
+      return false;
+#endif
+    }
+    case ImageFormat::ANDROID_IMAGE: {
+#ifdef MOZ_WIDGET_ANDROID
+      auto* image = srcImage->AsAndroidImageImage();
+      MOZ_ASSERT(image);
+      auto buffer = image->GetImage()->GetHardwareBuffer();
+      return Blit(buffer, destSize, destOrigin);
 #else
       MOZ_ASSERT(false);
       return false;
@@ -1153,6 +1172,61 @@ bool GLBlitHelper::Blit(EGLImage image, EGLSync fence,
   const DrawBlitProg::BaseArgs baseArgs = {SubRectMat3(0, 0, 1, 1), yFlip,
                                            fbSize, destRect, texSize};
   prog.Draw(baseArgs);
+
+  return true;
+}
+
+bool GLBlitHelper::Blit(
+    const RefPtr<layers::AndroidHardwareBuffer>& hardwareBuffer,
+    const gfx::IntSize& destSize, const OriginPos destOrigin) const {
+  if (!hardwareBuffer) {
+    return false;
+  }
+
+  const auto& gle = gl::GLContextEGL::Cast(mGL);
+  const auto& egl = gle->mEgl;
+
+  const EGLint attrs[] = {
+      LOCAL_EGL_IMAGE_PRESERVED,
+      LOCAL_EGL_TRUE,
+      LOCAL_EGL_NONE,
+  };
+
+  const EGLClientBuffer clientBuffer = egl->mLib->fGetNativeClientBufferANDROID(
+      hardwareBuffer->GetNativeBuffer());
+  if (clientBuffer == nullptr) {
+    return false;
+  }
+  const EGLImage eglImage = egl->fCreateImage(
+      EGL_NO_CONTEXT, LOCAL_EGL_NATIVE_BUFFER_ANDROID, clientBuffer, attrs);
+  if (eglImage == EGL_NO_IMAGE) {
+    return false;
+  }
+
+  mGL->MakeCurrent();
+
+  GLuint tex;
+  mGL->fGenTextures(1, &tex);
+  const ScopedBindTextureUnit boundTU(mGL, LOCAL_GL_TEXTURE0);
+  const ScopedBindTexture savedTex(mGL, tex, LOCAL_GL_TEXTURE_EXTERNAL);
+  mGL->fEGLImageTargetTexture2D(LOCAL_GL_TEXTURE_EXTERNAL, eglImage);
+
+  const auto transform3 =
+      hardwareBuffer->mCropRect
+          .map([hardwareBuffer](const auto& cropRect) {
+            return SubRectMat3(cropRect, hardwareBuffer->mSize);
+          })
+          .valueOr(Mat3::I());
+  const auto srcOrigin = OriginPos::TopLeft;
+  const bool yFlip = (srcOrigin != destOrigin);
+  const auto& prog = GetDrawBlitProg(
+      {kFragHeader_TexExt, {kFragSample_OnePlane, kFragConvert_None}});
+  const DrawBlitProg::BaseArgs baseArgs = {transform3, yFlip, destSize,
+                                           Nothing()};
+  prog.Draw(baseArgs, nullptr);
+
+  mGL->fDeleteTextures(1, &tex);
+  egl->fDestroyImage(eglImage);
 
   return true;
 }
