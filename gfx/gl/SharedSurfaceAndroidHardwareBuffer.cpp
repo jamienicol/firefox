@@ -121,7 +121,7 @@ Maybe<layers::SurfaceDescriptor>
 SharedSurface_AndroidHardwareBuffer::ToSurfaceDescriptor() {
   return Some(layers::SurfaceDescriptorAndroidHardwareBuffer(
       mAndroidHardwareBuffer->mId, mAndroidHardwareBuffer->mSize,
-      mAndroidHardwareBuffer->mFormat));
+      mAndroidHardwareBuffer->mFormat, mAndroidHardwareBuffer->mCropRect));
 }
 
 void SharedSurface_AndroidHardwareBuffer::WaitForBufferOwnership() {

@@ -153,19 +153,18 @@ already_AddRefed<AndroidHardwareBuffer> AndroidHardwareBuffer::Create(
   AndroidHardwareBufferApi::Get()->Describe(nativeBuffer, &bufferInfo);
 
   RefPtr<AndroidHardwareBuffer> buffer = new AndroidHardwareBuffer(
-      nativeBuffer, aSize, bufferInfo.stride, aFormat, GetNextId());
+      nativeBuffer, aSize, bufferInfo.stride, aFormat, Nothing(), GetNextId());
   AndroidHardwareBufferManager::Get()->Register(buffer);
   return buffer.forget();
 }
 
-AndroidHardwareBuffer::AndroidHardwareBuffer(AHardwareBuffer* aNativeBuffer,
-                                             gfx::IntSize aSize,
-                                             uint32_t aStride,
-                                             gfx::SurfaceFormat aFormat,
-                                             uint64_t aId)
+AndroidHardwareBuffer::AndroidHardwareBuffer(
+    AHardwareBuffer* aNativeBuffer, gfx::IntSize aSize, uint32_t aStride,
+    gfx::SurfaceFormat aFormat, Maybe<gfx::IntRect> aCropRect, uint64_t aId)
     : mSize(aSize),
       mStride(aStride),
       mFormat(aFormat),
+      mCropRect(aCropRect),
       mId(aId),
       mNativeBuffer(aNativeBuffer),
       mIsRegistered(false) {

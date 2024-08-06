@@ -451,8 +451,8 @@ class AndroidHardwareBufferTextureSource : public TextureSource,
  public:
   AndroidHardwareBufferTextureSource(
       TextureSourceProvider* aProvider,
-      AndroidHardwareBuffer* aAndroidHardwareBuffer, gfx::SurfaceFormat aFormat,
-      GLenum aTarget, GLenum aWrapMode, gfx::IntSize aSize);
+      AndroidHardwareBuffer* aAndroidHardwareBuffer, GLenum aTarget,
+      GLenum aWrapMode);
 
   const char* Name() const override { return "SurfaceTextureSource"; }
 
@@ -463,13 +463,14 @@ class AndroidHardwareBufferTextureSource : public TextureSource,
 
   bool IsValid() const override;
 
-  gfx::IntSize GetSize() const override { return mSize; }
-
-  gfx::SurfaceFormat GetFormat() const override { return mFormat; }
+  gfx::IntSize GetSize() const override;
+  gfx::SurfaceFormat GetFormat() const override;
 
   GLenum GetTextureTarget() const override { return mTextureTarget; }
 
   GLenum GetWrapMode() const override { return mWrapMode; }
+
+  gfx::Matrix4x4 GetTextureTransform() override;
 
   void DeallocateDeviceData() override;
 
@@ -484,10 +485,8 @@ class AndroidHardwareBufferTextureSource : public TextureSource,
 
   RefPtr<gl::GLContext> mGL;
   RefPtr<AndroidHardwareBuffer> mAndroidHardwareBuffer;
-  const gfx::SurfaceFormat mFormat;
   const GLenum mTextureTarget;
   const GLenum mWrapMode;
-  const gfx::IntSize mSize;
 
   EGLImage mEGLImage;
   GLuint mTextureHandle;

@@ -113,12 +113,13 @@ class AndroidHardwareBuffer
   const gfx::IntSize mSize;
   const uint32_t mStride;
   const gfx::SurfaceFormat mFormat;
+  const Maybe<gfx::IntRect> mCropRect;
   const uint64_t mId;
 
  protected:
   AndroidHardwareBuffer(AHardwareBuffer* aNativeBuffer, gfx::IntSize aSize,
                         uint32_t aStride, gfx::SurfaceFormat aFormat,
-                        uint64_t aId);
+                        Maybe<gfx::IntRect> aCropRect, uint64_t aId);
 
   void SetReleaseFence(UniqueFileHandle&& aFenceFd,
                        const MonitorAutoLock& aAutoLock);

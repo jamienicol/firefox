@@ -640,14 +640,12 @@ bool SurfaceTextureHost::SupportsExternalCompositing(
 
 AndroidHardwareBufferTextureSource::AndroidHardwareBufferTextureSource(
     TextureSourceProvider* aProvider,
-    AndroidHardwareBuffer* aAndroidHardwareBuffer, gfx::SurfaceFormat aFormat,
-    GLenum aTarget, GLenum aWrapMode, gfx::IntSize aSize)
+    AndroidHardwareBuffer* aAndroidHardwareBuffer, GLenum aTarget,
+    GLenum aWrapMode)
     : mGL(aProvider->GetGLContext()),
       mAndroidHardwareBuffer(aAndroidHardwareBuffer),
-      mFormat(aFormat),
       mTextureTarget(aTarget),
       mWrapMode(aWrapMode),
-      mSize(aSize),
       mEGLImage(EGL_NO_IMAGE),
       mTextureHandle(0) {}
 
@@ -761,6 +759,29 @@ void AndroidHardwareBufferTextureSource::BindTexture(
 }
 
 bool AndroidHardwareBufferTextureSource::IsValid() const { return !!gl(); }
+
+gfx::IntSize AndroidHardwareBufferTextureSource::GetSize() const {
+  return mAndroidHardwareBuffer->mSize;
+}
+
+gfx::SurfaceFormat AndroidHardwareBufferTextureSource::GetFormat() const {
+  return mAndroidHardwareBuffer->mFormat;
+}
+
+gfx::Matrix4x4 AndroidHardwareBufferTextureSource::GetTextureTransform() {
+  if (mAndroidHardwareBuffer->mCropRect) {
+    const auto& crop = mAndroidHardwareBuffer->mCropRect.ref();
+    const auto& size = mAndroidHardwareBuffer->mSize;
+    gfx::Matrix4x4 transform =
+        gfx::Matrix4x4::Scaling(crop.width, crop.height, 1.0);
+    transform.PostTranslate(
+        {static_cast<float>(crop.x), static_cast<float>(crop.y), 0.0});
+    transform.PostScale(1.0 / size.width, 1.0 / size.height, 1.0);
+    return transform;
+  }
+
+  return gfx::Matrix4x4();
+}
 
 void AndroidHardwareBufferTextureSource::DeallocateDeviceData() {
   DestroyEGLImage();

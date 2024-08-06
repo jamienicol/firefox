@@ -250,7 +250,8 @@ void AndroidHardwareBufferTextureData::FillInfo(
 bool AndroidHardwareBufferTextureData::Serialize(
     SurfaceDescriptor& aOutDescriptor) {
   aOutDescriptor = SurfaceDescriptorAndroidHardwareBuffer(
-      mAndroidHardwareBuffer->mId, mSize, mFormat);
+      mAndroidHardwareBuffer->mId, mSize, mFormat,
+      mAndroidHardwareBuffer->mCropRect);
   return true;
 }
 
