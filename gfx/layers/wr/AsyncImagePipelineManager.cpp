@@ -742,8 +742,9 @@ void AsyncImagePipelineManager::ProcessPipelineRendered(
     for (auto it = holder->mTextureHostsUntilRenderSubmitted.begin();
          it != firstSubmittedHostToKeep; ++it) {
       const auto& entry = it;
-      if (entry->mTexture->GetAndroidHardwareBuffer() && mReleaseFence &&
-          mReleaseFence->AsFenceFileHandle()) {
+      if (entry->mTexture->GetTextureHostType() ==
+              TextureHostType::AndroidHardwareBuffer &&
+          mReleaseFence && mReleaseFence->AsFenceFileHandle()) {
         entry->mTexture->SetReleaseFence(
             mReleaseFence->AsFenceFileHandle()->DuplicateFileHandle());
       }

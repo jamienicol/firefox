@@ -109,8 +109,6 @@ class WebRenderTextureHost final : public TextureHost {
 
   UniqueFileHandle GetAndResetReleaseFence() override;
 
-  AndroidHardwareBuffer* GetAndroidHardwareBuffer() const override;
-
   void MaybeNotifyForUse(wr::TransactionBuilder& aTxn);
 
   TextureHostType GetTextureHostType() override;
