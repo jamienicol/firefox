@@ -4120,4 +4120,7 @@ pref("captchadetection.actor.enabled", true);
 // preferes-reduced-motion system setting.
 pref("general.smoothScroll", true, sticky);
 
+pref("layers.gpu-process.crash-also-crashes-browser", true);
 pref("media.android-image-reader.enabled", true);
+pref("gfx.webrender.compositor", true);
+pref("gfx.webrender.layer-compositor", false);
