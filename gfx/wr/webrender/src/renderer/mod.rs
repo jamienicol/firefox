@@ -4145,18 +4145,18 @@ impl Renderer {
 
             let draw_target = match self.compositor_config {
                 CompositorConfig::Layer { ref mut compositor } => {
-                    match partial_present_mode {
+                    let external_fbo_id = match partial_present_mode {
                         Some(PartialPresentMode::Single { dirty_rect }) => {
-                            compositor.bind_layer(layer_index, &[dirty_rect.to_i32()]);
+                            compositor.bind_layer(layer_index, &[dirty_rect.to_i32()])
                         }
                         None => {
-                            compositor.bind_layer(layer_index, &[]);
+                            compositor.bind_layer(layer_index, &[])
                         }
                     };
 
                     DrawTarget::NativeSurface {
                         offset: -layer.offset,
-                        external_fbo_id: 0,
+                        external_fbo_id,
                         dimensions: frame_device_size,
                     }
                 }

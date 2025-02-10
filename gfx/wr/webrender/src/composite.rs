@@ -1561,12 +1561,12 @@ pub trait LayerCompositor {
     ) -> bool;
 
     // Bind a layer (by index in the input config) to begin rendering
-    // content to it.
+    // content to it. Returns the fbo_id.
     fn bind_layer(
         &mut self,
         index: usize,
         dirty_rects: &[DeviceIntRect],
-    );
+    ) -> u32;
 
     // Complete rendering of a layer and present / swap buffers
     fn present_layer(

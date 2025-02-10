@@ -94,7 +94,7 @@ class RenderCompositorANGLE final : public RenderCompositor {
   void Unbind() override;
   void BindSwapChain(wr::NativeSurfaceId aId,
                      const wr::DeviceIntRect* aDirtyRects,
-                     size_t aNumDirtyRects) override;
+                     size_t aNumDirtyRects, uint32_t* aFboId) override;
   void PresentSwapChain(wr::NativeSurfaceId aId,
                         const wr::DeviceIntRect* aDirtyRects,
                         size_t aNumDirtyRects) override;

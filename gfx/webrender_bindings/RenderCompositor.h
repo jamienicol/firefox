@@ -140,9 +140,10 @@ class RenderCompositor {
                                       bool aNeedsSyncDcompCommit) {}
   virtual void ResizeSwapChainSurface(wr::NativeSurfaceId aId,
                                       wr::DeviceIntSize aSize) {}
+
   virtual void BindSwapChain(wr::NativeSurfaceId aId,
                              const wr::DeviceIntRect* aDirtyRects,
-                             size_t aNumDirtyRects) {}
+                             size_t aNumDirtyRects, uint32_t* aFboId) {}
   virtual void PresentSwapChain(wr::NativeSurfaceId aId,
                                 const wr::DeviceIntRect* aDirtyRects,
                                 size_t aNumDirtyRects) {}

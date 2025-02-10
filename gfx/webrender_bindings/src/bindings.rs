@@ -1334,6 +1334,7 @@ extern "C" {
         id: NativeSurfaceId,
         dirty_rects: *const DeviceIntRect,
         num_dirty_rects: usize,
+        fbo_id: &mut u32
     );
     fn wr_compositor_present_swapchain(
         compositor: *mut c_void,
@@ -1782,8 +1783,9 @@ impl LayerCompositor for WrLayerCompositor {
         &mut self,
         index: usize,
         dirty_rects: &[DeviceIntRect],
-    ) {
+    ) -> u32 {
         let layer = &self.visual_tree[index];
+        let mut fbo_id = 0;
 
         unsafe {
             wr_compositor_bind_swapchain(
@@ -1791,8 +1793,11 @@ impl LayerCompositor for WrLayerCompositor {
                 layer.id,
                 dirty_rects.as_ptr(),
                 dirty_rects.len(),
+                &mut fbo_id,
             );
         }
+
+        fbo_id
     }
 
     // Finish compositing a layer and present the swapchain
