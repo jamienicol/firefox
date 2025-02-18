@@ -39,8 +39,6 @@ StaticAutoPtr<AndroidHardwareBufferApi> AndroidHardwareBufferApi::sInstance;
 
 /* static */
 void AndroidHardwareBufferApi::Init() {
-  MOZ_ASSERT(XRE_IsGPUProcess());
-
   sInstance = new AndroidHardwareBufferApi();
   if (!sInstance->Load()) {
     sInstance = nullptr;
@@ -245,8 +243,6 @@ StaticAutoPtr<AndroidHardwareBufferManager>
 
 /* static */
 void AndroidHardwareBufferManager::Init() {
-  MOZ_ASSERT(XRE_IsGPUProcess());
-
   sInstance = new AndroidHardwareBufferManager();
 }
 
