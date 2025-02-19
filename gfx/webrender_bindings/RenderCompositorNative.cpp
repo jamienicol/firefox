@@ -106,7 +106,11 @@ RenderedFrameId RenderCompositorNative::EndFrame(
   return frameId;
 }
 
-void RenderCompositorNative::Pause() {}
+void RenderCompositorNative::Pause() {
+  mAddedLayers.Clear();
+  mNativeLayerRoot->SetLayers({});
+  mNativeLayerRoot->CommitToScreen();
+}
 
 bool RenderCompositorNative::Resume() { return true; }
 
