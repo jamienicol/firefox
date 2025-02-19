@@ -145,7 +145,6 @@ bool RenderCompositorNative::MaybeReadback(
     return false;
   }
 
-  MOZ_RELEASE_ASSERT(aReadbackFormat == wr::ImageFormat::BGRA8);
   if (!mNativeLayerRootSnapshotter) {
     mNativeLayerRootSnapshotter = mNativeLayerRoot->CreateSnapshotter();
 
@@ -154,7 +153,8 @@ bool RenderCompositorNative::MaybeReadback(
     }
   }
   bool success = mNativeLayerRootSnapshotter->ReadbackPixels(
-      aReadbackSize, gfx::SurfaceFormat::B8G8R8A8, aReadbackBuffer);
+      aReadbackSize, ImageFormatToSurfaceFormat(aReadbackFormat),
+      aReadbackBuffer);
 
   // ReadbackPixels might have changed the current context. Make sure GL is
   // current again.
