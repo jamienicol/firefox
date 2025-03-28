@@ -11,6 +11,7 @@
 #include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/WeakPtr.h"
+#include "mozilla/webgpu/ExternalTexture.h"
 #include "mozilla/webgpu/PWebGPUTypes.h"
 #include "mozilla/webgpu/WebGPUTypes.h"
 #include "mozilla/webrender/WebRenderAPI.h"
@@ -25,6 +26,7 @@ struct GPUExtent3DDict;
 
 struct GPUBufferDescriptor;
 struct GPUTextureDescriptor;
+struct GPUExternalTextureDescriptor;
 struct GPUSamplerDescriptor;
 struct GPUBindGroupLayoutDescriptor;
 struct GPUPipelineLayoutDescriptor;
@@ -129,6 +131,7 @@ class Device final : public DOMEventTargetHelper {
   RefPtr<Queue> mQueue;
   nsTHashSet<nsCString> mKnownWarnings;
   nsTHashSet<Buffer*> mTrackedBuffers;
+  HashMap<int32_t, WeakPtr<ExternalTexturePlanes>> mImportedTextures;
 
  public:
   void GetLabel(nsAString& aValue) const;
@@ -155,6 +158,8 @@ class Device final : public DOMEventTargetHelper {
   already_AddRefed<Texture> CreateTexture(
       const dom::GPUTextureDescriptor& aDesc,
       Maybe<layers::RemoteTextureOwnerId> aOwnerId);
+  already_AddRefed<ExternalTexture> ImportExternalTexture(
+      const dom::GPUExternalTextureDescriptor& aDesc);
   already_AddRefed<Sampler> CreateSampler(
       const dom::GPUSamplerDescriptor& aDesc);
 

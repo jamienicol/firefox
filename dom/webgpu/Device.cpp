@@ -12,6 +12,7 @@
 #include "CompilationInfo.h"
 #include "ComputePipeline.h"
 #include "DeviceLostInfo.h"
+#include "ExternalTexture.h"
 #include "InternalError.h"
 #include "OutOfMemoryError.h"
 #include "PipelineLayout.h"
@@ -193,6 +194,36 @@ already_AddRefed<Texture> Device::CreateTexture(
   RefPtr<Texture> texture = new Texture(this, id, aDesc);
   texture->SetLabel(aDesc.mLabel);
   return texture.forget();
+}
+
+already_AddRefed<ExternalTexture> Device::ImportExternalTexture(
+    const dom::GPUExternalTextureDescriptor& aDesc) {
+  RefPtr<layers::Image> image;
+  switch (aDesc.mSource.GetType()) {
+    case dom::OwningHTMLVideoElementOrVideoFrame::Type::eHTMLVideoElement:
+      // printf_stderr("jamiedbg ImportExternalTexture() HTMLVideoElement\n");
+      image = aDesc.mSource.GetAsHTMLVideoElement()->GetCurrentImage();
+      break;
+    case dom::OwningHTMLVideoElementOrVideoFrame::Type::eVideoFrame:
+      // printf_stderr("jamiedbg ImportExternalTexture() VideoFrame\n");
+      image = aDesc.mSource.GetAsVideoFrame()->GetImage();
+      break;
+  }
+  RefPtr<ExternalTexturePlanes> planes;
+  auto lookup = mImportedTextures.lookupForAdd(image->GetSerial());
+  if (lookup) {
+    planes = lookup->value();
+  }
+  if (!planes) {
+    planes = ExternalTexturePlanes::Create(this, image);
+    if (lookup) {
+      lookup->value() = planes;
+    } else {
+      // FIXME: handle error
+      mImportedTextures.add(lookup, image->GetSerial(), planes);
+    }
+  }
+  return ExternalTexture::Import(this, aDesc, planes);
 }
 
 already_AddRefed<Sampler> Device::CreateSampler(
@@ -427,6 +458,7 @@ already_AddRefed<BindGroup> Device::CreateBindGroup(
     const dom::GPUBindGroupDescriptor& aDesc) {
   nsTArray<ffi::WGPUBindGroupEntry> entries(aDesc.mEntries.Length());
   CanvasContextArray canvasContexts;
+  nsTArray<RefPtr<ExternalTexture>> externalTextures;
   for (const auto& entry : aDesc.mEntries) {
     ffi::WGPUBindGroupEntry e = {};
     e.binding = entry.mBinding;
@@ -466,10 +498,15 @@ already_AddRefed<BindGroup> Device::CreateBindGroup(
       setTextureViewBinding(texture_view);
     } else if (entry.mResource.IsGPUSampler()) {
       e.sampler = entry.mResource.GetAsGPUSampler()->mId;
+    } else if (entry.mResource.IsGPUExternalTexture()) {
+      RefPtr<ExternalTexture> externalTexture =
+          entry.mResource.GetAsGPUExternalTexture();
+      e.external_texture = externalTexture->mId;
+      externalTextures.AppendElement(externalTexture);
     } else {
-      // Not a buffer, nor a texture view, nor a sampler. If we pass
-      // this to wgpu_client, it'll panic. Log a warning instead and
-      // ignore this entry.
+      // Not a buffer, nor a texture view, nor a sampler, nor an external
+      // texture. If we pass this to wgpu_client, it'll panic. Log a warning
+      // instead and ignore this entry.
       NS_WARNING("Bind group entry has unknown type.");
       continue;
     }
@@ -486,7 +523,8 @@ already_AddRefed<BindGroup> Device::CreateBindGroup(
   RawId id =
       ffi::wgpu_client_create_bind_group(mBridge->GetClient(), mId, &desc);
 
-  RefPtr<BindGroup> object = new BindGroup(this, id, std::move(canvasContexts));
+  RefPtr<BindGroup> object = new BindGroup(this, id, std::move(canvasContexts),
+                                           std::move(externalTextures));
   object->SetLabel(aDesc.mLabel);
 
   return object.forget();

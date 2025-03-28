@@ -7,14 +7,19 @@
 
 #include <unordered_set>
 
+#include "Colorspaces.h"
 #include "mozilla/PodOperations.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/dom/WebGPUBinding.h"
 #include "mozilla/gfx/FileHandleWrapper.h"
+#include "mozilla/gfx/MatrixFwd.h"
+#include "mozilla/gfx/Types.h"
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/ImageDataSerializer.h"
+#include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/layers/RemoteTextureMap.h"
 #include "mozilla/layers/TextureHost.h"
+#include "mozilla/layers/VideoBridgeParent.h"
 #include "mozilla/layers/WebRenderImageHost.h"
 #include "mozilla/layers/WebRenderTextureHost.h"
 #include "mozilla/webgpu/SharedTexture.h"
@@ -22,14 +27,17 @@
 
 #if defined(XP_WIN)
 #  include "mozilla/gfx/DeviceManagerDx.h"
+#  include "mozilla/layers/GpuProcessD3D11TextureMap.h"
 #  include "mozilla/webgpu/SharedTextureD3D11.h"
 #endif
 
 #if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+#  include "gbm.h"
 #  include "mozilla/webgpu/SharedTextureDMABuf.h"
 #endif
 
 #if defined(XP_MACOSX)
+#  include "mozilla/gfx/MacIOSurface.h"
 #  include "mozilla/webgpu/SharedTextureMacIOSurface.h"
 #endif
 
@@ -356,6 +364,207 @@ extern void wgpu_parent_send_server_message(WGPUWebGPUParentPtr aParent,
   }
 }
 
+extern WGPUExternalTextureFormat wgpu_parent_multiplanar_texture_get_format(
+    void* aParent, WGPUMultiplanarTextureId aId) {
+  auto* parent = static_cast<WebGPUParent*>(aParent);
+  const auto& texture = parent->GetMultiplanarTexture(aId);
+  switch (texture.mFormat) {
+    case gfx::SurfaceFormat::B8G8R8A8:
+    case gfx::SurfaceFormat::B8G8R8X8:
+    case gfx::SurfaceFormat::R8G8B8A8:
+    case gfx::SurfaceFormat::R8G8B8X8:
+      return ffi::WGPUExternalTextureFormat_Rgba;
+    case gfx::SurfaceFormat::YUV420:
+      return ffi::WGPUExternalTextureFormat_Yu12;
+    case gfx::SurfaceFormat::NV12:
+      return ffi::WGPUExternalTextureFormat_Nv12;
+    default:  // FIXME implement more/all surface formats
+      printf_stderr("jamiedbg format %" PRIu8 " not yet supported\n",
+                    texture.mFormat);
+      MOZ_CRASH("Not yet implemented");
+  }
+}
+
+extern WGPUFfiSlice_TextureViewId wgpu_parent_multiplanar_texture_get_planes(
+    void* aParent, WGPUMultiplanarTextureId aId) {
+  auto* parent = static_cast<WebGPUParent*>(aParent);
+  const auto& texture = parent->GetMultiplanarTexture(aId);
+  return WGPUFfiSlice_TextureViewId{
+      .data = texture.mViewIds.Elements(),
+      .length = texture.mViewIds.Length(),
+  };
+}
+
+extern ffi::WGPUExternalTextureColorSpaceConversionDesc
+wgpu_parent_multiplanar_texture_get_color_space_conversion_desc(
+    void* aParent, WGPUMultiplanarTextureId aId,
+    ffi::WGPUPredefinedColorSpace aColorSpace) {
+  auto* parent = static_cast<WebGPUParent*>(aParent);
+  const auto& texture = parent->GetMultiplanarTexture(aId);
+  color::ColorspaceDesc srcColorSpace;
+  switch (texture.mColorSpace) {
+    case gfx::YUVRangedColorSpace::BT601_Narrow: {
+      srcColorSpace = {
+          .chrom = color::Chromaticities::Rec601_525_Ntsc(),
+          // FIXME: Chrome uses sRGB transfer function for BT601 and BT709:
+          // https://source.chromium.org/chromium/chromium/src/+/main:ui/gfx/color_space.cc;l=902;drc=b8b5768e5d0d1c2a84fe4896eae884d97fd1131e
+          // Doing the same makes the relevant CTS tests pass, whereas they
+          // fail if we use PiecewiseGammaDesc::Rec709().
+          .tf = color::PiecewiseGammaDesc::Srgb(),
+          .yuv =
+              color::YuvDesc{
+                  .yCoeffs = color::YuvLumaCoeffs::Rec601(),
+                  .ycbcr = color::YcbcrDesc::Narrow8(),
+              },
+      };
+    } break;
+    case gfx::YUVRangedColorSpace::BT601_Full:
+      srcColorSpace = {
+          .chrom = color::Chromaticities::Rec601_525_Ntsc(),
+          .tf = color::PiecewiseGammaDesc::Srgb(),
+          .yuv =
+              color::YuvDesc{
+                  .yCoeffs = color::YuvLumaCoeffs::Rec601(),
+                  .ycbcr = color::YcbcrDesc::Full8(),
+              },
+      };
+      break;
+    case gfx::YUVRangedColorSpace::BT709_Narrow:
+      srcColorSpace = {
+          .chrom = color::Chromaticities::Rec709(),
+          .tf = color::PiecewiseGammaDesc::Srgb(),
+          .yuv =
+              color::YuvDesc{
+                  .yCoeffs = color::YuvLumaCoeffs::Rec709(),
+                  .ycbcr = color::YcbcrDesc::Narrow8(),
+              },
+      };
+      break;
+    case gfx::YUVRangedColorSpace::BT709_Full: {
+      srcColorSpace = {
+          .chrom = color::Chromaticities::Rec709(),
+          .tf = color::PiecewiseGammaDesc::Srgb(),
+          .yuv =
+              color::YuvDesc{
+                  .yCoeffs = color::YuvLumaCoeffs::Rec709(),
+                  .ycbcr = color::YcbcrDesc::Full8(),
+              },
+      };
+    } break;
+    case gfx::YUVRangedColorSpace::BT2020_Narrow: {
+      srcColorSpace = {
+          .chrom = color::Chromaticities::Rec2020(),
+          .tf = color::PiecewiseGammaDesc::Rec2020_12bit(),
+          .yuv =
+              color::YuvDesc{
+                  .yCoeffs = color::YuvLumaCoeffs::Rec2020(),
+                  .ycbcr = color::YcbcrDesc::Narrow8(),
+              },
+      };
+    } break;
+    case gfx::YUVRangedColorSpace::BT2020_Full: {
+      srcColorSpace = {
+          .chrom = color::Chromaticities::Rec2020(),
+          .tf = color::PiecewiseGammaDesc::Rec2020_12bit(),
+          .yuv =
+              color::YuvDesc{
+                  .yCoeffs = color::YuvLumaCoeffs::Rec2020(),
+                  .ycbcr = color::YcbcrDesc::Full8(),
+              },
+      };
+    } break;
+    case gfx::YUVRangedColorSpace::GbrIdentity: {
+      srcColorSpace = {
+          .chrom = color::Chromaticities::Rec709(),
+          .tf = color::PiecewiseGammaDesc::Rec709(),
+          .yuv =
+              color::YuvDesc{
+                  .yCoeffs = color::YuvLumaCoeffs::Gbr(),
+                  .ycbcr = color::YcbcrDesc::Full8(),
+              },
+      };
+    } break;
+  }
+
+  color::ColorspaceDesc dstColorSpace{};
+  switch (aColorSpace) {
+    case WGPUPredefinedColorSpace_Srgb:
+      dstColorSpace = {.chrom = color::Chromaticities::Srgb(),
+                       .tf = color::PiecewiseGammaDesc::Srgb()};
+      break;
+    case WGPUPredefinedColorSpace_DisplayP3:
+      dstColorSpace = {.chrom = color::Chromaticities::DisplayP3(),
+                       .tf = color::PiecewiseGammaDesc::DisplayP3()};
+      break;
+    default:
+      MOZ_ASSERT_UNREACHABLE("Invalid colorspace");
+  }
+
+  auto transform =
+      color::ColorspaceTransform::Create(srcColorSpace, dstColorSpace);
+  ffi::WGPUExternalTextureColorSpaceConversionDesc desc;
+  desc.yuv_conversion_matrix[0] = transform.srcRgbTfFromSrc.at(0, 0);
+  desc.yuv_conversion_matrix[1] = transform.srcRgbTfFromSrc.at(0, 1);
+  desc.yuv_conversion_matrix[2] = transform.srcRgbTfFromSrc.at(0, 2);
+  desc.yuv_conversion_matrix[3] = transform.srcRgbTfFromSrc.at(0, 3);
+  desc.yuv_conversion_matrix[4] = transform.srcRgbTfFromSrc.at(1, 0);
+  desc.yuv_conversion_matrix[5] = transform.srcRgbTfFromSrc.at(1, 1);
+  desc.yuv_conversion_matrix[6] = transform.srcRgbTfFromSrc.at(1, 2);
+  desc.yuv_conversion_matrix[7] = transform.srcRgbTfFromSrc.at(1, 3);
+  desc.yuv_conversion_matrix[8] = transform.srcRgbTfFromSrc.at(2, 0);
+  desc.yuv_conversion_matrix[9] = transform.srcRgbTfFromSrc.at(2, 1);
+  desc.yuv_conversion_matrix[10] = transform.srcRgbTfFromSrc.at(2, 2);
+  desc.yuv_conversion_matrix[11] = transform.srcRgbTfFromSrc.at(2, 3);
+  desc.yuv_conversion_matrix[12] = transform.srcRgbTfFromSrc.at(3, 0);
+  desc.yuv_conversion_matrix[13] = transform.srcRgbTfFromSrc.at(3, 1);
+  desc.yuv_conversion_matrix[14] = transform.srcRgbTfFromSrc.at(3, 2);
+  desc.yuv_conversion_matrix[15] = transform.srcRgbTfFromSrc.at(3, 3);
+  if (transform.srcTf) {
+    desc.src_transfer_function.a = transform.srcTf->a;
+    desc.src_transfer_function.b = transform.srcTf->b;
+    desc.src_transfer_function.g = transform.srcTf->g;
+    desc.src_transfer_function.k = transform.srcTf->k;
+  } else {
+    desc.src_transfer_function.a = 1.0;
+    desc.src_transfer_function.b = 1.0;
+    desc.src_transfer_function.g = 1.0;
+    desc.src_transfer_function.k = 1.0;
+  }
+  desc.gamut_conversion_matrix[0] = transform.dstRgbLinFromSrcRgbLin.at(0, 0);
+  desc.gamut_conversion_matrix[1] = transform.dstRgbLinFromSrcRgbLin.at(0, 1);
+  desc.gamut_conversion_matrix[2] = transform.dstRgbLinFromSrcRgbLin.at(0, 2);
+  desc.gamut_conversion_matrix[3] = transform.dstRgbLinFromSrcRgbLin.at(1, 0);
+  desc.gamut_conversion_matrix[4] = transform.dstRgbLinFromSrcRgbLin.at(1, 1);
+  desc.gamut_conversion_matrix[5] = transform.dstRgbLinFromSrcRgbLin.at(1, 2);
+  desc.gamut_conversion_matrix[6] = transform.dstRgbLinFromSrcRgbLin.at(2, 0);
+  desc.gamut_conversion_matrix[7] = transform.dstRgbLinFromSrcRgbLin.at(2, 1);
+  desc.gamut_conversion_matrix[8] = transform.dstRgbLinFromSrcRgbLin.at(2, 2);
+  if (transform.dstTf) {
+    desc.dst_transfer_function.a = transform.dstTf->a;
+    desc.dst_transfer_function.b = transform.dstTf->b;
+    desc.dst_transfer_function.g = transform.dstTf->g;
+    desc.dst_transfer_function.k = transform.dstTf->k;
+  } else {
+    desc.dst_transfer_function.a = 1.0;
+    desc.dst_transfer_function.b = 1.0;
+    desc.dst_transfer_function.g = 1.0;
+    desc.dst_transfer_function.k = 1.0;
+  }
+  return desc;
+}
+
+extern void wgpu_parent_multiplanar_texture_destroy(
+    void* aParent, WGPUMultiplanarTextureId aId) {
+  auto* parent = static_cast<WebGPUParent*>(aParent);
+  parent->DestroyMultiplanarTexture(aId);
+}
+
+extern void wgpu_parent_multiplanar_texture_drop(void* aParent,
+                                                 WGPUMultiplanarTextureId aId) {
+  auto* parent = static_cast<WebGPUParent*>(aParent);
+  parent->DropMultiplanarTexture(aId);
+}
+
 }  // namespace ffi
 
 // A fixed-capacity buffer for receiving textual error messages from
@@ -500,7 +709,8 @@ class PresentationData {
   ~PresentationData() { MOZ_COUNT_DTOR(PresentationData); }
 };
 
-WebGPUParent::WebGPUParent() : mContext(ffi::wgpu_server_new(this)) {
+WebGPUParent::WebGPUParent(const dom::ContentParentId& aContentId)
+    : mContext(ffi::wgpu_server_new(this)), mContentId(aContentId) {
   mTimer.Start(base::TimeDelta::FromMilliseconds(POLL_TIME_MS), this,
                &WebGPUParent::MaintainDevices);
 }
@@ -659,6 +869,591 @@ void WebGPUParent::PreDeviceDrop(RawId aDeviceId) {
   mErrorScopeStackByDevice.erase(aDeviceId);
   mLostDeviceIds.Remove(aDeviceId);
 }
+
+ipc::IPCResult WebGPUParent::RecvDeviceCreateMultiplanarTexture(
+    RawId aDeviceId, RawId aQueueId, RawId aMultiplanarTextureId,
+    nsTArray<RawId> aTextureIds, nsTArray<RawId> aViewIds,
+    layers::SurfaceDescriptor aSd) {
+  // printf_stderr("jamiedbg RecvDeviceCreateMultiplanarTexture() id: %" PRIu64
+  //               "\n",
+  //               aMultiplanarTextureId);
+  Maybe<MultiplanarTexture> multiplanarTexture;
+  switch (aSd.type()) {
+    case layers::SurfaceDescriptor::TSurfaceDescriptorBuffer: {
+      const layers::SurfaceDescriptorBuffer& bufferDesc =
+          aSd.get_SurfaceDescriptorBuffer();
+      multiplanarTexture = CreateMultiplanarTextureFromBufferDesc(
+          aDeviceId, aQueueId, aTextureIds, aViewIds, bufferDesc.desc(),
+          GetAddressFromDescriptor(aSd));
+      break;
+    }
+    case layers::SurfaceDescriptor::TSurfaceDescriptorGPUVideo: {
+      const layers::SurfaceDescriptorGPUVideo& gpuVideoDesc =
+          aSd.get_SurfaceDescriptorGPUVideo();
+      const layers::SurfaceDescriptorRemoteDecoder& remoteDecoderDesc =
+          gpuVideoDesc.get_SurfaceDescriptorRemoteDecoder();
+
+      const auto videoBridge =
+          layers::VideoBridgeParent::GetSingleton(remoteDecoderDesc.source());
+      const RefPtr<layers::TextureHost> textureHost =
+          videoBridge->LookupTexture(mContentId, remoteDecoderDesc.handle());
+      MOZ_ASSERT(textureHost, "Failed to lookup remote decoder texture");
+
+      const layers::RemoteDecoderVideoSubDescriptor& subDesc =
+          remoteDecoderDesc.subdesc();
+      switch (subDesc.type()) {
+        case layers::RemoteDecoderVideoSubDescriptor::Tnull_t: {
+          auto bufferHost = textureHost->AsBufferTextureHost();
+          MOZ_ASSERT(bufferHost, "Unsupported TextureHost type");
+
+          multiplanarTexture = CreateMultiplanarTextureFromBufferDesc(
+              aDeviceId, aQueueId, aTextureIds, aViewIds,
+              bufferHost->GetBufferDescriptor(), bufferHost->GetBuffer());
+        } break;
+#if defined(XP_WIN)
+        case layers::RemoteDecoderVideoSubDescriptor::TSurfaceDescriptorD3D10: {
+          const layers::SurfaceDescriptorD3D10& d3d10Desc =
+              subDesc.get_SurfaceDescriptorD3D10();
+          // FIXME: add format to descriptor so we don't need to pass this in?
+          multiplanarTexture = CreateMultiplanarTextureFromD3D10Desc(
+              aDeviceId, aTextureIds, aViewIds, d3d10Desc,
+              textureHost->GetFormat());
+        } break;
+        case layers::RemoteDecoderVideoSubDescriptor::
+            TSurfaceDescriptorDXGIYCbCr: {
+          const layers::SurfaceDescriptorDXGIYCbCr& dxgiDesc =
+              subDesc.get_SurfaceDescriptorDXGIYCbCr();
+          multiplanarTexture = CreateMultiplanarTextureFromDXGIYCbCrDesc(
+              aDeviceId, aTextureIds, aViewIds, dxgiDesc);
+        } break;
+#endif
+#if defined(XP_MACOSX)
+        case layers::RemoteDecoderVideoSubDescriptor::
+            TSurfaceDescriptorMacIOSurface: {
+          const layers::SurfaceDescriptorMacIOSurface& ioSurfDesc =
+              subDesc.get_SurfaceDescriptorMacIOSurface();
+          multiplanarTexture = CreateMultiplanarTextureFromMacIOSurfaceDesc(
+              aDeviceId, aTextureIds, aViewIds, ioSurfDesc);
+        } break;
+#endif
+#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+        case layers::RemoteDecoderVideoSubDescriptor::
+            TSurfaceDescriptorDMABuf: {
+          const layers::SurfaceDescriptorDMABuf& aDMABufDesc =
+              subDesc.get_SurfaceDescriptorDMABuf();
+
+          // printf_stderr("jamiedbg Got SurfaceDescriptorDMABUF\n");
+          multiplanarTexture = CreateMultiplanarTextureFromDMABufDesc(
+              aDeviceId, aTextureIds, aViewIds, aDMABufDesc);
+        } break;
+#endif
+        default: {
+          // printf_stderr(
+          //     "jamiedbg Unsupported RemoteDecoderVideoSubDescriptor type "
+          //     "%d\n",
+          //     subDesc.type());
+        }
+      }
+    } break;
+    default:
+      printf_stderr("jamiedbg Unsupported SurfaceDescriptor type %d\n",
+                    aSd.type());
+  }
+
+  if (multiplanarTexture) {
+    mMultiplanarTextures.insert(
+        {aMultiplanarTextureId, multiplanarTexture.extract()});
+  } else {
+    printf_stderr("jamiedbg Failed to create MultiplanarTexture\n");
+    // FIXME: error handling
+  }
+  return IPC_OK();
+}
+
+const WebGPUParent::MultiplanarTexture& WebGPUParent::GetMultiplanarTexture(
+    RawId aId) const {
+  return mMultiplanarTextures.at(aId);
+}
+
+void WebGPUParent::DestroyMultiplanarTexture(RawId aId) {
+  auto it = mMultiplanarTextures.find(aId);
+  if (it != mMultiplanarTextures.end()) {
+    for (auto textureId : it->second.mTextureIds) {
+      ffi::wgpu_server_texture_destroy(mContext.get(), textureId);
+    }
+  }
+}
+void WebGPUParent::DropMultiplanarTexture(RawId aId) {
+  auto it = mMultiplanarTextures.find(aId);
+  MOZ_ASSERT(it != mMultiplanarTextures.end());
+  if (it != mMultiplanarTextures.end()) {
+    for (auto viewId : it->second.mViewIds) {
+      ffi::wgpu_server_texture_view_drop(mContext.get(), viewId);
+    }
+    for (auto textureId : it->second.mTextureIds) {
+      ffi::wgpu_server_texture_drop(mContext.get(), textureId);
+    }
+    mMultiplanarTextures.erase(it);
+  }
+}
+
+Maybe<WebGPUParent::MultiplanarTexture>
+WebGPUParent::CreateMultiplanarTextureFromBufferDesc(
+    RawId aDeviceId, RawId aQueueId, const nsTArray<RawId>& aTextureIds,
+    const nsTArray<RawId>& aViewIds, const layers::BufferDescriptor& aDesc,
+    uint8_t* aBuffer) {
+  printf_stderr("jamiedbg CreateMultiplanarTextureFromBufferDesc()\n");
+  auto createAndUploadPlane = [this, aDeviceId, aQueueId](
+                                  RawId texId, RawId viewId,
+                                  ffi::WGPUTextureFormat format,
+                                  gfx::IntSize size, uint8_t* buffer,
+                                  uint32_t stride) {
+    ffi::WGPUTextureDescriptor textureDesc{
+        .label = nullptr,
+        .size =
+            ffi::WGPUExtent3d{
+                .width = static_cast<uint32_t>(size.width),
+                .height = static_cast<uint32_t>(size.height),
+                .depth_or_array_layers = 1,
+            },
+        .mip_level_count = 1,
+        .sample_count = 1,
+        .dimension = ffi::WGPUTextureDimension_D2,
+        .format = format,
+        .usage = WGPUTextureUsages_TEXTURE_BINDING | WGPUTextureUsages_COPY_DST,
+        .view_formats =
+            ffi::WGPUFfiSlice_TextureFormat{
+                .data = nullptr,
+                .length = 0,
+            },
+    };
+
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_device_create_texture(mContext.get(), aDeviceId, texId,
+                                             textureDesc, error.ToFFI());
+      ForwardError(error);
+    }
+
+    ffi::WGPUTexelCopyTextureInfo dest{
+        .texture = texId,
+        .mip_level = 0,
+        .origin =
+            ffi::WGPUOrigin3d{
+                .x = 0,
+                .y = 0,
+                .z = 0,
+            },
+        .aspect = ffi::WGPUTextureAspect_All,
+    };
+
+    ffi::WGPUTexelCopyBufferLayout layout{
+        .offset = 0,
+        .bytes_per_row = &stride,
+        .rows_per_image = nullptr,
+    };
+    ffi::WGPUFfiSlice_u8 data{
+        .data = buffer,
+        .length = size.height * stride,
+    };
+    {
+      ipc::ByteBuf bb;
+      ErrorBuffer error;
+      ffi::wgpu_server_queue_write_texture(mContext.get(), aDeviceId, aQueueId,
+                                           &dest, data, &layout,
+                                           &textureDesc.size, error.ToFFI());
+      ForwardError(error);
+    }
+
+    ffi::WGPUTextureViewDescriptor viewDesc{
+        .label = nullptr,
+        .format = nullptr,
+        .dimension = nullptr,
+        .aspect = ffi::WGPUTextureAspect_All,
+        .base_mip_level = 0,
+        .mip_level_count = nullptr,
+        .base_array_layer = 0,
+        .array_layer_count = nullptr,
+    };
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_texture_create_view(mContext.get(), texId, viewId,
+                                           &viewDesc, error.ToFFI());
+      ForwardError(error);
+    }
+  };
+
+  MultiplanarTexture multiplanarTexture;
+  multiplanarTexture.mFormat =
+      layers::ImageDataSerializer::FormatFromBufferDescriptor(aDesc);
+  switch (aDesc.type()) {
+    case layers::BufferDescriptor::TRGBDescriptor: {
+      // printf_stderr("jamiedbg Got RGBBufferDescriptor\n");
+      const layers::RGBDescriptor& rgbDesc = aDesc.get_RGBDescriptor();
+      multiplanarTexture.mColorSpace = gfx::YUVRangedColorSpace::GbrIdentity;
+
+      ffi::WGPUTextureFormat format;
+      switch (rgbDesc.format()) {
+        case gfx::SurfaceFormat::B8G8R8A8:
+        case gfx::SurfaceFormat::B8G8R8X8:
+          format = {ffi::WGPUTextureFormat_Bgra8Unorm};
+          break;
+        case gfx::SurfaceFormat::R8G8B8A8:
+        case gfx::SurfaceFormat::R8G8B8X8:
+          format = {ffi::WGPUTextureFormat_Rgba8Unorm};
+          break;
+        default:
+          gfxCriticalError()
+              << "Unexpected RGBBufferDescriptor format " << rgbDesc.format();
+          return Nothing();
+      }
+      createAndUploadPlane(aTextureIds[0], aViewIds[0], format, rgbDesc.size(),
+                           aBuffer,
+                           layers::ImageDataSerializer::GetRGBStride(rgbDesc));
+      multiplanarTexture.mTextureIds.AppendElement(aTextureIds[0]);
+      multiplanarTexture.mViewIds.AppendElement(aViewIds[0]);
+      break;
+    }
+    case layers::BufferDescriptor::TYCbCrDescriptor: {
+      // printf_stderr("jamiedbg Got YCbCrDescriptor\n");
+      const layers::YCbCrDescriptor& yCbCrDesc = aDesc.get_YCbCrDescriptor();
+      const gfx::IntSize ySize =
+          layers::ImageDataSerializer::SizeFromBufferDescriptor(aDesc);
+      const gfx::IntSize cbCrSize =
+          layers::ImageDataSerializer::GetCroppedCbCrSize(aDesc);
+      multiplanarTexture.mColorSpace = gfx::ToYUVRangedColorSpace(
+          yCbCrDesc.yUVColorSpace(), yCbCrDesc.colorRange());
+
+      createAndUploadPlane(aTextureIds[0], aViewIds[0],
+                           {ffi::WGPUTextureFormat_R8Unorm}, ySize,
+                           aBuffer + yCbCrDesc.yOffset(), yCbCrDesc.yStride());
+      createAndUploadPlane(
+          aTextureIds[1], aViewIds[1], {ffi::WGPUTextureFormat_R8Unorm},
+          cbCrSize, aBuffer + yCbCrDesc.cbOffset(), yCbCrDesc.cbCrStride());
+      createAndUploadPlane(
+          aTextureIds[2], aViewIds[2], {ffi::WGPUTextureFormat_R8Unorm},
+          cbCrSize, aBuffer + yCbCrDesc.crOffset(), yCbCrDesc.cbCrStride());
+      multiplanarTexture.mTextureIds.AppendElement(aTextureIds[0]);
+      multiplanarTexture.mTextureIds.AppendElement(aTextureIds[1]);
+      multiplanarTexture.mTextureIds.AppendElement(aTextureIds[2]);
+      multiplanarTexture.mViewIds.AppendElement(aViewIds[0]);
+      multiplanarTexture.mViewIds.AppendElement(aViewIds[1]);
+      multiplanarTexture.mViewIds.AppendElement(aViewIds[2]);
+      break;
+    }
+    default:
+      MOZ_ASSERT_UNREACHABLE();
+  }
+
+  return Some(std::move(multiplanarTexture));
+}
+
+#ifdef XP_WIN
+Maybe<WebGPUParent::MultiplanarTexture>
+WebGPUParent::CreateMultiplanarTextureFromD3D10Desc(
+    RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+    const nsTArray<RawId>& aViewIds,
+    const layers::SurfaceDescriptorD3D10& aDesc, gfx::SurfaceFormat aFormat) {
+  printf_stderr("jamiedbg CreateMultiplanarTextureFromD3D10Desc()\n");
+  const auto& gpuProcessTextureId = aDesc.gpuProcessTextureId();
+  Maybe<HANDLE> handle;
+  if (gpuProcessTextureId) {
+    auto* textureMap = layers::GpuProcessD3D11TextureMap::Get();
+    if (textureMap) {
+      handle = textureMap->GetSharedHandle(gpuProcessTextureId.ref());
+    }
+  } else if (aDesc.handle()) {
+    handle.emplace(aDesc.handle()->GetHandle());
+    // FIXME: do I need to handle arrayIndex?
+    // GLBlitHelperD3D uses
+    // it, but only in this handle() path. (It's set to zero in the
+    // gpuProcessTextureId() path.)
+  }
+
+  if (!handle) {
+    printf_stderr("jamiedbg Failed to get handle for texture\n");
+    return Nothing();
+  }
+
+  // FIXME: handle fences
+
+  ffi::WGPUTextureFormat textureFormat;
+  AutoTArray<std::pair<ffi::WGPUTextureFormat, ffi::WGPUTextureAspect>, 2>
+      viewFormatAndAspects;
+  switch (aFormat) {
+    case gfx::SurfaceFormat::R8G8B8A8:
+      textureFormat = {ffi::WGPUTextureFormat_Rgba8Unorm};
+      viewFormatAndAspects.AppendElement(
+          std::make_pair(textureFormat, ffi::WGPUTextureAspect_All));
+      break;
+    case gfx::SurfaceFormat::B8G8R8A8:
+      textureFormat = {ffi::WGPUTextureFormat_Bgra8Unorm};
+      viewFormatAndAspects.AppendElement(
+          std::make_pair(textureFormat, ffi::WGPUTextureAspect_All));
+      break;
+    case gfx::SurfaceFormat::NV12:
+      textureFormat = {ffi::WGPUTextureFormat_NV12};
+      viewFormatAndAspects.AppendElement(
+          std::make_pair(ffi::WGPUTextureFormat{ffi::WGPUTextureFormat_R8Unorm},
+                         ffi::WGPUTextureAspect_Plane0));
+      viewFormatAndAspects.AppendElement(std::make_pair(
+          ffi::WGPUTextureFormat{ffi::WGPUTextureFormat_Rg8Unorm},
+          ffi::WGPUTextureAspect_Plane1));
+      break;
+    default:
+      return Nothing();
+  }
+
+  MultiplanarTexture multiplanarTexture;
+  multiplanarTexture.mFormat = aFormat;
+  multiplanarTexture.mColorSpace = gfx::ToYUVRangedColorSpace(
+      gfx::ToYUVColorSpace(aDesc.colorSpace()), aDesc.colorRange());
+  multiplanarTexture.mTextureIds.AppendElement(aTextureIds[0]);
+  ffi::WGPUSharedHandleDesc handleDesc{
+      .handle = *handle,
+      .width = static_cast<uint32_t>(aDesc.size().width),
+      .height = static_cast<uint32_t>(aDesc.size().height),
+      .format = textureFormat,
+  };
+  {
+    ErrorBuffer error;
+    ffi::wgpu_server_device_import_texture_from_shared_handle(
+        mContext.get(), aDeviceId, aTextureIds[0], nullptr, &handleDesc,
+        error.ToFFI());
+    ForwardError(error);
+  }
+
+  for (size_t i = 0; i < viewFormatAndAspects.Length(); i++) {
+    auto [format, aspect] = viewFormatAndAspects[i];
+    ffi::WGPUTextureViewDescriptor viewDesc{
+        .label = nullptr,
+        .format = &format,
+        .dimension = nullptr,
+        .aspect = aspect,
+        .base_mip_level = 0,
+        .mip_level_count = nullptr,
+        .base_array_layer = 0,
+        .array_layer_count = nullptr,
+    };
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_texture_create_view(mContext.get(), aTextureIds[0],
+                                           aViewIds[i], &viewDesc,
+                                           error.ToFFI());
+      multiplanarTexture.mViewIds.AppendElement(aViewIds[i]);
+      ForwardError(error);
+    }
+  }
+  return Some(std::move(multiplanarTexture));
+}
+
+Maybe<WebGPUParent::MultiplanarTexture>
+WebGPUParent::CreateMultiplanarTextureFromDXGIYCbCrDesc(
+    RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+    const nsTArray<RawId>& aViewIds,
+    const layers::SurfaceDescriptorDXGIYCbCr& aDesc) {
+  printf_stderr("jamiedbg CreateMultiplanarTextureFromDXGIYCbCrDesc()\n");
+
+  // FIXME: handle fences
+
+  auto createPlane = [this, aDeviceId](
+                         RawId texId, RawId viewId,
+                         const ffi::WGPUSharedHandleDesc& handleDesc) {
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_device_import_texture_from_shared_handle(
+          mContext.get(), aDeviceId, texId, nullptr, &handleDesc,
+          error.ToFFI());
+      ForwardError(error);
+    }
+    ffi::WGPUTextureViewDescriptor viewDesc{
+        .label = nullptr,
+        .format = nullptr,
+        .dimension = nullptr,
+        .aspect = ffi::WGPUTextureAspect_All,
+        .base_mip_level = 0,
+        .mip_level_count = nullptr,
+        .base_array_layer = 0,
+        .array_layer_count = nullptr,
+    };
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_texture_create_view(mContext.get(), texId, viewId,
+                                           &viewDesc, error.ToFFI());
+      ForwardError(error);
+    }
+  };
+
+  std::array<ffi::WGPUSharedHandleDesc, 3> handleDescs{
+      ffi::WGPUSharedHandleDesc{
+          .handle = aDesc.handleY()->GetHandle(),
+          .width = static_cast<uint32_t>(aDesc.sizeY().width),
+          .height = static_cast<uint32_t>(aDesc.sizeY().height),
+          .format = {ffi::WGPUTextureFormat_R8Unorm},
+      },
+      ffi::WGPUSharedHandleDesc{
+          .handle = aDesc.handleCb()->GetHandle(),
+          .width = static_cast<uint32_t>(aDesc.sizeCbCr().width),
+          .height = static_cast<uint32_t>(aDesc.sizeCbCr().height),
+          .format = {ffi::WGPUTextureFormat_R8Unorm},
+      },
+      ffi::WGPUSharedHandleDesc{
+          .handle = aDesc.handleCr()->GetHandle(),
+          .width = static_cast<uint32_t>(aDesc.sizeCbCr().width),
+          .height = static_cast<uint32_t>(aDesc.sizeCbCr().height),
+          .format = {ffi::WGPUTextureFormat_R8Unorm},
+      },
+  };
+  MultiplanarTexture multiplanarTexture;
+  multiplanarTexture.mFormat = gfx::SurfaceFormat::YUV420;
+  multiplanarTexture.mColorSpace =
+      gfx::ToYUVRangedColorSpace(aDesc.yUVColorSpace(), aDesc.colorRange());
+  for (int i = 0; i < 3; i++) {
+    createPlane(aTextureIds[i], aViewIds[i], handleDescs[i]);
+    multiplanarTexture.mTextureIds.AppendElement(aTextureIds[i]);
+    multiplanarTexture.mViewIds.AppendElement(aViewIds[i]);
+  }
+  return Some(std::move(multiplanarTexture));
+}
+#endif
+
+#ifdef XP_MACOSX
+Maybe<WebGPUParent::MultiplanarTexture>
+WebGPUParent::CreateMultiplanarTextureFromMacIOSurfaceDesc(
+    RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+    const nsTArray<RawId>& aViewIds,
+    const layers::SurfaceDescriptorMacIOSurface& aDesc) {
+  printf_stderr("jamiedbg CreateMultiplanarTextureFromMacIOSurfaceDesc()\n");
+
+  RefPtr<MacIOSurface> ioSurface = MacIOSurface::LookupSurface(
+      aDesc.surfaceId(), !aDesc.isOpaque(), aDesc.yUVColorSpace());
+  if (!ioSurface) {
+    printf_stderr("jamiedbg Failed to lookup MacIOSurface\n");
+    return Nothing();
+  }
+
+  // FIXME: handle fences
+
+  MultiplanarTexture multiplanarTexture;
+  multiplanarTexture.mFormat = ioSurface->GetFormat();
+  multiplanarTexture.mColorSpace = gfx::ToYUVRangedColorSpace(
+      ioSurface->GetYUVColorSpace(), ioSurface->GetColorRange());
+
+  AutoTArray<ffi::WGPUIOSurfaceDesc, 2> textureDescs;
+  // FIXME: Use GetPlaneCount() and iterator through
+  switch (ioSurface->GetFormat()) {
+    case gfx::SurfaceFormat::NV12: {
+      textureDescs.AppendElement(ffi::WGPUIOSurfaceDesc{
+          .id = ioSurface->GetIOSurfaceID(),
+          .plane = 0,
+          .width = static_cast<uint32_t>(ioSurface->GetDevicePixelWidth(0)),
+          .height = static_cast<uint32_t>(ioSurface->GetDevicePixelHeight(0)),
+          // FIXME: use GetNumberOfComponentsOfPlane and GetColorDepth
+          .format = {ffi::WGPUTextureFormat_R8Unorm},
+      });
+      textureDescs.AppendElement(ffi::WGPUIOSurfaceDesc{
+          .id = ioSurface->GetIOSurfaceID(),
+          .plane = 1,
+          .width = static_cast<uint32_t>(ioSurface->GetDevicePixelWidth(1)),
+          .height = static_cast<uint32_t>(ioSurface->GetDevicePixelHeight(1)),
+          .format = {ffi::WGPUTextureFormat_Rg8Unorm},
+      });
+    } break;
+    default:
+      printf_stderr("jamiedbg Unexpected IOSurface format %s\n",
+                    mozilla::ToString(ioSurface->GetFormat()).c_str());
+      // FIXME: handle other formats
+      return Nothing();
+  }
+
+  for (size_t i = 0; i < textureDescs.Length(); i++) {
+    multiplanarTexture.mTextureIds.AppendElement(aTextureIds[i]);
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_device_import_texture_from_iosurface(
+          mContext.get(), aDeviceId, aTextureIds[i], nullptr, textureDescs[i],
+          error.ToFFI());
+      ForwardError(error);
+    }
+    ffi::WGPUTextureViewDescriptor viewDesc{
+        .label = nullptr,
+        .format = nullptr,
+        .dimension = nullptr,
+        .aspect = ffi::WGPUTextureAspect_All,
+        .base_mip_level = 0,
+        .mip_level_count = nullptr,
+        .base_array_layer = 0,
+        .array_layer_count = nullptr,
+    };
+    multiplanarTexture.mViewIds.AppendElement(aViewIds[i]);
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_texture_create_view(mContext.get(), aTextureIds[i],
+                                           aViewIds[i], &viewDesc,
+                                           error.ToFFI());
+      ForwardError(error);
+    }
+  }
+  return Some(std::move(multiplanarTexture));
+}
+#endif
+
+#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+Maybe<WebGPUParent::MultiplanarTexture>
+WebGPUParent::CreateMultiplanarTextureFromDMABufDesc(
+    RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+    const nsTArray<RawId>& aViewIds,
+    const layers::SurfaceDescriptorDMABuf& aDesc) {
+  printf_stderr("jamiedbg CreateMultiplanarTextureFromDMABufDesc()\n");
+  MultiplanarTexture multiplanarTexture;
+  if (aDesc.fourccFormat() == GBM_FORMAT_NV12) {
+    multiplanarTexture.mFormat = gfx::SurfaceFormat::NV12;
+  } else {
+    return Nothing();
+  }
+  multiplanarTexture.mColorSpace =
+      gfx::ToYUVRangedColorSpace(aDesc.yUVColorSpace(), aDesc.colorRange());
+
+  for (size_t i = 0; i < aDesc.fds().Length(); i++) {
+    ffi::WGPUDMABufPlane plane{
+        .fd = aDesc.fds()[i]->ClonePlatformHandle().release(),
+        .width = aDesc.width()[i],
+        .height = aDesc.height()[i],
+        .format = aDesc.format()[i],
+        .offset = aDesc.offsets()[i],
+        .stride = aDesc.strides()[i],
+        .modifier = aDesc.modifier()[i],
+    };
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_device_import_texture_from_dmabuf(
+          mContext.get(), aDeviceId, aTextureIds[i], nullptr, &plane,
+          error.ToFFI());
+      ForwardError(error);
+    }
+    ffi::WGPUTextureViewDescriptor viewDesc{
+        .label = nullptr,
+        .format = nullptr,
+        .dimension = nullptr,
+        .aspect = ffi::WGPUTextureAspect_All,
+        .base_mip_level = 0,
+        .mip_level_count = nullptr,
+        .base_array_layer = 0,
+        .array_layer_count = nullptr,
+    };
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_texture_create_view(mContext.get(), aTextureIds[i],
+                                           aViewIds[i], &viewDesc,
+                                           error.ToFFI());
+      ForwardError(error);
+    }
+    multiplanarTexture.mTextureIds.AppendElement(aTextureIds[i]);
+    multiplanarTexture.mViewIds.AppendElement(aViewIds[i]);
+  }
+  return Some(std::move(multiplanarTexture));
+}
+#endif
 
 WebGPUParent::BufferMapData* WebGPUParent::GetBufferMapData(RawId aBufferId) {
   const auto iter = mSharedMemoryMap.find(aBufferId);

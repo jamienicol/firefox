@@ -5,9 +5,13 @@
 use crate::{
     cow_label, wgpu_string, AdapterInformation, ByteBuf, CommandEncoderAction, DeviceAction,
     FfiSlice, QueueWriteAction, RawString, TexelCopyBufferLayout, TextureAction,
+    TextureViewDescriptor,
 };
 
-use crate::{BufferMapResult, Message, QueueWriteDataSource, ServerMessage, SwapChainId};
+use crate::{
+    BufferMapResult, ExternalTextureDescriptor, Message, QueueWriteDataSource, ServerMessage,
+    SwapChainId,
+};
 
 use wgc::naga::front::wgsl::ImplementedLanguageExtension;
 use wgc::{command::RenderBundleEncoder, id, identity::IdentityManager};
@@ -220,6 +224,7 @@ pub struct BindGroupEntry {
     size: Option<wgt::BufferSize>,
     sampler: Option<id::SamplerId>,
     texture_view: Option<id::TextureViewId>,
+    external_texture: Option<id::ExternalTextureId>,
 }
 
 #[repr(C)]
@@ -249,18 +254,6 @@ pub struct SamplerDescriptor<'a> {
 }
 
 #[repr(C)]
-pub struct TextureViewDescriptor<'a> {
-    label: Option<&'a nsACString>,
-    format: Option<&'a wgt::TextureFormat>,
-    dimension: Option<&'a wgt::TextureViewDimension>,
-    aspect: wgt::TextureAspect,
-    base_mip_level: u32,
-    mip_level_count: Option<&'a u32>,
-    base_array_layer: u32,
-    array_layer_count: Option<&'a u32>,
-}
-
-#[repr(C)]
 pub struct RenderBundleEncoderDescriptor<'a> {
     label: Option<&'a nsACString>,
     color_formats: FfiSlice<'a, wgt::TextureFormat>,
@@ -287,8 +280,10 @@ struct IdentityHub {
     render_pipelines: IdentityManager<markers::RenderPipeline>,
     textures: IdentityManager<markers::Texture>,
     texture_views: IdentityManager<markers::TextureView>,
+    external_textures: IdentityManager<markers::ExternalTexture>,
     samplers: IdentityManager<markers::Sampler>,
     query_sets: IdentityManager<markers::QuerySet>,
+    multiplanar_textures: IdentityManager<crate::MultiplanarTexture>,
 }
 
 impl Default for IdentityHub {
@@ -309,8 +304,10 @@ impl Default for IdentityHub {
             render_pipelines: IdentityManager::new(),
             textures: IdentityManager::new(),
             texture_views: IdentityManager::new(),
+            external_textures: IdentityManager::new(),
             samplers: IdentityManager::new(),
             query_sets: IdentityManager::new(),
+            multiplanar_textures: IdentityManager::new(),
         }
     }
 }
@@ -513,6 +510,8 @@ mod drop {
 
     #[no_mangle] pub extern "C" fn wgpu_client_destroy_buffer(client: &Client, id: id::BufferId) { client.queue_message(&Message::DestroyBuffer(id)); }
     #[no_mangle] pub extern "C" fn wgpu_client_destroy_texture(client: &Client, id: id::TextureId) { client.queue_message(&Message::DestroyTexture(id)); }
+    #[no_mangle] pub extern "C" fn wgpu_client_destroy_multiplanar_texture(client: &Client, id: crate::MultiplanarTextureId) { client.queue_message(&Message::DestroyMultiplanarTexture(id)); }
+    #[no_mangle] pub extern "C" fn wgpu_client_destroy_external_texture(client: &Client, id: id::ExternalTextureId) { client.queue_message(&Message::DestroyExternalTexture(id)); }
     #[no_mangle] pub extern "C" fn wgpu_client_destroy_device(client: &Client, id: id::DeviceId) { client.queue_message(&Message::DestroyDevice(id)); }
 
     #[no_mangle] pub extern "C" fn wgpu_client_drop_adapter(client: &Client, id: id::AdapterId) { client.queue_message(&Message::DropAdapter(id)); client.identities.lock().adapters.free(id); }
@@ -530,6 +529,8 @@ mod drop {
     #[no_mangle] pub extern "C" fn wgpu_client_drop_render_pipeline(client: &Client, id: id::RenderPipelineId) { client.queue_message(&Message::DropRenderPipeline(id)); client.identities.lock().render_pipelines.free(id); }
     #[no_mangle] pub extern "C" fn wgpu_client_drop_texture(client: &Client, id: id::TextureId) { client.queue_message(&Message::DropTexture(id)); client.identities.lock().textures.free(id); }
     #[no_mangle] pub extern "C" fn wgpu_client_drop_texture_view(client: &Client, id: id::TextureViewId) { client.queue_message(&Message::DropTextureView(id)); client.identities.lock().texture_views.free(id); }
+    #[no_mangle] pub extern "C" fn wgpu_client_drop_multiplanar_texture(client: &Client, id: crate::MultiplanarTextureId) { client.queue_message(&Message::DropMultiplanarTexture(id)); client.identities.lock().multiplanar_textures.free(id); }
+    #[no_mangle] pub extern "C" fn wgpu_client_drop_external_texture(client: &Client, id: id::ExternalTextureId) { client.queue_message(&Message::DropExternalTexture(id)); client.identities.lock().external_textures.free(id); }
     #[no_mangle] pub extern "C" fn wgpu_client_drop_sampler(client: &Client, id: id::SamplerId) { client.queue_message(&Message::DropSampler(id)); client.identities.lock().samplers.free(id); }
     #[no_mangle] pub extern "C" fn wgpu_client_drop_query_set(client: &Client, id: id::QuerySetId) { client.queue_message(&Message::DropQuerySet(id)); client.identities.lock().query_sets.free(id); }
 }
@@ -960,6 +961,11 @@ pub extern "C" fn wgpu_client_create_buffer(
 }
 
 #[no_mangle]
+pub extern "C" fn wgpu_client_make_texture_id(client: &Client) -> id::TextureId {
+    client.identities.lock().textures.process()
+}
+
+#[no_mangle]
 pub extern "C" fn wgpu_client_create_texture(
     client: &Client,
     device_id: id::DeviceId,
@@ -981,6 +987,11 @@ pub extern "C" fn wgpu_client_create_texture(
     client.queue_message(&message);
 
     id
+}
+
+#[no_mangle]
+pub extern "C" fn wgpu_client_make_texture_view_id(client: &Client) -> id::TextureViewId {
+    client.identities.lock().texture_views.process()
 }
 
 #[no_mangle]
@@ -1010,6 +1021,34 @@ pub extern "C" fn wgpu_client_create_texture_view(
 
     let action = TextureAction::CreateView(id, wgpu_desc);
     let message = Message::Texture(device_id, texture_id, action);
+    client.queue_message(&message);
+    id
+}
+
+#[no_mangle]
+pub extern "C" fn wgpu_client_make_multiplanar_texture_id(
+    client: &Client,
+) -> crate::MultiplanarTextureId {
+    client.identities.lock().multiplanar_textures.process()
+}
+
+#[no_mangle]
+pub extern "C" fn wgpu_client_make_external_texture_id(client: &Client) -> id::ExternalTextureId {
+    client.identities.lock().external_textures.process()
+}
+
+#[no_mangle]
+pub extern "C" fn wgpu_client_create_external_texture(
+    client: &Client,
+    device_id: id::DeviceId,
+    desc: &ExternalTextureDescriptor<Option<&nsACString>>,
+    multiplanar_texture_id: crate::MultiplanarTextureId,
+) -> id::ExternalTextureId {
+    let desc = desc.map_label(|l| wgpu_string(*l));
+    let id = client.identities.lock().external_textures.process();
+
+    let action = DeviceAction::CreateExternalTexture(id, desc, multiplanar_texture_id);
+    let message = Message::Device(device_id, action);
     client.queue_message(&message);
     id
 }
@@ -1507,6 +1546,8 @@ pub unsafe extern "C" fn wgpu_client_create_bind_group(
                 wgc::binding_model::BindingResource::Sampler(id)
             } else if let Some(id) = entry.texture_view {
                 wgc::binding_model::BindingResource::TextureView(id)
+            } else if let Some(id) = entry.external_texture {
+                wgc::binding_model::BindingResource::ExternalTexture(id)
             } else {
                 panic!("Unexpected binding entry {:?}", entry);
             },

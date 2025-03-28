@@ -10,6 +10,7 @@ using mozilla::layers::RemoteTextureId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::RemoteTextureOwnerId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::RemoteTextureTxnType from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::RemoteTextureTxnId from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::SurfaceDescriptor from "mozilla/layers/LayersTypes.h";
 using mozilla::webgpu::RawId from "mozilla/webgpu/WebGPUTypes.h";
 using mozilla::dom::GPUErrorFilter from "mozilla/dom/WebGPUBinding.h";
 using mozilla::dom::GPURequestAdapterOptions from "mozilla/dom/WebGPUBinding.h";
@@ -41,6 +42,15 @@ async protocol PWebGPU
 
 parent:
   async Messages(uint32_t nrOfMessages, ByteBuf serializedMessages, ByteBuf[] dataBuffers, MutableSharedMemoryHandle[] shmems);
+  async DeviceCreateMultiplanarTexture(
+    RawId selfId,
+    RawId queueId,
+    RawId multiplanarTextureId,
+    RawId[] textureIds,
+    RawId[] viewIds,
+    SurfaceDescriptor sd
+  );
+
 
 child:
   async ServerMessage(ByteBuf buf);

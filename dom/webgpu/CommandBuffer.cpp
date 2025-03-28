@@ -10,6 +10,7 @@
 #include "ipc/WebGPUChild.h"
 #include "mozilla/dom/WebGPUBinding.h"
 #include "mozilla/webgpu/CanvasContext.h"
+#include "nsTArray.h"
 
 namespace mozilla::webgpu {
 
@@ -18,11 +19,12 @@ GPU_IMPL_JS_WRAP(CommandBuffer)
 
 CommandBuffer::CommandBuffer(
     Device* const aParent, WebGPUChild* const aBridge, RawId aId,
-    nsTArray<WeakPtr<CanvasContext>>&& aPresentationContexts)
+    nsTArray<WeakPtr<CanvasContext>>&& aPresentationContexts, nsTArray<RefPtr<ExternalTexture>>&& aExternalTextures)
     : ChildOf(aParent),
       mId(aId),
       mBridge(aBridge),
-      mPresentationContexts(std::move(aPresentationContexts)) {
+      mPresentationContexts(std::move(aPresentationContexts)),
+      mExternalTextures(std::move(aExternalTextures)) {
   MOZ_RELEASE_ASSERT(aId);
 }
 

@@ -128,6 +128,36 @@ pub struct AdapterInformation<S> {
     support_use_shared_texture_in_swap_chain: bool,
 }
 
+#[derive(Debug)]
+pub enum MultiplanarTexture {}
+impl id::Marker for MultiplanarTexture {}
+pub type MultiplanarTextureId = id::Id<MultiplanarTexture>;
+
+#[repr(C)]
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct ExternalTextureDescriptor<L> {
+    label: L,
+    width: u32,
+    height: u32,
+    sample_transform: [f32; 6],
+    load_transform: [f32; 6],
+    color_space: wgt::PredefinedColorSpace,
+}
+
+impl<L> ExternalTextureDescriptor<L> {
+    #[must_use]
+    pub fn map_label<K>(&self, fun: impl FnOnce(&L) -> K) -> ExternalTextureDescriptor<K> {
+        ExternalTextureDescriptor {
+            label: fun(&self.label),
+            width: self.width,
+            height: self.height,
+            sample_transform: self.sample_transform,
+            load_transform: self.load_transform,
+            color_space: self.color_space,
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 #[repr(transparent)]
 pub struct SurfaceFormat(i8);
@@ -230,6 +260,8 @@ enum Message<'a> {
 
     DestroyBuffer(id::BufferId),
     DestroyTexture(id::TextureId),
+    DestroyMultiplanarTexture(crate::MultiplanarTextureId),
+    DestroyExternalTexture(id::ExternalTextureId),
     DestroyDevice(id::DeviceId),
 
     DropAdapter(id::AdapterId),
@@ -247,6 +279,8 @@ enum Message<'a> {
     DropRenderPipeline(id::RenderPipelineId),
     DropTexture(id::TextureId),
     DropTextureView(id::TextureViewId),
+    DropMultiplanarTexture(crate::MultiplanarTextureId),
+    DropExternalTexture(id::ExternalTextureId),
     DropSampler(id::SamplerId),
     DropQuerySet(id::QuerySetId),
 }
@@ -262,6 +296,11 @@ enum DeviceAction<'a> {
         id::TextureId,
         wgc::resource::TextureDescriptor<'a>,
         Option<SwapChainId>,
+    ),
+    CreateExternalTexture(
+        id::ExternalTextureId,
+        ExternalTextureDescriptor<wgc::Label<'a>>,
+        crate::MultiplanarTextureId,
     ),
     CreateSampler(id::SamplerId, wgc::resource::SamplerDescriptor<'a>),
     CreateBindGroupLayout(
@@ -385,6 +424,18 @@ impl<'a> TexelCopyBufferLayout<'a> {
             rows_per_image: self.rows_per_image.map(|rpi| *rpi),
         }
     }
+}
+
+#[repr(C)]
+pub struct TextureViewDescriptor<'a> {
+    label: Option<&'a nsACString>,
+    format: Option<&'a wgt::TextureFormat>,
+    dimension: Option<&'a wgt::TextureViewDimension>,
+    aspect: wgt::TextureAspect,
+    base_mip_level: u32,
+    mip_level_count: Option<&'a u32>,
+    base_array_layer: u32,
+    array_layer_count: Option<&'a u32>,
 }
 
 #[repr(C)]

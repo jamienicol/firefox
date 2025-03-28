@@ -7,6 +7,7 @@
 #define GPU_BindGroup_H_
 
 #include "CanvasContext.h"
+#include "nsTArrayForwardDeclare.h"
 #include "ObjectModel.h"
 #include "mozilla/webgpu/WebGPUTypes.h"
 #include "nsWrapperCache.h"
@@ -14,6 +15,7 @@
 namespace mozilla::webgpu {
 
 class Device;
+class ExternalTexture;
 
 class BindGroup final : public ObjectBase, public ChildOf<Device> {
  public:
@@ -21,12 +23,17 @@ class BindGroup final : public ObjectBase, public ChildOf<Device> {
   GPU_DECL_JS_WRAP(BindGroup)
 
   BindGroup(Device* const aParent, RawId aId,
-            CanvasContextArray&& aCanvasContexts);
+            CanvasContextArray&& aCanvasContexts,
+            nsTArray<RefPtr<ExternalTexture>>&& aExternalTextures);
 
   const RawId mId;
 
   mozilla::Span<const WeakPtr<CanvasContext>> GetCanvasContexts() const {
     return mUsedCanvasContexts;
+  }
+  
+  mozilla::Span<const RefPtr<ExternalTexture>> GetExternalTextures() const {
+    return mExternalTextures;
   }
 
  private:
@@ -35,6 +42,7 @@ class BindGroup final : public ObjectBase, public ChildOf<Device> {
 
   // The canvas contexts of any canvas textures used in this bind group.
   CanvasContextArray mUsedCanvasContexts;
+  const nsTArray<RefPtr<ExternalTexture>> mExternalTextures;
 };
 
 }  // namespace mozilla::webgpu

@@ -4119,3 +4119,17 @@ pref("captchadetection.actor.enabled", true);
 // Make general.smoothScroll sticky to avoid being clobbered by
 // preferes-reduced-motion system setting.
 pref("general.smoothScroll", true, sticky);
+
+// On windows by default get SurfaceDescriptorD3D10 in NV12 format
+
+// Setting false causes SurfaceDescriptorD3D10 with BGRA format
+// pref("media.wmf.use-nv12-format", true);
+
+// Setting false gives us a non-GPUVideoImage. Not sure what kind.
+// Webgpu creates a SurfaceDescriptorBuffer in the content process and send it to the GPU
+// pref("media.wmf.enabled", false);
+
+// Setting false uses SurfaceDescriptorDXGIYCbCr.
+// This is also jumpy. Maybe we need fence handling.
+// Or keeping the frames alive whilst rendering them.
+// pref("media.wmf.dxva.d3d11.enabled", false);

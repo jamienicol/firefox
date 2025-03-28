@@ -278,8 +278,9 @@ void CommandEncoder::ResolveQuerySet(QuerySet& aQuerySet, uint32_t aFirstQuery,
       aQueryCount, aDestination.mId, aDestinationOffset);
 }
 
-void CommandEncoder::EndComputePass(ffi::WGPURecordedComputePass& aPass,
-                                    CanvasContextArray& aCanvasContexts) {
+void CommandEncoder::EndComputePass(
+    ffi::WGPURecordedComputePass& aPass, CanvasContextArray& aCanvasContexts,
+    Span<RefPtr<ExternalTexture>> aExternalTextures) {
   // Because this can be called during child Cleanup, we need to check
   // that the bridge is still alive.
   if (!mBridge) {
@@ -297,13 +298,15 @@ void CommandEncoder::EndComputePass(ffi::WGPURecordedComputePass& aPass,
   for (const auto& context : aCanvasContexts) {
     TrackPresentationContext(context);
   }
+  mExternalTextures.AppendElements(aExternalTextures);
 
   ffi::wgpu_compute_pass_finish(mBridge->GetClient(), mParent->mId, mId,
                                 &aPass);
 }
 
-void CommandEncoder::EndRenderPass(ffi::WGPURecordedRenderPass& aPass,
-                                   CanvasContextArray& aCanvasContexts) {
+void CommandEncoder::EndRenderPass(
+    ffi::WGPURecordedRenderPass& aPass, CanvasContextArray& aCanvasContexts,
+    Span<RefPtr<ExternalTexture>> aExternalTextures) {
   // Because this can be called during child Cleanup, we need to check
   // that the bridge is still alive.
   if (!mBridge) {
@@ -321,6 +324,7 @@ void CommandEncoder::EndRenderPass(ffi::WGPURecordedRenderPass& aPass,
   for (const auto& context : aCanvasContexts) {
     TrackPresentationContext(context);
   }
+  mExternalTextures.AppendElements(aExternalTextures);
 
   ffi::wgpu_render_pass_finish(mBridge->GetClient(), mParent->mId, mId, &aPass);
 }
@@ -347,7 +351,8 @@ already_AddRefed<CommandBuffer> CommandEncoder::Finish(
   mState = CommandEncoderState::Ended;
 
   RefPtr<CommandBuffer> comb = new CommandBuffer(
-      mParent, mBridge, command_buffer_id, std::move(mPresentationContexts));
+      mParent, mBridge, command_buffer_id, std::move(mPresentationContexts),
+      std::move(mExternalTextures));
   comb->SetLabel(aDesc.mLabel);
   return comb.forget();
 }

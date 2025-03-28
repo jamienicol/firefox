@@ -19,15 +19,46 @@
 #include "mozilla/dom/ImageBitmap.h"
 #include "mozilla/dom/OffscreenCanvas.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/Promise-inl.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/WebGLTexelConversions.h"
 #include "mozilla/dom/WebGLTypes.h"
 #include "mozilla/dom/WebGPUBinding.h"
 #include "mozilla/ipc/SharedMemoryHandle.h"
 #include "mozilla/ipc/SharedMemoryMapping.h"
+#include "mozilla/webgpu/WebGPUTypes.h"
 #include "nsLayoutUtils.h"
 
 namespace mozilla::webgpu {
+
+struct ExternalTextureWorkDoneHandler : dom::PromiseNativeHandler {
+  NS_DECL_ISUPPORTS
+
+  explicit ExternalTextureWorkDoneHandler(
+      nsTArray<RefPtr<ExternalTexture>>&& aExternalTextures,
+      uint64_t aSubmissionId)
+      : mExternalTextures(std::move(aExternalTextures)),
+        mSubmissionId(aSubmissionId) {}
+
+  void ResolvedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue,
+                        ErrorResult& aRv) override {
+    for (const auto& externalTexture : mExternalTextures) {
+      externalTexture->OnSubmissionWorkDone(mSubmissionId);
+    }
+  }
+  void RejectedCallback(JSContext* aCx, JS::Handle<JS::Value> aValue,
+                        ErrorResult& aRv) override {
+    // FIXME: handle this?
+    MOZ_CRASH();
+  }
+
+ private:
+  ~ExternalTextureWorkDoneHandler() = default;
+  const nsTArray<RefPtr<ExternalTexture>> mExternalTextures;
+  const uint64_t mSubmissionId;
+};
+
+NS_IMPL_ISUPPORTS0(ExternalTextureWorkDoneHandler)
 
 GPU_IMPL_CYCLE_COLLECTION(Queue, mParent, mBridge)
 GPU_IMPL_JS_WRAP(Queue)
@@ -56,7 +87,9 @@ void Queue::Cleanup() {
 void Queue::Submit(
     const dom::Sequence<OwningNonNull<CommandBuffer>>& aCommandBuffers) {
   nsTArray<RawId> list(aCommandBuffers.Length());
+  nsTArray<RefPtr<ExternalTexture>> externalTextures;
   for (uint32_t i = 0; i < aCommandBuffers.Length(); ++i) {
+    externalTextures.AppendElements(aCommandBuffers[i]->GetExternalTextures());
     auto idMaybe = aCommandBuffers[i]->Commit();
     if (idMaybe) {
       list.AppendElement(*idMaybe);
@@ -64,6 +97,21 @@ void Queue::Submit(
   }
 
   mBridge->QueueSubmit(mId, mParent->mId, list);
+
+  static uint64_t sSubmissionId = 0;
+  uint64_t submissionId = ++sSubmissionId;
+  for (const auto& externalTexture : externalTextures) {
+    externalTexture->OnSubmit(submissionId);
+  }
+  ErrorResult rv;
+  RefPtr<dom::Promise> promise = OnSubmittedWorkDone(rv);
+  RefPtr<ExternalTextureWorkDoneHandler> handler =
+      new ExternalTextureWorkDoneHandler(std::move(externalTextures),
+                                         submissionId);
+  // FIXME: handle null promise
+  if (promise) {
+    promise->AppendNativeHandler(handler);
+  }
 }
 
 already_AddRefed<dom::Promise> Queue::OnSubmittedWorkDone(ErrorResult& aRv) {

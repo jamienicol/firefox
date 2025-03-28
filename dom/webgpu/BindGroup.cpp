@@ -15,10 +15,12 @@ GPU_IMPL_CYCLE_COLLECTION(BindGroup, mParent)
 GPU_IMPL_JS_WRAP(BindGroup)
 
 BindGroup::BindGroup(Device* const aParent, RawId aId,
-                     CanvasContextArray&& aCanvasContexts)
+                     CanvasContextArray&& aCanvasContexts,
+                     nsTArray<RefPtr<ExternalTexture>>&& aExternalTextures)
     : ChildOf(aParent),
       mId(aId),
-      mUsedCanvasContexts(std::move(aCanvasContexts)) {
+      mUsedCanvasContexts(std::move(aCanvasContexts)),
+      mExternalTextures(std::move(aExternalTextures)) {
   MOZ_RELEASE_ASSERT(aId);
 }
 

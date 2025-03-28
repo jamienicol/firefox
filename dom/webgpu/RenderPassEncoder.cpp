@@ -466,8 +466,12 @@ void RenderPassEncoder::End() {
   if (!mValid) {
     return;
   }
+  nsTArray<RefPtr<ExternalTexture>> externalTextures;
+  for (const auto& bindGroup : mUsedBindGroups) {
+    externalTextures.AppendElements(bindGroup->GetExternalTextures());
+  }
   MOZ_ASSERT(!!mPass);
-  mParent->EndRenderPass(*mPass, mUsedCanvasContexts);
+  mParent->EndRenderPass(*mPass, mUsedCanvasContexts, externalTextures);
   Cleanup();
 }
 

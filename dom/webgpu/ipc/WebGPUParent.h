@@ -45,7 +45,7 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WebGPUParent, override)
 
  public:
-  explicit WebGPUParent();
+  explicit WebGPUParent(const dom::ContentParentId& aContentId);
 
   void PostAdapterRequestDevice(RawId aDeviceId);
   void BufferUnmap(RawId aDeviceId, RawId aBufferId, bool aFlush);
@@ -53,6 +53,11 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
                               ipc::ByteBuf&& aSerializedMessages,
                               nsTArray<ipc::ByteBuf>&& aDataBuffers,
                               nsTArray<MutableSharedMemoryHandle>&& aShmems);
+  ipc::IPCResult RecvDeviceCreateMultiplanarTexture(
+      RawId aDeviceId, RawId aQueueId, RawId aMultiplanarTextureId,
+      nsTArray<RawId> aTextureIds, nsTArray<RawId> aViewIds,
+      layers::SurfaceDescriptor aSd);
+  ipc::IPCResult RecvExternalTextureDrop(RawId aExternalTextureId);
   void QueueSubmit(RawId aQueueId, RawId aDeviceId,
                    Span<const RawId> aCommandBuffers,
                    Span<const RawId> aTextureIds);
@@ -166,9 +171,47 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
   /// regardless of their state.
   std::unordered_map<RawId, BufferMapData> mSharedMemoryMap;
 
+  struct MultiplanarTexture {
+    nsTArray<RawId> mTextureIds;
+    nsTArray<RawId> mViewIds;
+    gfx::SurfaceFormat mFormat = gfx::SurfaceFormat::UNKNOWN;
+    gfx::YUVRangedColorSpace mColorSpace =
+        gfx::YUVRangedColorSpace::GbrIdentity;
+  };
+  const MultiplanarTexture& GetMultiplanarTexture(RawId aId) const;
+  void DestroyMultiplanarTexture(RawId aId);
+  void DropMultiplanarTexture(RawId aId);
+
  private:
   static void DeviceLostCallback(uint8_t* aUserData, uint8_t aReason,
                                  const char* aMessage);
+
+  Maybe<MultiplanarTexture> CreateMultiplanarTextureFromBufferDesc(
+      RawId aDeviceId, RawId aQueueId, const nsTArray<RawId>& aTextureIds,
+      const nsTArray<RawId>& aViewIds, const layers::BufferDescriptor& aDesc,
+      uint8_t* aBuffer);
+#ifdef XP_WIN
+  Maybe<MultiplanarTexture> CreateMultiplanarTextureFromD3D10Desc(
+      RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+      const nsTArray<RawId>& aViewIds,
+      const layers::SurfaceDescriptorD3D10& aDesc, gfx::SurfaceFormat aFormat);
+  Maybe<MultiplanarTexture> CreateMultiplanarTextureFromDXGIYCbCrDesc(
+      RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+      const nsTArray<RawId>& aViewIds,
+      const layers::SurfaceDescriptorDXGIYCbCr& aDesc);
+#endif
+#ifdef XP_MACOSX
+  Maybe<MultiplanarTexture> CreateMultiplanarTextureFromMacIOSurfaceDesc(
+      RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+      const nsTArray<RawId>& aViewIds,
+      const layers::SurfaceDescriptorMacIOSurface& aDesc);
+#endif
+#if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
+  Maybe<MultiplanarTexture> CreateMultiplanarTextureFromDMABufDesc(
+      RawId aDeviceId, const nsTArray<RawId>& aTextureIds,
+      const nsTArray<RawId>& aViewIds,
+      const layers::SurfaceDescriptorDMABuf& aDesc);
+#endif
 
   virtual ~WebGPUParent();
   void MaintainDevices();
@@ -201,6 +244,10 @@ class WebGPUParent final : public PWebGPUParent, public SupportsWeakPtr {
 
   // Shared handle of wgpu device's fence.
   std::unordered_map<RawId, RefPtr<gfx::FileHandleWrapper>> mDeviceFenceHandles;
+
+  std::unordered_map<RawId, MultiplanarTexture> mMultiplanarTextures;
+
+  const dom::ContentParentId mContentId;
 };
 
 #if defined(XP_LINUX) && !defined(MOZ_WIDGET_ANDROID)
