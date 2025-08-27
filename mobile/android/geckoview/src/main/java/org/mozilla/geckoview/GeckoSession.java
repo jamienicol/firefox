@@ -3186,6 +3186,12 @@ public class GeckoSession {
     bundle.putString("info", info.toString());
     return mEventDispatcher.queryVoid("GeckoView:SendMoreWebCompatInfo", bundle);
   }
+  
+  @AnyThread
+  public void wrCapture() {
+    Log.d(LOGTAG, "GeckoSession.wrCapture()");
+    mEventDispatcher.dispatch("GeckoView:WrCapture", null);
+  }
 
   // This is the GeckoDisplay acquired via acquireDisplay(), if any.
   private GeckoDisplay mDisplay;

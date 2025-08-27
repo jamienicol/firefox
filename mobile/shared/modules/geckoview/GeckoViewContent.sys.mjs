@@ -24,6 +24,7 @@ export class GeckoViewContent extends GeckoViewModule {
       "GeckoView:IsPdfJs",
       "GeckoView:GetWebCompatInfo",
       "GeckoView:SendMoreWebCompatInfo",
+      "GeckoView:WrCapture",
     ]);
   }
 
@@ -283,6 +284,9 @@ export class GeckoViewContent extends GeckoViewModule {
         break;
       case "GeckoView:SendMoreWebCompatInfo":
         this._sendMoreWebCompatInfo(aData, aCallback);
+        break;
+      case "GeckoView:WrCapture":
+        this.window.windowUtils.wrCapture();
         break;
       case "GeckoView:IsPdfJs":
         aCallback.onSuccess(this.isPdfJs);

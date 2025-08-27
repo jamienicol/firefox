@@ -1284,6 +1284,7 @@ public class GeckoViewActivity extends AppCompatActivity
     menu.findItem(R.id.desktop_mode).setEnabled(hasSession);
     menu.findItem(R.id.translate).setVisible(mExpectedTranslate);
     menu.findItem(R.id.translate_restore).setVisible(mTranslateRestore);
+    menu.findItem(R.id.wr_capture).setVisible(hasSession);
     return true;
   }
 
@@ -1352,6 +1353,9 @@ public class GeckoViewActivity extends AppCompatActivity
         break;
       case R.id.webcompat_info:
         webCompatInfo(session);
+        break;
+      case R.id.wr_capture:
+        session.wrCapture();
         break;
       default:
         return super.onOptionsItemSelected(item);
