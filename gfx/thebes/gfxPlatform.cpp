@@ -3283,7 +3283,7 @@ void gfxPlatform::InitWebGPUConfig() {
     featureExternalTexture.Disable(FeatureStatus::Blocklisted, message.get(),
                                    failureId);
   }
-#if !defined(XP_WIN) && !defined(XP_MACOSX)
+#if !defined(XP_WIN) && !defined(XP_MACOSX) && !(defined(XP_LINUX) && !defined(ANDROID))
   featureExternalTexture.ForceDisable(
       FeatureStatus::Blocked,
       "WebGPU external textures are not supported on this Operating System",
