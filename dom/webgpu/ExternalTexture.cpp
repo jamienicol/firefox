@@ -32,6 +32,9 @@
 #ifdef XP_MACOSX
 #  include "mozilla/gfx/MacIOSurface.h"
 #endif
+#if defined(XP_LINUX) && !defined(ANDROID)
+#  include "gbm.h"
+#endif
 
 namespace mozilla::webgpu {
 
@@ -490,6 +493,13 @@ ExternalTextureSourceHost::ExternalTextureSourceHost(
         } break;
 
         case layers::RemoteDecoderVideoSubDescriptor::
+            TSurfaceDescriptorDMABuf: {
+          const layers::SurfaceDescriptorDMABuf& dmabufDesc =
+              subDesc.get_SurfaceDescriptorDMABuf();
+          return CreateFromDMABufDesc(aParent, aDeviceId, aDesc, dmabufDesc);
+        } break;
+
+        case layers::RemoteDecoderVideoSubDescriptor::
             TSurfaceDescriptorMacIOSurface: {
           return CreateFromMacIOSurfaceDesc(
               aParent, aDeviceId, aDesc,
@@ -497,7 +507,6 @@ ExternalTextureSourceHost::ExternalTextureSourceHost(
         } break;
 
         case layers::RemoteDecoderVideoSubDescriptor::T__None:
-        case layers::RemoteDecoderVideoSubDescriptor::TSurfaceDescriptorDMABuf:
         case layers::RemoteDecoderVideoSubDescriptor::
             TSurfaceDescriptorDcompSurface: {
           gfxCriticalErrorOnce()
@@ -887,6 +896,107 @@ ExternalTextureSourceHost::CreateFromDXGIYCbCrDesc(
       aDesc.mSampleTransform, aDesc.mLoadTransform);
   source.mFenceId = Some(aSd.fencesHolderId());
   return source;
+#else
+  MOZ_CRASH();
+#endif
+}
+
+/* static */ ExternalTextureSourceHost
+ExternalTextureSourceHost::CreateFromDMABufDesc(
+    WebGPUParent* aParent, RawId aDeviceId,
+    const ExternalTextureSourceDescriptor& aDesc,
+    const layers::SurfaceDescriptorDMABuf& aSd) {
+#if defined(XP_LINUX) && !defined(ANDROID)
+  printf_stderr("CreateFromDMABufDesc()\n");
+
+  gfx::SurfaceFormat format;
+  AutoTArray<ffi::WGPUTextureDescriptor, 2> textureDescs;
+  switch (aSd.fourccFormat()) {
+    case GBM_FORMAT_NV12:
+      format = gfx::SurfaceFormat::NV12;
+      textureDescs.AppendElement(ffi::WGPUTextureDescriptor{
+          .size =
+              ffi::WGPUExtent3d{
+                  .width = aSd.width()[0],
+                  .height = aSd.height()[0],
+                  .depth_or_array_layers = 1,
+              },
+          .mip_level_count = 1,
+          .sample_count = 1,
+          .dimension = ffi::WGPUTextureDimension_D2,
+          .format = {ffi::WGPUTextureFormat_R8Unorm},
+          .usage = WGPUTextureUsages_TEXTURE_BINDING,
+          .view_formats = {},
+      });
+      textureDescs.AppendElement(ffi::WGPUTextureDescriptor{
+          .size =
+              ffi::WGPUExtent3d{
+                  .width = aSd.width()[1],
+                  .height = aSd.height()[1],
+                  .depth_or_array_layers = 1,
+              },
+          .mip_level_count = 1,
+          .sample_count = 1,
+          .dimension = ffi::WGPUTextureDimension_D2,
+          .format = {ffi::WGPUTextureFormat_Rg8Unorm},
+          .usage = WGPUTextureUsages_TEXTURE_BINDING,
+          .view_formats = {},
+      });
+      break;
+    default:
+      // FIXME: handle more formats
+      gfxCriticalNoteOnce << "Unsupported DMABuf fourcc format: 0x"
+                          << gfx::hexa(aSd.fourccFormat());
+      aParent->ReportError(
+          aDeviceId, dom::GPUErrorFilter::Internal,
+          nsPrintfCString("Unsupported DMABuf fourcc format: 0x%x",
+                          aSd.fourccFormat()));
+      return CreateError();
+  }
+
+  const gfx::YUVRangedColorSpace colorSpace =
+      gfx::ToYUVRangedColorSpace(aSd.yUVColorSpace(), aSd.colorRange());
+
+  // FIXME: handle fences
+  AutoTArray<RawId, 2> usedTextureIds;
+  AutoTArray<RawId, 2> usedViewIds;
+
+  printf_stderr("fds length: %zu", aSd.fds().Length());
+  for (size_t i = 0; i < aSd.fds().Length(); i++) {
+    usedTextureIds.AppendElement(aDesc.mTextureIds[i]);
+    usedViewIds.AppendElement(aDesc.mViewIds[i]);
+    ffi::WGPUDMABufPlane plane{
+        .fd = aSd.fds()[i]->ClonePlatformHandle().release(),
+        .offset = aSd.offsets()[i],
+        .stride = aSd.strides()[i],
+        .modifier = aSd.modifier()[i],
+    };
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_device_import_texture_from_dmabuf(
+          aParent->GetContext(), aDeviceId, aDesc.mTextureIds[i],
+          &textureDescs[i], &plane, error.ToFFI());
+      // From here on there's no need to return early with `CreateError()` in
+      // case of an error, as an error creating a texture or view will be
+      // propagated to any views or external textures created from them.
+      // Since we have full control over the creation of this texture, any
+      // validation error we encounter should be treated as an internal error.
+      error.CoerceValidationToInternal();
+      aParent->ForwardError(error);
+    }
+    ffi::WGPUTextureViewDescriptor viewDesc{};
+    {
+      ErrorBuffer error;
+      ffi::wgpu_server_texture_create_view(
+          aParent->GetContext(), aDeviceId, aDesc.mTextureIds[i],
+          aDesc.mViewIds[i], &viewDesc, error.ToFFI());
+      error.CoerceValidationToInternal();
+      aParent->ForwardError(error);
+    }
+  }
+  return ExternalTextureSourceHost(usedTextureIds, usedViewIds, aDesc.mSize,
+                                   format, colorSpace, aDesc.mSampleTransform,
+                                   aDesc.mLoadTransform);
 #else
   MOZ_CRASH();
 #endif

@@ -3320,3 +3320,128 @@ pub unsafe extern "C" fn wgpu_server_device_import_texture_from_iosurface(
         error_buf.init(err, device_id);
     }
 }
+
+#[cfg(target_os = "linux")]
+#[derive(Debug)]
+#[repr(C)]
+pub struct DMABufPlane {
+    fd: i32,
+    offset: u32,
+    stride: u32,
+    modifier: u64,
+}
+
+#[cfg(target_os = "linux")]
+#[no_mangle]
+pub unsafe extern "C" fn wgpu_server_device_import_texture_from_dmabuf(
+    global: &Global,
+    device_id: id::DeviceId,
+    id_in: id::TextureId,
+    desc: &wgt::TextureDescriptor<Option<&nsACString>, crate::FfiSlice<wgt::TextureFormat>>,
+    plane: &DMABufPlane,
+    mut error_buf: ErrorBuffer,
+) {
+    let desc = desc.map_label_and_view_formats(|l| wgpu_string(*l), |v| v.as_slice().to_vec());
+
+    let Some(hal_device) = global.device_as_hal::<wgc::api::Vulkan>(device_id) else {
+        emit_critical_invalid_note("Vulkan device");
+        global.create_texture_error(Some(id_in), &desc);
+        return;
+    };
+
+    let vk_device = hal_device.raw_device();
+    let physical_device = hal_device.raw_physical_device();
+    let instance = hal_device.shared_instance().raw_instance();
+
+    let mut external_image_create_info = vk::ExternalMemoryImageCreateInfo::default()
+        .handle_types(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT);
+
+    let image_create_flags = vk::ImageCreateFlags::empty();
+
+    let plane_layouts = [vk::SubresourceLayout {
+        offset: plane.offset as ash::vk::DeviceSize,
+        row_pitch: plane.stride as ash::vk::DeviceSize,
+        ..Default::default()
+    }];
+    let mut modifier_info = vk::ImageDrmFormatModifierExplicitCreateInfoEXT::default()
+        .drm_format_modifier(plane.modifier)
+        .plane_layouts(&plane_layouts);
+
+    let extent = vk::Extent3D {
+        width: desc.size.width,
+        height: desc.size.height,
+        depth: desc.size.depth_or_array_layers,
+    };
+    
+    let vk_format = match desc.format {
+        wgt::TextureFormat::R8Unorm => ash::vk::Format::R8_UNORM,
+        wgt::TextureFormat::Rg8Unorm => ash::vk::Format::R8G8_UNORM,
+        _ => unreachable!("Unsupported DMABuf format format {:?}", desc.format),
+    };
+
+    let image_create_info = vk::ImageCreateInfo::default()
+        .flags(image_create_flags)
+        .image_type(ash::vk::ImageType::TYPE_2D)
+        .format(vk_format)
+        .extent(extent)
+        .mip_levels(desc.mip_level_count)
+        .array_layers(desc.array_layer_count())
+        .samples(vk::SampleCountFlags::TYPE_1)
+        .tiling(vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT)
+        .usage(vk::ImageUsageFlags::SAMPLED)
+        .sharing_mode(vk::SharingMode::EXCLUSIVE)
+        .initial_layout(vk::ImageLayout::UNDEFINED)
+        // VK_IMAGE_CREATE_DISJOINT_BIT if importing multiple FDs (1 for each plane)
+        .push_next(&mut modifier_info)
+        .push_next(&mut external_image_create_info);
+
+    let image = vk_device.create_image(&image_create_info, None).unwrap();
+    let memory_req = vk_device.get_image_memory_requirements(image);
+    let mem_properties = instance.get_physical_device_memory_properties(physical_device);
+
+    let memory_type_index = mem_properties
+        .memory_types
+        .iter()
+        .enumerate()
+        .position(|(i, t)| {
+            ((1 << i) & memory_req.memory_type_bits) != 0
+                && t.property_flags
+                    .contains(vk::MemoryPropertyFlags::DEVICE_LOCAL)
+        })
+        .unwrap();
+
+    let mut dedicated_memory_info = vk::MemoryDedicatedAllocateInfo::default().image(image);
+    let mut import_memory_fd_info = vk::ImportMemoryFdInfoKHR::default()
+        .handle_type(vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
+        .fd(plane.fd);
+
+    let memory_allocate_info = vk::MemoryAllocateInfo::default()
+        .allocation_size(memory_req.size)
+        .memory_type_index(memory_type_index as u32)
+        .push_next(&mut dedicated_memory_info)
+        .push_next(&mut import_memory_fd_info);
+
+    let memory = vk_device.allocate_memory(&memory_allocate_info, None).unwrap();
+    vk_device.bind_image_memory(image, memory, 0).unwrap();
+
+    let hal_desc = wgh::TextureDescriptor {
+        label: desc.label.as_deref(),
+        size: desc.size,
+        mip_level_count: desc.mip_level_count,
+        sample_count: desc.sample_count,
+        dimension: desc.dimension,
+        format: desc.format,
+        usage: wgt::TextureUses::RESOURCE,
+        memory_flags: wgh::MemoryFlags::empty(),
+        view_formats: desc.view_formats.clone(),
+    };
+
+    let hal_texture =
+        <wgh::api::Vulkan as wgh::Api>::Device::texture_from_raw(&hal_device, image, &hal_desc, None);
+
+    let (_, error) =
+        global.create_texture_from_hal(Box::new(hal_texture), device_id, &desc, Some(id_in));
+    if let Some(err) = error {
+        error_buf.init(err, device_id);
+    }
+}
