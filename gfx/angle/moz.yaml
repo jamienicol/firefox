@@ -1,0 +1,40 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: Graphics
+
+origin:
+  name: angle
+
+  description: ANGLE - Almost Native Graphics Layer Engine
+
+  url: https://chromium.googlesource.com/angle/angle
+
+  # Note that while the vendoring information here, including revision,
+  # release, and upstream repo locations refer to the third party upstream,
+  # Angle is vendored from a mozilla git repository that pulls from
+  # upstream and mainntains local patches there.
+  release: b'401e94882e22cf2aa7af649b92ab123eaa329321' (b'2026-03-26 13:34:37 -0700').
+  revision: b'401e94882e22cf2aa7af649b92ab123eaa329321'
+
+  license: BSD-3-Clause
+
+updatebot:
+  maintainer-phab: jgilbert
+  maintainer-bz: jgilbert@mozilla.com
+  tasks:
+    - type: commit-alert
+      enabled: True
+      branch: chromium/7390
+      needinfo: ["jgilbert@mozilla.com"]
+
+vendoring:
+  url: https://chromium.googlesource.com/angle/angle
+  # Technically we aren't tracking 'tags', we're tracking branches but Angle has a
+  # special setup and tag is the most analogous without needing to create a whole
+  # new thing just for it.
+  tracking: commit
+  source-hosting: googlesource
+  vendor-directory: third_party/angle
+  skip-vendoring-steps: ["update-moz-build"]
