@@ -13,6 +13,7 @@
 #include "mozilla/Assertions.h"  // for AssertionConditionType, MOZ_ASSERT, MOZ_ASSERT_HELPER2
 #include "mozilla/Attributes.h"              // for MOZ_NON_OWNING_REF
 #include "mozilla/RefPtr.h"                  // for RefPtr
+#include "mozilla/Result.h"                  // for Result
 #include "mozilla/TimeStamp.h"               // for TimeStamp
 #include "mozilla/gfx/Point.h"               // for IntSize
 #include "mozilla/gfx/Types.h"               // for SurfaceFormat
@@ -62,8 +63,18 @@ class WebRenderLayerManager final : public WindowRenderer {
                                               wr::PipelineId aPipelineId,
                                               nsCString& aError);
 
-  bool Initialize(TextureFactoryIdentifier* aTextureFactoryIdentifier,
-                  nsCString& aError);
+  // Initializes the WebRenderLayerManager, blocking synchronously until the
+  // WebRenderBridge is connected.
+  bool EnsureInitialized(TextureFactoryIdentifier* aTextureFactoryIdentifier,
+                         nsCString& aError);
+
+  using InitPromise = MozPromise<Ok, nsCString, true>;
+  // Initializes the WebRenderLayerManger asynchronously, returning a promise
+  // which resolves when the WebRenderBridge is connected. This promise must
+  // have either resolved succesfully, or separately EnsureInitialized() must
+  // have returned true prior to using the layer manager.
+  RefPtr<InitPromise> InitializeAsync(PCompositorBridgeChild* aCBChild,
+                                      wr::PipelineId aLayersId);
 
   void Destroy() override;
   bool IsDestroyed() { return mDestroyed; }
@@ -105,8 +116,6 @@ class WebRenderLayerManager final : public WindowRenderer {
                     const mozilla::TimeStamp& aCompositeEnd);
 
   void ClearCachedResources();
-  void UpdateTextureFactoryIdentifier(
-      const TextureFactoryIdentifier& aNewIdentifier);
   TextureFactoryIdentifier GetTextureFactoryIdentifier();
 
   void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator);

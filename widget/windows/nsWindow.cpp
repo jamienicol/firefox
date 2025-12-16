@@ -3819,7 +3819,8 @@ WindowRenderer* nsWindow::CreateFallbackRenderer() {
       mTransparencyMode);
   // If we're not using the compositor, the options don't actually matter.
   CompositorOptions options(false, false);
-  mBasicLayersSurface = new InProcessWinCompositorWidget(initData, options, this);
+  mBasicLayersSurface =
+      new InProcessWinCompositorWidget(initData, options, this);
   mCompositorWidgetDelegate = mBasicLayersSurface;
   return nsIWidget::CreateFallbackRenderer();
 }

@@ -63,6 +63,9 @@ void WebRenderBridgeChild::DoDestroy() {
     mResourceShm = RefCountedShmem();
   }
 
+  mConnectionStatus = Some(Err("FEATURE_FAILURE_WEBRENDER_DESTROYED"_ns));
+  mConnectionPromise.RejectIfExists(mConnectionStatus->inspectErr(), __func__);
+
   // mDestroyed is used to prevent calling Send__delete__() twice.
   // When this function is called from CompositorBridgeChild::Destroy().
   mDestroyed = true;
@@ -475,6 +478,48 @@ FwdTransactionCounter& WebRenderBridgeChild::GetFwdTransactionCounter() {
 
 bool WebRenderBridgeChild::InForwarderThread() { return NS_IsMainThread(); }
 
+RefPtr<WebRenderBridgeChild::ConnectedPromise>
+WebRenderBridgeChild::OnConnected() {
+  if (mConnectionStatus) {
+    if (mConnectionStatus->isOk()) {
+      return ConnectedPromise::CreateAndResolve(Ok{}, __func__);
+    }
+    return ConnectedPromise::CreateAndReject(mConnectionStatus->inspectErr(),
+                                             __func__);
+  }
+  return mConnectionPromise.Ensure(__func__);
+}
+
+mozilla::ipc::IPCResult WebRenderBridgeChild::RecvConnected(
+    const TextureFactoryIdentifier& aTextureFactoryIdentifier,
+    const IdNamespace& aIdNamespace) {
+  if (mConnectionStatus) {
+    // Already connected synchronously
+    return IPC_OK();
+  }
+  IdentifyTextureHost(aTextureFactoryIdentifier);
+  mIdNamespace = aIdNamespace;
+
+  mConnectionStatus.emplace(Ok{});
+  mConnectionPromise.ResolveIfExists(Ok{}, __func__);
+
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult WebRenderBridgeChild::RecvConnectionFailed(
+    const nsCString& error) {
+  if (mConnectionStatus) {
+    // Already connected synchronously
+    return IPC_OK();
+  }
+  gfxCriticalNote << "Failed to connect WebRenderBridgeChild. isParent="
+                  << XRE_IsParentProcess();
+  mConnectionStatus.emplace(Err(error));
+  mConnectionPromise.RejectIfExists(error, __func__);
+
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult WebRenderBridgeChild::RecvWrUpdated(
     const wr::IdNamespace& aNewIdNamespace,
     const TextureFactoryIdentifier& textureFactoryIdentifier) {
@@ -597,19 +642,34 @@ void WebRenderBridgeChild::StopCaptureSequence() {
   this->SendStopCaptureSequence();
 }
 
-bool WebRenderBridgeChild::SendEnsureConnected(
-    TextureFactoryIdentifier* textureFactoryIdentifier,
-    MaybeIdNamespace* maybeIdNamespace, nsCString* error) {
+const mozilla::Result<Ok, nsCString>& WebRenderBridgeChild::EnsureConnected() {
+  if (mConnectionStatus) {
+    return *mConnectionStatus;
+  }
+
   auto* manager = CompositorManagerChild::GetInstance();
   if (XRE_IsParentProcess()) {
     manager->SetSyncIPCStartTimeStamp();
   }
+  TextureFactoryIdentifier textureFactoryIdentifier;
+  MaybeIdNamespace idNamespace;
+  nsCString error;
   auto ret = PWebRenderBridgeChild::SendEnsureConnected(
-      textureFactoryIdentifier, maybeIdNamespace, error);
+      &textureFactoryIdentifier, &idNamespace, &error);
   if (XRE_IsParentProcess()) {
     manager->ClearSyncIPCStartTimeStamp();
   }
-  return ret;
+
+  if (!ret) {
+    RecvConnectionFailed("FEATURE_FAILURE_WEBRENDER_INITIALIZE_SYNC"_ns);
+  } else if (textureFactoryIdentifier.mParentBackend ==
+                 LayersBackend::LAYERS_NONE ||
+             idNamespace.isNothing()) {
+    RecvConnectionFailed(error);
+  } else {
+    RecvConnected(textureFactoryIdentifier, idNamespace.ref());
+  }
+  return *mConnectionStatus;
 }
 
 }  // namespace layers

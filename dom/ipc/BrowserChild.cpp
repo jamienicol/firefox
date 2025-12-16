@@ -3282,7 +3282,8 @@ bool BrowserChild::CreateRemoteLayerManager() {
   return mPuppetWidget->CreateRemoteLayerManager(
       [&](WebRenderLayerManager* aLayerManager) -> bool {
         nsCString error;
-        return aLayerManager->Initialize(&mTextureFactoryIdentifier, error);
+        return aLayerManager->EnsureInitialized(&mTextureFactoryIdentifier,
+                                                error);
       });
 }
 

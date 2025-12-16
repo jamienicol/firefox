@@ -505,7 +505,8 @@ WindowRenderer* PuppetWidget::CreateFallbackRenderer() {
   // On the parent process there is no CompositorBridgeChild which confuses
   // some layers code, so we use basic layers instead.
   if (!XRE_IsParentProcess()) {
-    MOZ_ASSERT(!mBrowserChild || mBrowserChild->IsLayersConnected() != Some(true));
+    MOZ_ASSERT(!mBrowserChild ||
+               mBrowserChild->IsLayersConnected() != Some(true));
   }
 
   // If we know for sure that the parent side of this BrowserChild is not

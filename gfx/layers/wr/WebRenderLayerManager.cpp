@@ -42,6 +42,7 @@ WebRenderLayerManager::WebRenderLayerManager(
     nsIWidget* aWidget, already_AddRefed<WebRenderBridgeChild> aWrChild)
     : mWidget(aWidget),
       mWrChild(aWrChild),
+      mHasFlushedThisChild(false),
       mLatestTransactionId{0},
       mNeedsComposite(false),
       mIsFirstPaint(false),
@@ -53,6 +54,7 @@ WebRenderLayerManager::WebRenderLayerManager(
   MOZ_COUNT_CTOR(WebRenderLayerManager);
   MOZ_RELEASE_ASSERT(mWidget);
   MOZ_RELEASE_ASSERT(mWrChild);
+  mWrChild->SetWebRenderLayerManager(this);
   mStateManager.mLayerManager = this;
 }
 
@@ -98,42 +100,43 @@ RefPtr<WebRenderLayerManager> WebRenderLayerManager::Create(
   return new WebRenderLayerManager(aWidget, wrChild.forget());
 }
 
-bool WebRenderLayerManager::Initialize(
+bool WebRenderLayerManager::EnsureInitialized(
     TextureFactoryIdentifier* aTextureFactoryIdentifier, nsCString& aError) {
   MOZ_ASSERT(aTextureFactoryIdentifier);
 
-  mHasFlushedThisChild = false;
-
-  TextureFactoryIdentifier textureFactoryIdentifier;
-  wr::MaybeIdNamespace idNamespace;
-  // Sync ipc
-  if (!WrBridge()->SendEnsureConnected(&textureFactoryIdentifier, &idNamespace,
-                                       &aError)) {
-    gfxCriticalNote << "Failed as lost WebRenderBridgeChild.";
-    aError.Assign(sHasInitialized
-                      ? "FEATURE_FAILURE_WEBRENDER_INITIALIZE_SYNC_POST"_ns
-                      : "FEATURE_FAILURE_WEBRENDER_INITIALIZE_SYNC_FIRST"_ns);
-    return false;
-  }
-
-  if (textureFactoryIdentifier.mParentBackend == LayersBackend::LAYERS_NONE ||
-      idNamespace.isNothing()) {
-    gfxCriticalNote << "Failed to connect WebRenderBridgeChild. isParent="
-                    << XRE_IsParentProcess();
+  const auto& result = mWrChild->EnsureConnected();
+  if (result.isErr()) {
+    aError = result.inspectErr();
     aError.Append(sHasInitialized ? "_POST"_ns : "_FIRST"_ns);
     return false;
   }
 
-  WrBridge()->SetWebRenderLayerManager(this);
-  WrBridge()->IdentifyTextureHost(textureFactoryIdentifier);
-  WrBridge()->SetNamespace(idNamespace.ref());
-  *aTextureFactoryIdentifier = textureFactoryIdentifier;
+  *aTextureFactoryIdentifier = WrBridge()->GetTextureFactoryIdentifier();
 
   mDLBuilder = MakeUnique<wr::DisplayListBuilder>(
       WrBridge()->GetPipeline(), WrBridge()->GetWebRenderBackend());
 
   sHasInitialized = true;
   return true;
+}
+
+RefPtr<WebRenderLayerManager::InitPromise>
+WebRenderLayerManager::InitializeAsync(PCompositorBridgeChild* aCBChild,
+                                       wr::PipelineId aLayersId) {
+  return mWrChild->OnConnected()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      [self = RefPtr{this}](Ok) {
+        self->mDLBuilder = MakeUnique<wr::DisplayListBuilder>(
+            self->WrBridge()->GetPipeline(),
+            self->WrBridge()->GetWebRenderBackend());
+
+        sHasInitialized = true;
+        return InitPromise::CreateAndResolve(Ok{}, __func__);
+      },
+      [](nsCString aError) {
+        aError.Append(sHasInitialized ? "_POST"_ns : "_FIRST"_ns);
+        return InitPromise::CreateAndReject(std::move(aError), __func__);
+      });
 }
 
 void WebRenderLayerManager::Destroy() { DoDestroy(/* aIsSync */ false); }
@@ -656,11 +659,6 @@ void WebRenderLayerManager::WrUpdated() {
       browserChild->SchedulePaint();
     }
   }
-}
-
-void WebRenderLayerManager::UpdateTextureFactoryIdentifier(
-    const TextureFactoryIdentifier& aNewIdentifier) {
-  WrBridge()->IdentifyTextureHost(aNewIdentifier);
 }
 
 TextureFactoryIdentifier WebRenderLayerManager::GetTextureFactoryIdentifier() {

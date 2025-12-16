@@ -1524,7 +1524,7 @@ already_AddRefed<WebRenderLayerManager> nsIWidget::CreateCompositorSession(
       lm = mCompositorSession->GetCompositorBridgeChild()->CreateLayerManager(
           this, wr::AsPipelineId(mCompositorSession->RootLayerTreeId()), error);
       if (lm) {
-        lm->Initialize(&textureFactoryIdentifier, error);
+        lm->EnsureInitialized(&textureFactoryIdentifier, error);
       }
       if (textureFactoryIdentifier.mParentBackend != LayersBackend::LAYERS_WR) {
         retry = true;
