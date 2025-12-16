@@ -50,9 +50,6 @@ class RemoteLayerTreeOwner final {
   LayersId GetLayersId() const { return mLayersId; }
   CompositorOptions GetCompositorOptions() const { return mCompositorOptions; }
 
-  void GetTextureFactoryIdentifier(
-      TextureFactoryIdentifier* aTextureFactoryIdentifier) const;
-
   bool IsInitialized() const { return mInitialized; }
   bool IsLayersConnected() const { return mLayersConnected; }
 

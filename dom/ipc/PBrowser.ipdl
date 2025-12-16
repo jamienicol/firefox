@@ -78,7 +78,6 @@ using struct nsRect from "nsRect.h";
 using class mozilla::WidgetSelectionEvent from "ipc/nsGUIEventIPC.h";
 using class mozilla::WidgetTouchEvent from "ipc/nsGUIEventIPC.h";
 using struct mozilla::dom::RemoteDOMEvent from "mozilla/dom/TabMessageTypes.h";
-using struct mozilla::layers::TextureFactoryIdentifier from "mozilla/layers/CompositorTypes.h";
 using mozilla::layers::CompositorOptions from "mozilla/layers/CompositorOptions.h";
 using mozilla::CSSToScreenScale from "Units.h";
 using mozilla::CommandInt from "mozilla/EventForwards.h";
@@ -673,8 +672,7 @@ child:
 
     async ScrollbarPreferenceChanged(ScrollbarPreference pref);
 
-    async InitRendering(TextureFactoryIdentifier textureFactoryIdentifier,
-                        LayersId layersId,
+    async InitRendering(LayersId layersId,
                         CompositorOptions compositorOptions,
                         bool layersConnected);
 

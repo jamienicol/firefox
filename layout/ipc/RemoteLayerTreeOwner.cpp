@@ -116,18 +116,5 @@ void RemoteLayerTreeOwner::OwnerContentChanged() {
   (void)AttachWindowRenderer();
 }
 
-void RemoteLayerTreeOwner::GetTextureFactoryIdentifier(
-    TextureFactoryIdentifier* aTextureFactoryIdentifier) const {
-  RefPtr<WindowRenderer> renderer =
-      mBrowserParent ? GetWindowRenderer(mBrowserParent) : nullptr;
-  // Perhaps the document containing this frame currently has no presentation?
-  if (renderer && renderer->AsWebRender()) {
-    *aTextureFactoryIdentifier =
-        renderer->AsWebRender()->GetTextureFactoryIdentifier();
-  } else {
-    *aTextureFactoryIdentifier = TextureFactoryIdentifier();
-  }
-}
-
 }  // namespace layout
 }  // namespace mozilla

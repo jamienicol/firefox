@@ -255,7 +255,6 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   mozilla::ipc::IPCResult RecvShow(const ParentShowInfo&, const OwnerShowInfo&);
 
   mozilla::ipc::IPCResult RecvInitRendering(
-      const TextureFactoryIdentifier& aTextureFactoryIdentifier,
       const layers::LayersId& aLayersId,
       const mozilla::layers::CompositorOptions& aCompositorOptions,
       const bool& aLayersConnected);
@@ -777,7 +776,6 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   bool InitBrowserChildMessageManager();
 
   void InitRenderingState(
-      const TextureFactoryIdentifier& aTextureFactoryIdentifier,
       const layers::LayersId& aLayersId,
       const mozilla::layers::CompositorOptions& aCompositorOptions);
   void InitAPZState();
@@ -817,7 +815,8 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
       RefPtr<BrowsingContext>* aCachedBrowsingContext);
 
   bool CreateRemoteLayerManager(
-      mozilla::layers::PCompositorBridgeChild* aCompositorChild);
+      mozilla::layers::PCompositorBridgeChild* aCompositorChild,
+      layers::TextureFactoryIdentifier& aTextureFactoryIdentifier);
 
   nsresult PrepareRequestData(nsIRequest* aRequest, RequestData& aRequestData);
   nsresult PrepareProgressListenerData(nsIWebProgress* aWebProgress,
@@ -840,7 +839,6 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   class DelayedDeleteRunnable;
 
   RefPtr<BrowserChildMessageManager> mBrowserChildMessageManager;
-  TextureFactoryIdentifier mTextureFactoryIdentifier;
   RefPtr<nsWebBrowser> mWebBrowser;
   nsCOMPtr<nsIWebNavigation> mWebNav;
   RefPtr<PuppetWidget> mPuppetWidget;

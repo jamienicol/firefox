@@ -1122,12 +1122,11 @@ mozilla::ipc::IPCResult BrowserChild::RecvShow(
 }
 
 mozilla::ipc::IPCResult BrowserChild::RecvInitRendering(
-    const TextureFactoryIdentifier& aTextureFactoryIdentifier,
     const layers::LayersId& aLayersId,
     const CompositorOptions& aCompositorOptions, const bool& aLayersConnected) {
   mLayersConnected = Some(aLayersConnected);
   mLayersConnectRequested = Some(aLayersConnected);
-  InitRenderingState(aTextureFactoryIdentifier, aLayersId, aCompositorOptions);
+  InitRenderingState(aLayersId, aCompositorOptions);
   return IPC_OK();
 }
 
@@ -3220,13 +3219,11 @@ bool BrowserChild::InitBrowserChildMessageManager() {
 }
 
 void BrowserChild::InitRenderingState(
-    const TextureFactoryIdentifier& aTextureFactoryIdentifier,
     const layers::LayersId& aLayersId,
     const CompositorOptions& aCompositorOptions) {
   mPuppetWidget->InitIMEState();
 
   MOZ_ASSERT(aLayersId.IsValid());
-  mTextureFactoryIdentifier = aTextureFactoryIdentifier;
 
   // Pushing layers transactions directly to a separate
   // compositor context.
@@ -3257,15 +3254,17 @@ void BrowserChild::InitRenderingState(
              mPuppetWidget->GetWindowRenderer()->GetBackendType() ==
                  layers::LayersBackend::LAYERS_NONE);
   bool success = false;
+  layers::TextureFactoryIdentifier textureFactoryIdentifier;
   if (mLayersConnected == Some(true)) {
-    success = CreateRemoteLayerManager(compositorChild);
+    success =
+        CreateRemoteLayerManager(compositorChild, textureFactoryIdentifier);
   }
 
   if (success) {
     MOZ_ASSERT(mLayersConnected == Some(true));
     // Succeeded to create "remote" layer manager
-    ImageBridgeChild::IdentifyCompositorTextureHost(mTextureFactoryIdentifier);
-    gfx::VRManagerChild::IdentifyTextureHost(mTextureFactoryIdentifier);
+    ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
+    gfx::VRManagerChild::IdentifyTextureHost(textureFactoryIdentifier);
     InitAPZState();
   } else {
     mLayersConnected = Some(false);
@@ -3280,7 +3279,8 @@ void BrowserChild::InitRenderingState(
 }
 
 bool BrowserChild::CreateRemoteLayerManager(
-    mozilla::layers::PCompositorBridgeChild* aCompositorChild) {
+    mozilla::layers::PCompositorBridgeChild* aCompositorChild,
+    TextureFactoryIdentifier& aTextureFactoryIdentifier) {
   MOZ_ASSERT(aCompositorChild);
 
   return mPuppetWidget->CreateRemoteLayerManager(
@@ -3288,7 +3288,7 @@ bool BrowserChild::CreateRemoteLayerManager(
         nsCString error;
         return aLayerManager->Initialize(aCompositorChild,
                                          wr::AsPipelineId(mLayersId),
-                                         &mTextureFactoryIdentifier, error);
+                                         &aTextureFactoryIdentifier, error);
       });
 }
 
@@ -3621,11 +3621,12 @@ void BrowserChild::ReinitRendering() {
   // compositor bridge.
   Maybe<CompositorOptions> options;
   SendEnsureLayersConnected(&options);
+  TextureFactoryIdentifier textureFactoryIdentifier;
   if (options) {
     mCompositorOptions = options;
     RefPtr<CompositorBridgeChild> cb = CompositorBridgeChild::Get();
     if (cb) {
-      success = CreateRemoteLayerManager(cb);
+      success = CreateRemoteLayerManager(cb, textureFactoryIdentifier);
     }
   }
 
@@ -3635,8 +3636,8 @@ void BrowserChild::ReinitRendering() {
   }
 
   mLayersConnected = Some(true);
-  ImageBridgeChild::IdentifyCompositorTextureHost(mTextureFactoryIdentifier);
-  gfx::VRManagerChild::IdentifyTextureHost(mTextureFactoryIdentifier);
+  ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
+  gfx::VRManagerChild::IdentifyTextureHost(textureFactoryIdentifier);
 
   InitAPZState();
   if (nsCOMPtr<Document> doc = GetTopLevelDocument()) {

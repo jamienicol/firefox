@@ -1002,9 +1002,7 @@ void BrowserParent::InitRendering() {
     }
   }
 
-  TextureFactoryIdentifier textureFactoryIdentifier;
-  mRemoteLayerTreeOwner.GetTextureFactoryIdentifier(&textureFactoryIdentifier);
-  (void)SendInitRendering(textureFactoryIdentifier, layersId,
+  (void)SendInitRendering(layersId,
                           mRemoteLayerTreeOwner.GetCompositorOptions(),
                           mRemoteLayerTreeOwner.IsLayersConnected());
 
