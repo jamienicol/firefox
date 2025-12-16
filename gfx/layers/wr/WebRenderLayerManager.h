@@ -105,8 +105,6 @@ class WebRenderLayerManager final : public WindowRenderer {
                     const mozilla::TimeStamp& aCompositeEnd);
 
   void ClearCachedResources();
-  void UpdateTextureFactoryIdentifier(
-      const TextureFactoryIdentifier& aNewIdentifier);
   TextureFactoryIdentifier GetTextureFactoryIdentifier();
 
   void SetTransactionIdAllocator(TransactionIdAllocator* aAllocator);

@@ -121,9 +121,6 @@ class WebRenderBridgeChild final : public PWebRenderBridgeChild,
 
   uint32_t GetNextResourceId() { return ++mResourceId; }
   wr::IdNamespace GetNamespace() { return mIdNamespace; }
-  void SetNamespace(wr::IdNamespace aIdNamespace) {
-    mIdNamespace = aIdNamespace;
-  }
 
   bool MatchesNamespace(const wr::ImageKey& aImageKey) const {
     return aImageKey.mNamespace == mIdNamespace;
@@ -186,9 +183,19 @@ class WebRenderBridgeChild final : public PWebRenderBridgeChild,
   void StartCaptureSequence(uint32_t aFlags);
   void StopCaptureSequence();
 
-  bool SendEnsureConnected(TextureFactoryIdentifier* textureFactoryIdentifier,
-                           MaybeIdNamespace* maybeIdNamespace,
-                           nsCString* error);
+  using ConnectedPromise = MozPromise<Ok, nsCString, false>;
+  // Returns a promise which resolves when the WebRenderBridgeParent has
+  // completed initialization (either successfully or with failure). This must
+  // have resolved prior to calling GetTextureFactoryIdentifier() or
+  // GetNamespace(), or alternatively EnsureConnected() can be used to
+  // synchronously block for connection.
+  RefPtr<ConnectedPromise> OnConnected();
+
+  // Ensures the WebRenderBridgeParent has completed initialization (either
+  // successfully or with failure) before returning. Either the OnConnected()
+  // promise must have resolved or this must be called prior to calling
+  // GetTextureFactoryIdentifier() or GetNamespace().
+  const mozilla::Result<Ok, nsCString>& EnsureConnected();
 
  private:
   friend class CompositorBridgeChild;
@@ -222,6 +229,11 @@ class WebRenderBridgeChild final : public PWebRenderBridgeChild,
 
   void DoDestroy();
 
+  mozilla::ipc::IPCResult RecvConnected(
+      const TextureFactoryIdentifier& aTextureFactoryIdentifier,
+      const IdNamespace& aIdNamespace);
+  mozilla::ipc::IPCResult RecvConnectionFailed(const nsCString& error);
+
   mozilla::ipc::IPCResult RecvWrUpdated(
       const wr::IdNamespace& aNewIdNamespace,
       const TextureFactoryIdentifier& textureFactoryIdentifier);
@@ -254,6 +266,11 @@ class WebRenderBridgeChild final : public PWebRenderBridgeChild,
 
   bool mIPCOpen;
   bool mDestroyed;
+  // Nothing if asynchronous connection of the WebRenderBridge is still in
+  // progress. Some(Ok) if connected successfully, and Some(Err) if failure.
+  Maybe<mozilla::Result<Ok, nsCString>> mConnectionStatus;
+  MozPromiseHolder<ConnectedPromise> mConnectionPromise;
+
   // True iff we have called SendSetDisplayList and haven't called
   // SendClearCachedResources since that call.
   bool mSentDisplayList;

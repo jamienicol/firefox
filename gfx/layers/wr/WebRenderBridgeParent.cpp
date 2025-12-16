@@ -456,6 +456,7 @@ void WebRenderBridgeParent::FinishInitialization(
   // all.
   mBoolParameterBits = ~gfxVars::WebRenderBoolParameters();
   UpdateBoolParameters();
+  (void)SendConnected(GetTextureFactoryIdentifier(), mLateInit->mIdNamespace);
 }
 
 void WebRenderBridgeParent::FinishInitializationError(nsCString&& aError) {
@@ -479,6 +480,7 @@ void WebRenderBridgeParent::FinishInitializationError(nsCString&& aError) {
     mScreenPixelsRequest.reset();
   }
 #endif
+  (void)SendConnectionFailed(mInitError);
 }
 
 already_AddRefed<wr::WebRenderAPI> WebRenderBridgeParent::GetWebRenderAPI() {

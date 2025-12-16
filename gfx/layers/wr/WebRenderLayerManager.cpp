@@ -104,30 +104,15 @@ bool WebRenderLayerManager::Initialize(
 
   mHasFlushedThisChild = false;
 
-  TextureFactoryIdentifier textureFactoryIdentifier;
-  wr::MaybeIdNamespace idNamespace;
-  // Sync ipc
-  if (!WrBridge()->SendEnsureConnected(&textureFactoryIdentifier, &idNamespace,
-                                       &aError)) {
-    gfxCriticalNote << "Failed as lost WebRenderBridgeChild.";
-    aError.Assign(sHasInitialized
-                      ? "FEATURE_FAILURE_WEBRENDER_INITIALIZE_SYNC_POST"_ns
-                      : "FEATURE_FAILURE_WEBRENDER_INITIALIZE_SYNC_FIRST"_ns);
-    return false;
-  }
-
-  if (textureFactoryIdentifier.mParentBackend == LayersBackend::LAYERS_NONE ||
-      idNamespace.isNothing()) {
-    gfxCriticalNote << "Failed to connect WebRenderBridgeChild. isParent="
-                    << XRE_IsParentProcess();
+  const auto& result = mWrChild->EnsureConnected();
+  if (result.isErr()) {
+    aError = result.inspectErr();
     aError.Append(sHasInitialized ? "_POST"_ns : "_FIRST"_ns);
     return false;
   }
 
   WrBridge()->SetWebRenderLayerManager(this);
-  WrBridge()->IdentifyTextureHost(textureFactoryIdentifier);
-  WrBridge()->SetNamespace(idNamespace.ref());
-  *aTextureFactoryIdentifier = textureFactoryIdentifier;
+  *aTextureFactoryIdentifier = WrBridge()->GetTextureFactoryIdentifier();
 
   mDLBuilder = MakeUnique<wr::DisplayListBuilder>(
       WrBridge()->GetPipeline(), WrBridge()->GetWebRenderBackend());
@@ -656,11 +641,6 @@ void WebRenderLayerManager::WrUpdated() {
       browserChild->SchedulePaint();
     }
   }
-}
-
-void WebRenderLayerManager::UpdateTextureFactoryIdentifier(
-    const TextureFactoryIdentifier& aNewIdentifier) {
-  WrBridge()->IdentifyTextureHost(aNewIdentifier);
 }
 
 TextureFactoryIdentifier WebRenderLayerManager::GetTextureFactoryIdentifier() {

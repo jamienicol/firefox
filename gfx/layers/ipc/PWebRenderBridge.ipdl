@@ -127,6 +127,8 @@ parent:
   async Shutdown();
   sync ShutdownSync();
 child:
+  async Connected(TextureFactoryIdentifier aTextureFactoryIdentifier, IdNamespace aIdNamespace);
+  async ConnectionFailed(nsCString error);
   async WrUpdated(IdNamespace aNewIdNamespace, TextureFactoryIdentifier textureFactoryIdentifier);
   async WrReleasedImages(ExternalImageKeyPair[] pairs);
   async __delete__();
