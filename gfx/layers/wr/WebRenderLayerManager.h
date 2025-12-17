@@ -13,6 +13,7 @@
 #include "mozilla/Assertions.h"  // for AssertionConditionType, MOZ_ASSERT, MOZ_ASSERT_HELPER2
 #include "mozilla/Attributes.h"              // for MOZ_NON_OWNING_REF
 #include "mozilla/RefPtr.h"                  // for RefPtr
+#include "mozilla/Result.h"                  // for Result
 #include "mozilla/TimeStamp.h"               // for TimeStamp
 #include "mozilla/gfx/Point.h"               // for IntSize
 #include "mozilla/gfx/Types.h"               // for SurfaceFormat
@@ -62,8 +63,16 @@ class WebRenderLayerManager final : public WindowRenderer {
                                               wr::PipelineId aPipelineId,
                                               nsCString& aError);
 
+  // Initializes the WebRenderLayerManager, blocking synchronously until the
+  // WebRenderBridge is connected. Prefer to use InitializeAsync.
   bool Initialize(TextureFactoryIdentifier* aTextureFactoryIdentifier,
                   nsCString& aError);
+
+  using InitPromise = MozPromise<Ok, nsCString, true>;
+  // Initializes the WebRenderLayerManger asynchronously, returning a promise
+  // which resolves when the WebRenderBridge is connected.
+  RefPtr<InitPromise> InitializeAsync(PCompositorBridgeChild* aCBChild,
+                                      wr::PipelineId aLayersId);
 
   void Destroy() override;
   bool IsDestroyed() { return mDestroyed; }
@@ -74,6 +83,15 @@ class WebRenderLayerManager final : public WindowRenderer {
   virtual ~WebRenderLayerManager();
 
  public:
+  // Returns the underlying bridge, blocking synchronously for it to connect
+  // to the parent side if it has not already done so. Note this will return the
+  // bridge even if connection completes unsuccessfully: this still ensures
+  // local state such as the TextureFactoryIdentifier will have been updated,
+  // and sending messages over the bridge in this condition is safe as the
+  // parent side will be in its destroyed state. This must only be called from
+  // the main thread.
+  WebRenderBridgeChild* WrBridge() const;
+
   KnowsCompositor* AsKnowsCompositor() override;
   WebRenderLayerManager* AsWebRender() override { return this; }
   CompositorBridgeChild* GetCompositorBridgeChild() override;
@@ -138,8 +156,6 @@ class WebRenderLayerManager final : public WindowRenderer {
 
   void ClearAsyncAnimations();
   void WrReleasedImages(const nsTArray<wr::ExternalImageKeyPair>& aPairs);
-
-  WebRenderBridgeChild* WrBridge() const { return mWrChild; }
 
   // See equivalent function in ClientLayerManager
   void LogTestDataForCurrentPaint(ScrollableLayerGuid::ViewID aScrollId,

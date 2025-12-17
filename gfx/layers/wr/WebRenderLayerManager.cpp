@@ -42,6 +42,7 @@ WebRenderLayerManager::WebRenderLayerManager(
     nsIWidget* aWidget, already_AddRefed<WebRenderBridgeChild> aWrChild)
     : mWidget(aWidget),
       mWrChild(aWrChild),
+      mHasFlushedThisChild(false),
       mLatestTransactionId{0},
       mNeedsComposite(false),
       mIsFirstPaint(false),
@@ -53,10 +54,13 @@ WebRenderLayerManager::WebRenderLayerManager(
   MOZ_COUNT_CTOR(WebRenderLayerManager);
   MOZ_RELEASE_ASSERT(mWidget);
   MOZ_RELEASE_ASSERT(mWrChild);
+  mWrChild->SetWebRenderLayerManager(this);
   mStateManager.mLayerManager = this;
 }
 
-KnowsCompositor* WebRenderLayerManager::AsKnowsCompositor() { return mWrChild; }
+KnowsCompositor* WebRenderLayerManager::AsKnowsCompositor() {
+  return WrBridge();
+}
 
 /* static */
 RefPtr<WebRenderLayerManager> WebRenderLayerManager::Create(
@@ -102,8 +106,6 @@ bool WebRenderLayerManager::Initialize(
     TextureFactoryIdentifier* aTextureFactoryIdentifier, nsCString& aError) {
   MOZ_ASSERT(aTextureFactoryIdentifier);
 
-  mHasFlushedThisChild = false;
-
   const auto& result = mWrChild->EnsureConnected();
   if (result.isErr()) {
     aError = result.inspectErr();
@@ -111,14 +113,25 @@ bool WebRenderLayerManager::Initialize(
     return false;
   }
 
-  WrBridge()->SetWebRenderLayerManager(this);
   *aTextureFactoryIdentifier = WrBridge()->GetTextureFactoryIdentifier();
-
-  mDLBuilder = MakeUnique<wr::DisplayListBuilder>(
-      WrBridge()->GetPipeline(), WrBridge()->GetWebRenderBackend());
 
   sHasInitialized = true;
   return true;
+}
+
+RefPtr<WebRenderLayerManager::InitPromise>
+WebRenderLayerManager::InitializeAsync(PCompositorBridgeChild* aCBChild,
+                                       wr::PipelineId aLayersId) {
+  return mWrChild->OnConnected()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      [](Ok) {
+        sHasInitialized = true;
+        return InitPromise::CreateAndResolve(Ok{}, __func__);
+      },
+      [](nsCString aError) {
+        aError.Append(sHasInitialized ? "_POST"_ns : "_FIRST"_ns);
+        return InitPromise::CreateAndReject(std::move(aError), __func__);
+      });
 }
 
 void WebRenderLayerManager::Destroy() { DoDestroy(/* aIsSync */ false); }
@@ -166,8 +179,14 @@ WebRenderLayerManager::~WebRenderLayerManager() {
   MOZ_COUNT_DTOR(WebRenderLayerManager);
 }
 
+WebRenderBridgeChild* WebRenderLayerManager::WrBridge() const {
+  MOZ_ASSERT(NS_IsMainThread());
+  mWrChild->EnsureConnected();
+  return mWrChild;
+}
+
 CompositorBridgeChild* WebRenderLayerManager::GetCompositorBridgeChild() {
-  return WrBridge()->GetCompositorBridgeChild();
+  return mWrChild->GetCompositorBridgeChild();
 }
 
 void WebRenderLayerManager::GetBackendName(nsAString& name) {
@@ -328,17 +347,22 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
 
   LayoutDeviceIntSize size = mWidget->GetClientSize();
 
+  if (!mDLBuilder) {
+    mDLBuilder = MakeUnique<wr::DisplayListBuilder>(
+        WrBridge()->GetPipeline(), WrBridge()->GetWebRenderBackend());
+  }
+
   UniquePtr<wr::DisplayListBuilder> offscreenBuilder;
-  wr::DisplayListBuilder* diplayListBuilder = mDLBuilder.get();
+  wr::DisplayListBuilder* displayListBuilder = mDLBuilder.get();
   if (aRenderOffscreen) {
     wr::PipelineId mainId = WrBridge()->GetPipeline();
     wr::PipelineId tmpPipeline = gfx::GetTemporaryWebRenderPipelineId(mainId);
     offscreenBuilder = MakeUnique<wr::DisplayListBuilder>(
         tmpPipeline, WrBridge()->GetWebRenderBackend());
-    diplayListBuilder = offscreenBuilder.get();
+    displayListBuilder = offscreenBuilder.get();
   }
 
-  diplayListBuilder->Begin();
+  displayListBuilder->Begin();
 
   wr::IpcResourceUpdateQueue resourceUpdates(WrBridge());
   wr::usize builderDumpIndex = 0;
@@ -351,14 +375,14 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
 
   if (XRE_IsContentProcess() &&
       StaticPrefs::gfx_webrender_debug_dl_dump_content_serialized()) {
-    diplayListBuilder->DumpSerializedDisplayList();
+    displayListBuilder->DumpSerializedDisplayList();
   }
 
   if (aDisplayList) {
     MOZ_ASSERT(aDisplayListBuilder && !aBackground);
 
     mWebRenderCommandBuilder.BuildWebRenderCommands(
-        *diplayListBuilder, resourceUpdates, aDisplayList, aDisplayListBuilder,
+        *displayListBuilder, resourceUpdates, aDisplayList, aDisplayListBuilder,
         mScrollData, std::move(aFilters));
 
     aDisplayListBuilder->NotifyAndClearScrollContainerFrames();
@@ -368,10 +392,10 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
   } else {
     // ViewToPaint does not have frame yet, then render only background clolor.
     MOZ_ASSERT(!aDisplayListBuilder && aBackground);
-    aBackground->AddWebRenderCommands(*diplayListBuilder);
+    aBackground->AddWebRenderCommands(*displayListBuilder);
     if (dumpEnabled) {
       printf_stderr("(no display list; background only)\n");
-      builderDumpIndex = diplayListBuilder->Dump(
+      builderDumpIndex = displayListBuilder->Dump(
           /*indent*/ 1, Some(builderDumpIndex), Nothing());
     }
   }
@@ -443,7 +467,7 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
   {
     AUTO_PROFILER_MARKER("ForwardDPTransaction", GRAPHICS);
     DisplayListData dlData;
-    diplayListBuilder->End(dlData);
+    displayListBuilder->End(dlData);
     resourceUpdates.Flush(dlData.mResourceUpdates, dlData.mSmallShmems,
                           dlData.mLargeShmems);
     dlData.mRect =
