@@ -2743,16 +2743,6 @@ void nsWindow::CreateLayerManager() {
     LayoutDeviceIntRect rect = GetBounds();
     CreateCompositor(rect.Width(), rect.Height());
     if (mWindowRenderer) {
-      if (mLayerViewSupport.IsAttached()) {
-        DispatchToUiThread(
-            "LayerViewSupport::NotifyCompositorCreated",
-            [lvs = mLayerViewSupport,
-             uiCompositorController = GetUiCompositorControllerChild()] {
-              if (auto lvsAccess{lvs.Access()}) {
-                lvsAccess->NotifyCompositorCreated(uiCompositorController);
-              }
-            });
-      }
       return;
     }
   }
@@ -2762,6 +2752,19 @@ void nsWindow::CreateLayerManager() {
   } else {
     printf_stderr(" -- creating basic, not accelerated\n");
     mWindowRenderer = CreateFallbackRenderer();
+  }
+}
+
+void nsWindow::OnCompositorInitialized() {
+  if (mLayerViewSupport.IsAttached()) {
+    DispatchToUiThread(
+        "LayerViewSupport::NotifyCompositorCreated",
+        [lvs = mLayerViewSupport,
+         uiCompositorController = GetUiCompositorControllerChild()] {
+          if (auto lvsAccess{lvs.Access()}) {
+            lvsAccess->NotifyCompositorCreated(uiCompositorController);
+          }
+        });
   }
 }
 

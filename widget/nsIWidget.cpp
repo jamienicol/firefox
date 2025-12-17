@@ -387,6 +387,7 @@ void nsIWidget::ReleaseContentController() {
 }
 
 void nsIWidget::DestroyLayerManager() {
+  mWindowRendererInitRequest.DisconnectIfExists();
   if (mWindowRenderer) {
     mWindowRenderer->Destroy();
     mWindowRenderer = nullptr;
@@ -1523,10 +1524,10 @@ already_AddRefed<WebRenderLayerManager> nsIWidget::CreateCompositorSession(
       TextureFactoryIdentifier textureFactoryIdentifier;
       lm = mCompositorSession->GetCompositorBridgeChild()->CreateLayerManager(
           this, wr::AsPipelineId(mCompositorSession->RootLayerTreeId()), error);
-      if (lm) {
-        lm->Initialize(&textureFactoryIdentifier, error);
-      }
-      if (textureFactoryIdentifier.mParentBackend != LayersBackend::LAYERS_WR) {
+      if (!lm) {
+        // FIXME: retry here? probably not. Should we disable webrender? It
+        // probably won't help but we will lose the telemetry about the failure
+        // if we don't.
         retry = true;
         DestroyCompositor();
         // gfxVars::UseDoubleBufferingWithCompositor() is also disabled.
@@ -1581,8 +1582,36 @@ void nsIWidget::CreateCompositor(int aWidth, int aHeight) {
 
   MOZ_ASSERT(mCompositorSession);
   mCompositorBridgeChild = mCompositorSession->GetCompositorBridgeChild();
-  SetCompositorWidgetDelegate(
-      mCompositorSession->GetCompositorWidgetDelegate());
+
+  lm->InitializeAsync(mCompositorBridgeChild,
+                      wr::AsPipelineId(mCompositorSession->RootLayerTreeId()))
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [self = RefPtr{this}](Ok) {
+            self->mWindowRendererInitRequest.Complete();
+
+            TextureFactoryIdentifier textureFactoryIdentifier =
+                self->mWindowRenderer->AsWebRender()
+                    ->GetTextureFactoryIdentifier();
+            MOZ_ASSERT(textureFactoryIdentifier.mParentBackend ==
+                       LayersBackend::LAYERS_WR);
+            ImageBridgeChild::IdentifyCompositorTextureHost(
+                textureFactoryIdentifier);
+            gfx::VRManagerChild::IdentifyTextureHost(textureFactoryIdentifier);
+
+            self->OnCompositorInitialized();
+          },
+          [self = RefPtr{this}](nsCString aError) {
+            self->mWindowRendererInitRequest.Complete();
+            self->DestroyLayerManager();
+            // gfxVars::UseDoubleBufferingWithCompositor() is also disabled.
+            gfx::GPUProcessManager* gpm = gfx::GPUProcessManager::Get();
+            if (NS_WARN_IF(!gpm)) {
+              return;
+            }
+            gpm->DisableWebRender(wr::WebRenderError::INITIALIZE, aError);
+          })
+      ->Track(mWindowRendererInitRequest);
 
   if (options.UseAPZ()) {
     mAPZC = mCompositorSession->GetAPZCTreeManager();
@@ -1598,12 +1627,8 @@ void nsIWidget::CreateCompositor(int aWidth, int aHeight) {
     mInitialZoomConstraints.reset();
   }
 
-  TextureFactoryIdentifier textureFactoryIdentifier =
-      lm->GetTextureFactoryIdentifier();
-  MOZ_ASSERT(textureFactoryIdentifier.mParentBackend ==
-             LayersBackend::LAYERS_WR);
-  ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
-  gfx::VRManagerChild::IdentifyTextureHost(textureFactoryIdentifier);
+  SetCompositorWidgetDelegate(
+      mCompositorSession->GetCompositorWidgetDelegate());
 
   WindowUsesOMTC();
 

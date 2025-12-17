@@ -15,7 +15,9 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/Result.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/gfx/Matrix.h"
@@ -1895,6 +1897,8 @@ class nsIWidget : public nsSupportsWeakReference {
   virtual void CreateCompositor();
   virtual void CreateCompositor(int aWidth, int aHeight);
   virtual void SetCompositorWidgetDelegate(CompositorWidgetDelegate*) {}
+  // Called after a newly created compositor has completed initialization.
+  virtual void OnCompositorInitialized() {}
 
   WindowRenderer* CreateFallbackRenderer();
 
@@ -2391,6 +2395,9 @@ class nsIWidget : public nsSupportsWeakReference {
   RefPtr<WindowRenderer> mWindowRenderer;
   RefPtr<CompositorSession> mCompositorSession;
   RefPtr<CompositorBridgeChild> mCompositorBridgeChild;
+  mozilla::MozPromiseRequestHolder<
+      mozilla::MozPromise<mozilla::Ok, nsCString, true>>
+      mWindowRendererInitRequest;
 
   mozilla::UniquePtr<mozilla::Mutex> mCompositorVsyncDispatcherLock;
   RefPtr<mozilla::CompositorVsyncDispatcher> mCompositorVsyncDispatcher;

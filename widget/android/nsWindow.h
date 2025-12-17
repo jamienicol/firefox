@@ -218,6 +218,8 @@ class nsWindow final : public nsIWidget {
   void GetCompositorWidgetInitData(
       mozilla::widget::CompositorWidgetInitData* aInitData) override;
 
+  void OnCompositorInitialized() override;
+
   mozilla::layers::CompositorBridgeChild* GetCompositorBridgeChild() const;
 
   void SetContentDocumentDisplayed(bool aDisplayed);
