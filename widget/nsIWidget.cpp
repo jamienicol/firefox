@@ -1528,9 +1528,24 @@ already_AddRefed<WebRenderLayerManager> nsIWidget::CreateCompositorSession(
                      &textureFactoryIdentifier, error);
       if (textureFactoryIdentifier.mParentBackend != LayersBackend::LAYERS_WR) {
         retry = true;
+        const uint64_t processToken =
+            mCompositorSession->GetCompositorBridgeChild()->ProcessToken();
         DestroyCompositor();
-        // gfxVars::UseDoubleBufferingWithCompositor() is also disabled.
-        gpm->DisableWebRender(wr::WebRenderError::INITIALIZE, error);
+        // WebRenderLayerManager::Initialize() can fail either due to webrender
+        // initialization returning an error, or because a synchronous IPC call
+        // failed due to the GPU process having crashed. In the latter case the
+        // GPU process should eventually be torn down and relaunched by
+        // GPUProcessManager::NotifyRemoteActorDestroyed. However, since we are
+        // keeping the main thread busy in a loop attempting to create the layer
+        // manager, that will never have a chance to happen. Calling
+        // MaybeHandlePendingProcessLost() allows the GPU process loss to be
+        // detected and handled correctly in this case.
+        if (!gpm->MaybeHandlePendingProcessLost(processToken)) {
+          // The failure was not due to a GPU process loss, and therefore must
+          // be due to a webrender error. Disable webrender and retry.
+          // gfxVars::UseDoubleBufferingWithCompositor() is also disabled.
+          gpm->DisableWebRender(wr::WebRenderError::INITIALIZE, error);
+        }
       }
     }
 

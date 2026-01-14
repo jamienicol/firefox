@@ -184,6 +184,8 @@ class CompositorBridgeChild final : public PCompositorBridgeChild,
 
   wr::PipelineId GetNextPipelineId();
 
+  uint64_t ProcessToken() const { return mProcessToken; };
+
  private:
   // Private destructor, to discourage deletion outside of Release():
   virtual ~CompositorBridgeChild();

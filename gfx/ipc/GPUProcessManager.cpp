@@ -669,9 +669,11 @@ void GPUProcessManager::SimulateDeviceReset() {
 bool GPUProcessManager::FallbackFromAcceleration(wr::WebRenderError aError,
                                                  const nsCString& aMsg) {
   if (aError == wr::WebRenderError::INITIALIZE) {
+    // If we cannot initialize webrender even in the final fallback
+    // configuration then force a crash.
     return gfxPlatform::FallbackFromAcceleration(
         gfx::FeatureStatus::Unavailable, "WebRender initialization failed",
-        aMsg);
+        aMsg, /* aCrashAfterFinalFallback */ true);
   } else if (aError == wr::WebRenderError::MAKE_CURRENT) {
     return gfxPlatform::FallbackFromAcceleration(
         gfx::FeatureStatus::Unavailable,
@@ -1134,6 +1136,33 @@ void GPUProcessManager::DestroyInProcessCompositorSessions() {
   // right away on some WebRender errors.
   CompositorBridgeParent::ResetStable();
   ResetProcessStable();
+}
+
+bool GPUProcessManager::MaybeHandlePendingProcessLost(
+    const uint64_t aProcessToken) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (!mGPUChild) {
+    // We don't have a GPU process to have lost.
+    return false;
+  }
+
+  if (mProcessToken != aProcessToken) {
+    // This token is for an older process; we can safely ignore it.
+    return false;
+  }
+
+  // The main thread may be busy preventing one of our protocols' ActorDestroy
+  // callbacks or a NotifyRemoteActorDestroyed message from being run, meaning
+  // we have not yet been notified of the process loss. Checking the underlying
+  // MessageChannel's CanSend() ensures we detect this situation and proceed to
+  // handle the process loss synchronously.
+  if (!mGPUChild->GetIPCChannel()->CanSend()) {
+    OnProcessUnexpectedShutdown(mProcess);
+    return true;
+  }
+
+  return false;
 }
 
 void GPUProcessManager::NotifyRemoteActorDestroyed(

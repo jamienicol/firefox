@@ -192,8 +192,18 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   void OnProcessDeclaredStable() override;
   void NotifyListenersOnCompositeDeviceReset();
 
+  // Synchronously checks whether the process has been lost, and if so tears
+  // down the old process and either relaunches or disables the GPU process.
+  // This is useful in situations where the process loss must be handled
+  // synchronously and therefore cannot wait for a NotifyRemoteActorDestroyed
+  // call to be processed. Must only be called from the main thread. Returns
+  // true if the process was indeed lost, else false.
+  bool MaybeHandlePendingProcessLost(const uint64_t aProcessToken);
+
   // Notify the GPUProcessManager that a top-level PGPU protocol has been
-  // terminated. This may be called from any thread.
+  // terminated. This may be called from any thread. This will ensure that at
+  // some point in the future the old process is torn down and the GPU process
+  // is either relaunched or disabled.
   void NotifyRemoteActorDestroyed(const uint64_t& aProcessToken);
 
   void AddListener(GPUProcessListener* aListener);
