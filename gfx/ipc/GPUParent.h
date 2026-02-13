@@ -93,7 +93,8 @@ class GPUParent final : public PGPUParent {
   mozilla::ipc::IPCResult RecvGetDeviceStatus(GPUDeviceData* aOutStatus);
   mozilla::ipc::IPCResult RecvSimulateDeviceReset();
   mozilla::ipc::IPCResult RecvAddLayerTreeIdMapping(
-      const LayerTreeIdMapping& aMapping);
+      const LayerTreeIdMapping& aMapping,
+      AddLayerTreeIdMappingResolver&& aResolver);
   mozilla::ipc::IPCResult RecvRemoveLayerTreeIdMapping(
       const LayerTreeIdMapping& aMapping);
   mozilla::ipc::IPCResult RecvFlushActiveCheckerboardReports();

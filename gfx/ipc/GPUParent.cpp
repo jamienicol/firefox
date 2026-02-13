@@ -628,8 +628,10 @@ mozilla::ipc::IPCResult GPUParent::RecvNewContentRemoteMediaManager(
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvAddLayerTreeIdMapping(
-    const LayerTreeIdMapping& aMapping) {
+    const LayerTreeIdMapping& aMapping,
+    AddLayerTreeIdMappingResolver&& aResolver) {
   LayerTreeOwnerTracker::Get()->Map(aMapping.layersId(), aMapping.ownerId());
+  aResolver(void_t{});
   return IPC_OK();
 }
 

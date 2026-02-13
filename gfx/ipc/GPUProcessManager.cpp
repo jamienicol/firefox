@@ -1668,12 +1668,13 @@ uint32_t GPUProcessManager::AllocateNamespace() {
   return ++mNextNamespace;
 }
 
-bool GPUProcessManager::AllocateAndConnectLayerTreeId(
+RefPtr<GPUProcessManager::ConnectLayerTreePromise>
+GPUProcessManager::AllocateAndConnectLayerTreeId(
     PCompositorBridgeChild* aCompositorBridge, base::ProcessId aOtherPid,
-    LayersId* aOutLayersId, CompositorOptions* aOutCompositorOptions) {
+    LayersId* aOutLayersId) {
   MOZ_ASSERT(aOutLayersId);
 
-  LayersId layersId = AllocateLayerTreeId();
+  const LayersId layersId = AllocateLayerTreeId();
   *aOutLayersId = layersId;
 
   // We always map the layer ID in the parent process so that we can recover
@@ -1682,8 +1683,11 @@ bool GPUProcessManager::AllocateAndConnectLayerTreeId(
   LayerTreeOwnerTracker::Get()->Map(layersId, aOtherPid);
 
   if (NS_WARN_IF(NS_FAILED(EnsureGPUReady()))) {
-    return false;
+    return ConnectLayerTreePromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
+
+  auto promise = MakeRefPtr<ConnectLayerTreePromise::Private>(__func__);
+  promise->UseDirectTaskDispatch(__func__);
 
   // If we have a CompositorBridgeChild, then we need to call
   // CompositorBridgeParent::NotifyChildCreated. If this is in the GPU process,
@@ -1691,20 +1695,47 @@ bool GPUProcessManager::AllocateAndConnectLayerTreeId(
   // messages.
   if (aCompositorBridge) {
     if (mGPUChild) {
-      return aCompositorBridge->SendMapAndNotifyChildCreated(
-          layersId, aOtherPid, aOutCompositorOptions);
+      aCompositorBridge->SendMapAndNotifyChildCreated(layersId, aOtherPid)
+          ->Then(
+              GetCurrentSerialEventTarget(), __func__,
+              [promise](CompositorOptions&& aCompositorOptions) {
+                promise->Resolve(std::move(aCompositorOptions), __func__);
+              },
+              [promise](ipc::ResponseRejectReason&& aReason) {
+                promise->Reject(NS_ERROR_FAILURE, __func__);
+              });
+      return promise;
     }
-    return aCompositorBridge->SendNotifyChildCreated(layersId,
-                                                     aOutCompositorOptions);
+
+    aCompositorBridge->SendNotifyChildCreated(layersId)->Then(
+        GetCurrentSerialEventTarget(), __func__,
+        [promise](CompositorOptions&& aCompositorOptions) {
+          promise->Resolve(std::move(aCompositorOptions), __func__);
+        },
+        [promise](ipc::ResponseRejectReason&& aReason) {
+          promise->Reject(NS_ERROR_FAILURE, __func__);
+        });
+    return promise;
   }
 
   // If we don't have a CompositorBridgeChild, we just need to call
   // LayerTreeOwnerTracker::Map in the compositing process.
   if (mGPUChild) {
-    mGPUChild->SendAddLayerTreeIdMapping(
-        LayerTreeIdMapping(layersId, aOtherPid));
+    mGPUChild
+        ->SendAddLayerTreeIdMapping(LayerTreeIdMapping(layersId, aOtherPid))
+        ->Then(GetCurrentSerialEventTarget(), __func__,
+               [promise](GPUChild::AddLayerTreeIdMappingPromise::
+                             ResolveOrRejectValue&&) {
+                 // Regardless of whether SendAddLayerTreeIdMapping was
+                 // successful we reject this promise since no child was
+                 // created.
+                 promise->Reject(NS_ERROR_FAILURE, __func__);
+               });
+    return promise;
   }
-  return false;
+
+  promise->Reject(NS_ERROR_FAILURE, __func__);
+  return promise;
 }
 
 void GPUProcessManager::EnsureVsyncIOThread() {

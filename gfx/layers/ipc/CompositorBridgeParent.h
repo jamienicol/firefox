@@ -197,10 +197,10 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
   virtual mozilla::ipc::IPCResult RecvResume() = 0;
   virtual mozilla::ipc::IPCResult RecvResumeAsync() = 0;
   virtual mozilla::ipc::IPCResult RecvNotifyChildCreated(
-      const LayersId& id, CompositorOptions* compositorOptions) = 0;
+      const LayersId& id, NotifyChildCreatedResolver&& aResolver) = 0;
   virtual mozilla::ipc::IPCResult RecvMapAndNotifyChildCreated(
       const LayersId& id, const ProcessId& owner,
-      CompositorOptions* compositorOptions) = 0;
+      MapAndNotifyChildCreatedResolver&& aResolver) = 0;
   virtual mozilla::ipc::IPCResult RecvNotifyChildRecreated(
       const LayersId& id, CompositorOptions* compositorOptions) = 0;
   virtual mozilla::ipc::IPCResult RecvFlushRendering(
@@ -270,10 +270,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   mozilla::ipc::IPCResult RecvResume() override;
   mozilla::ipc::IPCResult RecvResumeAsync() override;
   mozilla::ipc::IPCResult RecvNotifyChildCreated(
-      const LayersId& child, CompositorOptions* aOptions) override;
+      const LayersId& child, NotifyChildCreatedResolver&& aResolver) override;
   mozilla::ipc::IPCResult RecvMapAndNotifyChildCreated(
       const LayersId& child, const base::ProcessId& pid,
-      CompositorOptions* aOptions) override;
+      MapAndNotifyChildCreatedResolver&& aResolver) override;
   mozilla::ipc::IPCResult RecvNotifyChildRecreated(
       const LayersId& child, CompositorOptions* aOptions) override;
   mozilla::ipc::IPCResult RecvAdoptChild(const LayersId& child) override;

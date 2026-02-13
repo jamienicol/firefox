@@ -989,22 +989,29 @@ void BrowserParent::InitRendering() {
   if (mRemoteLayerTreeOwner.IsInitialized()) {
     return;
   }
-  mRemoteLayerTreeOwner.Initialize(this);
+  mRemoteLayerTreeOwner.Initialize(this)->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      [self = RefPtr{this}](Ok) {
+        if (self->mIsDestroyed) {
+          return;
+        }
+        RefPtr<nsFrameLoader> frameLoader = self->GetFrameLoader();
+        if (frameLoader) {
+          nsIFrame* frame = frameLoader->GetPrimaryFrameOfOwningContent();
+          if (frame) {
+            frame->InvalidateFrame();
+          }
+        }
+
+        layers::LayersId layersId = self->mRemoteLayerTreeOwner.GetLayersId();
+        (void)self->SendInitRendering(
+            layersId, self->mRemoteLayerTreeOwner.GetCompositorOptions(),
+            self->mRemoteLayerTreeOwner.IsLayersConnected());
+      },
+      [](nsresult aError) {});
 
   layers::LayersId layersId = mRemoteLayerTreeOwner.GetLayersId();
   AddBrowserParentToTable(layersId, this);
-
-  RefPtr<nsFrameLoader> frameLoader = GetFrameLoader();
-  if (frameLoader) {
-    nsIFrame* frame = frameLoader->GetPrimaryFrameOfOwningContent();
-    if (frame) {
-      frame->InvalidateFrame();
-    }
-  }
-
-  (void)SendInitRendering(layersId,
-                          mRemoteLayerTreeOwner.GetCompositorOptions(),
-                          mRemoteLayerTreeOwner.IsLayersConnected());
 
   RefPtr<nsIWidget> widget = GetTopLevelWidget();
   if (widget) {

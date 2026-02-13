@@ -92,7 +92,7 @@ parent:
   async NewContentRemoteMediaManager(Endpoint<PRemoteMediaManagerParent> endpoint, ContentParentId childId);
 
   // Called to notify the GPU process of who owns a layersId.
-  sync AddLayerTreeIdMapping(LayerTreeIdMapping mapping);
+  async AddLayerTreeIdMapping(LayerTreeIdMapping mapping) returns (void_t ok);
   async RemoveLayerTreeIdMapping(LayerTreeIdMapping mapping);
 
   // Request the current DeviceStatus from the GPU process. This blocks until

@@ -154,6 +154,7 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   // Must run on the browser main thread.
   uint32_t AllocateNamespace();
 
+  using ConnectLayerTreePromise = MozPromise<CompositorOptions, nsresult, true>;
   // Allocate a layers ID and connect it to a compositor. If the compositor is
   // null, the connect operation will not be performed, but an ID will still be
   // allocated. This must be called from the browser main thread.
@@ -161,11 +162,13 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
   // It also maps the layer tree and process together so that aOwningPID is
   // allowed to access aLayersId across process.
   //
-  // Note that a layer tree id is always allocated, even if this returns false.
-  bool AllocateAndConnectLayerTreeId(PCompositorBridgeChild* aCompositorBridge,
-                                     base::ProcessId aOtherPid,
-                                     LayersId* aOutLayersId,
-                                     CompositorOptions* aOutCompositorOptions);
+  // Note that a layer tree id is always allocated and returned immediately. The
+  // returned promise is resolved when the layers ID has been connected to a
+  // compositor, or rejected if it is not connected (either due to null being
+  // passed for the compositor or due to failure).
+  RefPtr<ConnectLayerTreePromise> AllocateAndConnectLayerTreeId(
+      PCompositorBridgeChild* aCompositorBridge, base::ProcessId aOtherPid,
+      LayersId* aOutLayersId);
 
   // Destroy and recreate all of the compositors
   void ResetCompositors();

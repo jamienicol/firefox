@@ -51,25 +51,42 @@ RemoteLayerTreeOwner::RemoteLayerTreeOwner()
 
 RemoteLayerTreeOwner::~RemoteLayerTreeOwner() = default;
 
-bool RemoteLayerTreeOwner::Initialize(BrowserParent* aBrowserParent) {
+RefPtr<RemoteLayerTreeOwner::InitPromise> RemoteLayerTreeOwner::Initialize(
+    BrowserParent* aBrowserParent) {
   if (mInitialized || !aBrowserParent) {
-    return false;
+    return InitPromise::CreateAndReject(nsresult::NS_ERROR_FAILURE, __func__);
   }
 
+  mInitialized = true;
   mBrowserParent = aBrowserParent;
   RefPtr<WindowRenderer> renderer = GetWindowRenderer(mBrowserParent);
   PCompositorBridgeChild* compositor =
       renderer ? renderer->GetCompositorBridgeChild() : nullptr;
   mTabProcessId = mBrowserParent->Manager()->OtherPid();
 
+  auto promise = MakeRefPtr<InitPromise::Private>(__func__);
+  promise->UseDirectTaskDispatch(__func__);
+
   // Our remote frame will push layers updates to the compositor,
   // and we'll keep an indirect reference to that tree.
   GPUProcessManager* gpm = GPUProcessManager::Get();
-  mLayersConnected = gpm->AllocateAndConnectLayerTreeId(
-      compositor, mTabProcessId, &mLayersId, &mCompositorOptions);
+  gpm->AllocateAndConnectLayerTreeId(compositor, mTabProcessId, &mLayersId)
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          // Hold a reference to the BrowserParent to ensure `this` remains
+          // alive.
+          [this, promise, bp = RefPtr{aBrowserParent}](
+              layers::CompositorOptions&& aCompositorOptions) {
+            mLayersConnected = true;
+            mCompositorOptions = std::move(aCompositorOptions);
+            promise->Resolve(Ok{}, __func__);
+          },
+          [this, promise, bp = RefPtr{aBrowserParent}](nsresult aError) {
+            mLayersConnected = false;
+            promise->Resolve(Ok{}, __func__);
+          });
 
-  mInitialized = true;
-  return true;
+  return promise;
 }
 
 void RemoteLayerTreeOwner::Destroy() {

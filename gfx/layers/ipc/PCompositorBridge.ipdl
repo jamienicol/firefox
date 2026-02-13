@@ -137,16 +137,11 @@ parent:
   sync Resume();
   async ResumeAsync();
 
-  // See bug 1316632 comment #33 for why this has to be sync. Otherwise,
-  // there are ordering issues with SendPLayerTransactionConstructor.
-  sync NotifyChildCreated(LayersId id)
+  async NotifyChildCreated(LayersId id)
     returns (CompositorOptions compositorOptions);
 
   // This version of NotifyChildCreated also performs a layer tree mapping.
-  //
-  // See bug 1316632 comment #33 for why this has to be sync. Otherwise,
-  // there are ordering issues with SendPLayerTransactionConstructor.
-  sync MapAndNotifyChildCreated(LayersId id, ProcessId owner)
+  async MapAndNotifyChildCreated(LayersId id, ProcessId owner)
     returns (CompositorOptions compositorOptions);
 
   async AdoptChild(LayersId id);

@@ -42,10 +42,10 @@ class ContentCompositorBridgeParent final : public CompositorBridgeParentBase {
   mozilla::ipc::IPCResult RecvResume() override { return IPC_OK(); }
   mozilla::ipc::IPCResult RecvResumeAsync() override { return IPC_OK(); }
   mozilla::ipc::IPCResult RecvNotifyChildCreated(
-      const LayersId& child, CompositorOptions* aOptions) override;
+      const LayersId& child, NotifyChildCreatedResolver&& aResolver) override;
   mozilla::ipc::IPCResult RecvMapAndNotifyChildCreated(
       const LayersId& child, const base::ProcessId& pid,
-      CompositorOptions* aOptions) override;
+      MapAndNotifyChildCreatedResolver&& aResolver) override;
   mozilla::ipc::IPCResult RecvNotifyChildRecreated(
       const LayersId& child, CompositorOptions* aOptions) override {
     return IPC_FAIL_NO_REASON(this);

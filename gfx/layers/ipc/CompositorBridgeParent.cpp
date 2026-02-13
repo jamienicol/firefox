@@ -885,10 +885,10 @@ void CompositorBridgeParent::ScheduleForcedComposition(
 }
 
 mozilla::ipc::IPCResult CompositorBridgeParent::RecvNotifyChildCreated(
-    const LayersId& child, CompositorOptions* aOptions) {
+    const LayersId& child, NotifyChildCreatedResolver&& aResolver) {
   StaticMonitorAutoLock lock(sIndirectLayerTreesLock);
   NotifyChildCreated(child);
-  *aOptions = mOptions;
+  aResolver(mOptions);
   return IPC_OK();
 }
 
@@ -913,7 +913,7 @@ void CompositorBridgeParent::NotifyChildCreated(LayersId aChild) {
 
 mozilla::ipc::IPCResult CompositorBridgeParent::RecvMapAndNotifyChildCreated(
     const LayersId& aChild, const base::ProcessId& aOwnerPid,
-    CompositorOptions* aOptions) {
+    MapAndNotifyChildCreatedResolver&& aResolver) {
   // We only use this message when the remote compositor is in the GPU process.
   // It is harmless to call it, though.
   MOZ_ASSERT(XRE_IsGPUProcess());
@@ -922,7 +922,7 @@ mozilla::ipc::IPCResult CompositorBridgeParent::RecvMapAndNotifyChildCreated(
 
   StaticMonitorAutoLock lock(sIndirectLayerTreesLock);
   NotifyChildCreated(aChild);
-  *aOptions = mOptions;
+  aResolver(mOptions);
   return IPC_OK();
 }
 

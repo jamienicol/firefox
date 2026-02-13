@@ -40,7 +40,8 @@ class RemoteLayerTreeOwner final {
   RemoteLayerTreeOwner();
   virtual ~RemoteLayerTreeOwner();
 
-  bool Initialize(dom::BrowserParent* aBrowserParent);
+  using InitPromise = MozPromise<Ok, nsresult, true>;
+  RefPtr<InitPromise> Initialize(dom::BrowserParent* aBrowserParent);
   void Destroy();
 
   void EnsureLayersConnected(Maybe<CompositorOptions>& aCompositorOptions);

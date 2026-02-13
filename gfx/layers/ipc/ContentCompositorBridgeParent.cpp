@@ -207,14 +207,14 @@ bool ContentCompositorBridgeParent::DeallocPWebRenderBridgeParent(
 }
 
 mozilla::ipc::IPCResult ContentCompositorBridgeParent::RecvNotifyChildCreated(
-    const LayersId& child, CompositorOptions* aOptions) {
+    const LayersId& child, NotifyChildCreatedResolver&& aResolver) {
   StaticMonitorAutoLock lock(CompositorBridgeParent::sIndirectLayerTreesLock);
   for (auto it = CompositorBridgeParent::sIndirectLayerTrees.begin();
        it != CompositorBridgeParent::sIndirectLayerTrees.end(); it++) {
     CompositorBridgeParent::LayerTreeState& lts = it->second;
     if (lts.mParent && lts.mContentCompositorBridgeParent == this) {
       lts.mParent->NotifyChildCreated(child);
-      *aOptions = lts.mParent->GetOptions();
+      aResolver(lts.mParent->GetOptions());
       return IPC_OK();
     }
   }
@@ -224,7 +224,7 @@ mozilla::ipc::IPCResult ContentCompositorBridgeParent::RecvNotifyChildCreated(
 mozilla::ipc::IPCResult
 ContentCompositorBridgeParent::RecvMapAndNotifyChildCreated(
     const LayersId& child, const base::ProcessId& pid,
-    CompositorOptions* aOptions) {
+    MapAndNotifyChildCreatedResolver&& aResolver) {
   // This can only be called from the browser process, as the mapping
   // ensures proper window ownership of layer trees.
   return IPC_FAIL_NO_REASON(this);
