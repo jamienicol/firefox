@@ -1,0 +1,143 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdk { version = release(config.compileSdkMajorVersion) { minorApiLevel = config.compileSdkMinorVersion } }
+
+    namespace = 'org.mozilla.fenix'
+
+    dynamicFeatures = [":app"]
+
+    defaultConfig {
+        applicationId "org.mozilla"
+        minSdk config.minSdkVersion
+        targetSdk config.targetSdkVersion
+        versionCode 1
+        versionName Config.generateDebugVersionName()
+        vectorDrawables.useSupportLibrary = true
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments clearPackageData: 'true'
+        testInstrumentationRunnerArguments "detect-leaks": 'true'
+    }
+
+    def releaseTemplate = {
+        shrinkResources = !project.hasProperty("disableOptimization")
+        minifyEnabled = !project.hasProperty("disableOptimization")
+        proguardFiles = [getDefaultProguardFile('proguard-android-optimize.txt'), '../app/proguard-rules.pro']
+        matchingFallbacks = ['release']
+
+        if (!project.hasProperty("disableDebugSigning") && !gradle.hasProperty("localProperties.disableDebugSigning") && !gradle.mozconfig.substs.MOZ_AUTOMATION && System.getenv("MOZ_BUILD_CONFIG_LINT") != "1") {
+            signingConfig = signingConfigs.debug
+        }
+
+        if (gradle.hasProperty("localProperties.debuggable") ||
+            gradle.mozconfig.substs.MOZ_ANDROID_DEBUGGABLE) {
+            debuggable true
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".fenix.debug"
+            resValue "bool", "IS_DEBUG", "true"
+        }
+        nightly releaseTemplate >> {
+            applicationIdSuffix ".fenix"
+            resValue "bool", "IS_DEBUG", "false"
+        }
+        beta releaseTemplate >> {
+            applicationIdSuffix ".firefox_beta"
+            resValue "bool", "IS_DEBUG", "false"
+        }
+        release releaseTemplate >> {
+            applicationIdSuffix ".firefox"
+            resValue "bool", "IS_DEBUG", "false"
+        }
+        benchmark releaseTemplate >> {
+            initWith buildTypes.nightly
+            shrinkResources = false
+            minifyEnabled = false
+            applicationIdSuffix ".fenix"
+            signingConfig = signingConfigs.debug
+            debuggable false
+            resValue "bool", "IS_DEBUG", "false"
+        }
+    }
+
+    bundle {
+        language {
+            enableSplit = false
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            excludes += ["**/armeabi/*.so", "**/mips/*.so", "**/mips64/*.so", "**/x86/*.so"]
+        }
+    }
+
+    packaging {
+        resources {
+            excludes += ["META-INF/LICENSE.md", "META-INF/LICENSE-notice.md"]
+        }
+    }
+}
+
+android.applicationVariants.configureEach { variant ->
+    def useReleaseVersioning = variant.buildType.name != 'debug'
+
+    project.logger.debug("----------------------------------------------")
+    project.logger.debug("Variant name:      " + variant.name)
+    project.logger.debug("Application ID:    " + [variant.applicationId, variant.buildType.applicationIdSuffix].findAll().join())
+    project.logger.debug("Build type:        " + variant.buildType.name)
+    project.logger.debug("Flavor:            " + variant.flavorName)
+
+    if (useReleaseVersioning) {
+        def versionName = variant.buildType.name == 'nightly' ?
+                "${Config.nightlyVersionName(project)}" :
+                "${Config.releaseVersionName(project)}"
+        project.logger.debug("versionName override: $versionName")
+
+        variant.outputs.each { output ->
+            if (versionName != null) {
+                output.versionNameOverride = versionName
+            }
+        }
+    } else if (gradle.hasProperty("localProperties.branchBuild.fenix.version")) {
+        def versionName = gradle.getProperty("localProperties.branchBuild.fenix.version")
+        project.logger.debug("versionName override: $versionName")
+        variant.outputs.each { output ->
+            output.versionNameOverride = versionName
+        }
+    }
+}
+
+dependencies {
+    implementation project(':components:feature-addons')
+    implementation project(':components:feature-findinpage')
+    implementation project(':components:feature-pwa')
+    implementation project(':components:feature-prompts')
+    implementation project(':components:feature-readerview')
+    implementation project(':components:lib-crash')
+    implementation project(':components:ui-colors')
+    implementation project(':components:ui-icons')
+    implementation project(':components:ui-tabcounter')
+    implementation project(':components:ui-widgets')
+    implementation libs.androidx.appcompat
+    implementation libs.androidx.constraintlayout
+    implementation libs.androidx.coordinatorlayout
+    implementation libs.androidx.core
+    implementation libs.androidx.core.ktx
+    implementation libs.androidx.core.splashscreen
+    implementation libs.androidx.fragment
+    implementation libs.androidx.preferences
+    implementation libs.androidx.recyclerview
+    implementation libs.androidx.swiperefreshlayout
+    implementation libs.androidx.transition
+    implementation libs.androidx.viewpager2
+    implementation libs.google.material
+    implementation libs.play.services.ads.id
+    implementation libs.play.review
+    implementation libs.play.review.ktx
+
+    debugImplementation libs.leakcanary
+}

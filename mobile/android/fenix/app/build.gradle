@@ -17,17 +17,16 @@ buildscript {
 }
 
 plugins {
+    id 'com.android.dynamic-feature'
     alias(libs.plugins.dependency.analysis)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.python.envs.plugin)
-    alias(libs.plugins.protobuf.plugin)
     id 'ApkSizePlugin'
-    id 'org.mozilla.conventions.zip-test-reports'
     id 'org.mozilla.nimbus-gradle-plugin'
+    id 'org.mozilla.conventions.zip-test-reports'
 }
 
-apply plugin: 'com.android.application'
 apply plugin: 'kotlin-parcelize'
 apply plugin: 'jacoco'
 apply plugin: 'androidx.navigation.safeargs.kotlin'
@@ -68,12 +67,17 @@ android {
 
     compileSdk { version = release(config.compileSdkMajorVersion) { minorApiLevel = config.compileSdkMinorVersion } }
 
+    def debugVersionName = gradle.hasProperty("localProperties.branchBuild.fenix.version") ?
+            gradle.getProperty("localProperties.branchBuild.fenix.version") :
+            Config.generateDebugVersionName()
+    def nightlyVersionName = Config.nightlyVersionName(project)
+    def releaseVersionName = Config.releaseVersionName(project)
+
     defaultConfig {
-        applicationId "org.mozilla"
         minSdk config.minSdkVersion
         targetSdk config.targetSdkVersion
-        versionCode 1
-        versionName Config.generateDebugVersionName()
+        buildConfigField "int", "VERSION_CODE", "1"
+        buildConfigField "String", "VERSION_NAME", "\"$debugVersionName\""
         vectorDrawables.useSupportLibrary = true
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         testInstrumentationRunnerArguments clearPackageData: 'true'
@@ -101,41 +105,22 @@ android {
     }
 
     def releaseTemplate = {
-        // We allow disabling optimization by passing `-PdisableOptimization` to gradle. This is used
-        // in automation for UI testing non-debug builds.
-        shrinkResources = !project.hasProperty("disableOptimization")
-        minifyEnabled = !project.hasProperty("disableOptimization")
-        proguardFiles = [getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro']
+        proguardFiles 'proguard-rules.pro'
         matchingFallbacks = ['release'] // Use on the "release" build type in dependencies (AARs)
 
         // Present in release builds.
         if (gradle.mozconfig.substs.MOZ_INCLUDE_SOURCE_INFO) {
             buildConfigField("String", "VCS_HASH", "\"" + gradle.mozconfig.source_repo.MOZ_SOURCE_STAMP + "\"")
         }
-
-	    // If building locally, just use debug signing. In official automation builds, the
-	    // files are signed using a separate service and not within gradle.
-	    // Also skip during buildconfig linting, and skip if the `disableDebugSigning` Gradle property is set.
-        if (!project.hasProperty("disableDebugSigning") && !gradle.hasProperty("localProperties.disableDebugSigning") && !gradle.mozconfig.substs.MOZ_AUTOMATION && System.getenv("MOZ_BUILD_CONFIG_LINT") != "1") {
-            signingConfig = signingConfigs.debug
-        }
-
-        if (gradle.hasProperty("localProperties.debuggable") ||
-            gradle.mozconfig.substs.MOZ_ANDROID_DEBUGGABLE) {
-            debuggable true
-        }
     }
 
     buildTypes {
         debug {
-            shrinkResources = false
-            minifyEnabled = false
-            applicationIdSuffix ".fenix.debug"
             resValue "bool", "IS_DEBUG", "true"
             pseudoLocalesEnabled = true
         }
         nightly releaseTemplate >> {
-            applicationIdSuffix ".fenix"
+            buildConfigField "String", "VERSION_NAME", "\"$nightlyVersionName\""
             buildConfigField "boolean", "USE_RELEASE_VERSIONING", "true"
             def deepLinkSchemeValue = "fenix-nightly"
             buildConfigField "String", "DEEP_LINK_SCHEME", "\"$deepLinkSchemeValue\""
@@ -144,47 +129,33 @@ android {
             ])
         }
         beta releaseTemplate >> {
+            buildConfigField "String", "VERSION_NAME", "\"$releaseVersionName\""
             buildConfigField "boolean", "USE_RELEASE_VERSIONING", "true"
-            applicationIdSuffix ".firefox_beta"
             def deepLinkSchemeValue = "fenix-beta"
             buildConfigField "String", "DEEP_LINK_SCHEME", "\"$deepLinkSchemeValue\""
             manifestPlaceholders.putAll([
-                    // This release type is meant to replace Firefox (Beta channel) and therefore needs to inherit
-                    // its sharedUserId for all eternity. See:
-                    // https://searchfox.org/mozilla-esr68/search?q=moz_android_shared_id&case=false&regexp=false&path=
-                    // Shipping an app update without sharedUserId can have
-                    // fatal consequences. For example see:
-                    //  - https://issuetracker.google.com/issues/36924841
-                    //  - https://issuetracker.google.com/issues/36905922
-                    "sharedUserId": "org.mozilla.firefox.sharedID",
                     "deepLinkScheme": deepLinkSchemeValue,
             ])
         }
         release releaseTemplate >> {
+            buildConfigField "String", "VERSION_NAME", "\"$releaseVersionName\""
             buildConfigField "boolean", "USE_RELEASE_VERSIONING", "true"
-            applicationIdSuffix ".firefox"
             def deepLinkSchemeValue = "fenix"
             buildConfigField "String", "DEEP_LINK_SCHEME", "\"$deepLinkSchemeValue\""
             manifestPlaceholders.putAll([
-                    // This release type is meant to replace Firefox (Release channel) and therefore needs to inherit
-                    // its sharedUserId for all eternity. See:
-                    // https://searchfox.org/mozilla-esr68/search?q=moz_android_shared_id&case=false&regexp=false&path=
-                    // Shipping an app update without sharedUserId can have
-                    // fatal consequences. For example see:
-                    //  - https://issuetracker.google.com/issues/36924841
-                    //  - https://issuetracker.google.com/issues/36905922
-                    "sharedUserId": "org.mozilla.firefox.sharedID",
                     "deepLinkScheme": deepLinkSchemeValue,
             ])
         }
         benchmark releaseTemplate >> {
             initWith buildTypes.nightly
-            shrinkResources = false
-            minifyEnabled = false
-            applicationIdSuffix ".fenix"
-            signingConfig = signingConfigs.debug
-            debuggable false
+            buildConfigField "String", "VERSION_NAME", "\"$nightlyVersionName\""
             buildConfigField "boolean", "IS_BENCHMARK_BUILD", "true"
+        }
+    }
+
+    packagingOptions {
+        jniLibs {
+            excludes += ["**/armeabi/*.so", "**/mips/*.so", "**/mips64/*.so", "**/x86/*.so"]
         }
     }
 
@@ -228,6 +199,21 @@ android {
 
 
     sourceSets {
+        main {
+            res.srcDirs += ['../base/src/main/res']
+        }
+        debug {
+            res.srcDirs += ['../base/src/debug/res']
+        }
+        nightly {
+            res.srcDirs += ['../base/src/nightly/res']
+        }
+        beta {
+            res.srcDirs += ['../base/src/beta/res']
+        }
+        release {
+            res.srcDirs += ['../base/src/release/res']
+        }
         androidTest {
             resources.srcDirs += ['src/androidTest/resources']
         }
@@ -238,41 +224,6 @@ android {
         }
     }
 
-    splits {
-        abi {
-            enable = !isAppBundle
-
-            reset()
-
-            // As gradle is unable to pick the right apk to install when multiple apks are generated
-            // while running benchmark tests or generating baseline profiles. To circumvent this,
-            // this flag is passed to make sure only one apk is generated so gradle can pick that one.
-            if (project.hasProperty("benchmarkTest")) {
-                include "arm64-v8a"
-            } else {
-                include "armeabi-v7a", "arm64-v8a", "x86_64"
-                if (gradle.mozconfig.substs.MOZILLA_OFFICIAL || System.getenv("MOZ_BUILD_CONFIG_LINT") == "1") {
-                    universalApk true
-                }
-            }
-        }
-    }
-
-    bundle {
-        language {
-            // Because we have runtime language selection we will keep all strings and languages
-            // in the base APKs.
-            enableSplit = false
-        }
-    }
-
-    // Exclude native libraries for unsupported architectures from third-party dependencies
-    packagingOptions {
-        jniLibs {
-            excludes += ["**/armeabi/*.so", "**/mips/*.so", "**/mips64/*.so", "**/x86/*.so"]
-        }
-    }
-
     lint {
         lintConfig = file("lint.xml")
         baseline = file("lint-baseline.xml")
@@ -280,18 +231,6 @@ android {
         sarifOutput = file("../build/reports/lint/lint-report.sarif.json")
         abortOnError = false
     }
-
-    packaging {
-        if (!isAppBundle) {
-            jniLibs {
-                useLegacyPackaging = true
-            }
-        }
-        resources {
-            excludes += ["META-INF/LICENSE.md", "META-INF/LICENSE-notice.md"]
-        }
-    }
-
     buildFeatures {
         compose = true
     }
@@ -301,50 +240,13 @@ android {
 
 android.applicationVariants.configureEach { variant ->
 
-// -------------------------------------------------------------------------------------------------
-// Generate version codes for builds
-// -------------------------------------------------------------------------------------------------
-
     def isDebug = variant.buildType.resValues['bool/IS_DEBUG']?.value ?: false
-    def useReleaseVersioning = variant.buildType.buildConfigFields['USE_RELEASE_VERSIONING']?.value ?: false
 
     project.logger.debug("----------------------------------------------")
     project.logger.debug("Variant name:      " + variant.name)
-    project.logger.debug("Application ID:    " + [variant.applicationId, variant.buildType.applicationIdSuffix].findAll().join())
     project.logger.debug("Build type:        " + variant.buildType.name)
     project.logger.debug("Flavor:            " + variant.flavorName)
     project.logger.debug("Telemetry enabled: " + !isDebug)
-
-    if (useReleaseVersioning) {
-        // The Google Play Store does not allow multiple APKs for the same app that all have the
-        // same version code. Therefore we need to have different version codes for our ARM and x86
-        // builds.
-
-        def versionName = variant.buildType.name == 'nightly' ?
-                "${Config.nightlyVersionName(project)}" :
-                "${Config.releaseVersionName(project)}"
-        project.logger.debug("versionName override: $versionName")
-
-        variant.outputs.each { output ->
-            // We use the same version code generator, that we inherited from Fennec, across all channels - even on
-            // channels that never shipped a Fennec build.
-            def abi = getAbi(output)
-            def versionCodeOverride = Config.generateFennecVersionCode(abi)
-
-            project.logger.debug("versionCode for $abi = $versionCodeOverride")
-
-            if (versionName != null) {
-                output.versionNameOverride = versionName
-            }
-            output.versionCodeOverride = versionCodeOverride
-        }
-    } else if (gradle.hasProperty("localProperties.branchBuild.fenix.version")) {
-        def versionName = gradle.getProperty("localProperties.branchBuild.fenix.version")
-        project.logger.debug("versionName override: $versionName")
-        variant.outputs.each { output ->
-            output.versionNameOverride = versionName
-        }
-    }
 
 // -------------------------------------------------------------------------------------------------
 // BuildConfig: Set variables for Sentry, Crash Reporting, and Telemetry
@@ -518,12 +420,7 @@ ext {
 apply plugin: "org.mozilla.telemetry.glean-gradle-plugin"
 
 nimbus {
-    // The path to the Nimbus feature manifest file
     manifestFile = "nimbus.fml.yaml"
-    // The fully qualified class name for the generated features.
-    // Map from the variant name to the channel as experimenter and nimbus understand it.
-    // If nimbus's channels were accurately set up well for this project, then this
-    // shouldn't be needed.
     channels = [
             debug: "developer",
             nightly: "nightly",
@@ -531,15 +428,14 @@ nimbus {
             release: "release",
             benchmark: "nightly",
     ]
-    // This is generated by the FML and should be checked into git.
-    // It will be fetched by Experimenter (the Nimbus experiment website)
-    // and used to inform experiment configuration.
     experimenterManifest = ".experimenter.yaml"
     applicationServicesDir = gradle.hasProperty('localProperties.autoPublish.application-services.dir')
             ? gradle.getProperty('localProperties.autoPublish.application-services.dir') : null
 }
 
 dependencies {
+    implementation project(':base')
+    implementation project(':app-protobuf')
     implementation project('longfox')
     implementation project(':components:browser-engine-gecko')
     implementation project(':components:compose-awesomebar')
@@ -757,25 +653,6 @@ dependencies {
     androidTestUtil libs.androidx.test.orchestrator
 
     lintChecks project(':components:tooling-lint')
-}
-
-protobuf {
-    protoc {
-        artifact = libs.protobuf.compiler.get()
-    }
-
-    // Generates the java Protobuf-lite code for the Protobufs in this project. See
-    // https://github.com/google/protobuf-gradle-plugin#customizing-protobuf-compilation
-    // for more information.
-    generateProtoTasks {
-        all().each { task ->
-            task.builtins {
-                java {
-                    option 'lite'
-                }
-            }
-        }
-    }
 }
 
 if (project.hasProperty("coverage")) {

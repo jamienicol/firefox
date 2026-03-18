@@ -6,6 +6,7 @@ package org.mozilla.appservices.tooling.nimbus
 
 import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.gradle.AppPlugin
+import com.android.build.gradle.DynamicFeaturePlugin
 import com.android.build.gradle.LibraryPlugin
 import org.gradle.api.GradleException
 import org.gradle.api.Plugin
@@ -162,6 +163,11 @@ class NimbusPlugin : Plugin<Project> {
         configureGenerateTask: (org.gradle.api.tasks.TaskProvider<NimbusFeaturesTask>) -> Unit
     ) {
         project.plugins.withType(AppPlugin::class.java).configureEach {
+            val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
+            setupVariantsForComponents(androidComponents, project, configureGenerateTask)
+        }
+
+        project.plugins.withType(DynamicFeaturePlugin::class.java).configureEach {
             val androidComponents = project.extensions.getByType(AndroidComponentsExtension::class.java)
             setupVariantsForComponents(androidComponents, project, configureGenerateTask)
         }

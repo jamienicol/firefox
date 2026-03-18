@@ -44,6 +44,8 @@ if (gradle.ext.mozconfig.substs.MOZ_APPSERVICES_IN_TREE) {
 }
 
 include ':app'
+include ':base'
+include ':app-protobuf'
 include ':app:longfox'
 include ':mozilla-detekt-rules'
 include ':benchmark'

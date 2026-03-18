@@ -1,0 +1,34 @@
+plugins {
+    id 'com.android.library'
+    alias(libs.plugins.protobuf.plugin)
+}
+
+android {
+    compileSdk { version = release(config.compileSdkMajorVersion) { minorApiLevel = config.compileSdkMinorVersion } }
+
+    namespace = 'org.mozilla.fenix.appprotobuf'
+
+    defaultConfig {
+        minSdk config.minSdkVersion
+    }
+}
+
+dependencies {
+    implementation libs.protobuf.javalite
+}
+
+protobuf {
+    protoc {
+        artifact = libs.protobuf.compiler.get()
+    }
+
+    generateProtoTasks {
+        all().each { task ->
+            task.builtins {
+                java {
+                    option 'lite'
+                }
+            }
+        }
+    }
+}
