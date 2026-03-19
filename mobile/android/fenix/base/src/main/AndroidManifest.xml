@@ -9,6 +9,16 @@
 
     <application android:name="org.mozilla.fenix.BaseApplication">
         <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
+        <provider
             android:name="com.adjust.sdk.SystemLifecycleContentProvider"
             tools:node="remove" />
         <provider
