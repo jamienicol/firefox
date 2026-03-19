@@ -5,16 +5,21 @@
 package org.mozilla.gecko.mozglue;
 
 import android.content.Context;
+import android.content.pm.ApplicationInfo;
 import android.os.Build;
 import android.os.Environment;
 import android.util.Log;
 import dalvik.system.BaseDexClassLoader;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
+import java.util.HashSet;
 import java.util.Collection;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import org.mozilla.gecko.GeckoAppShell;
@@ -25,6 +30,7 @@ public final class GeckoLoader {
   private static final String LOGTAG = "GeckoLoader";
 
   private static File sGREDir;
+  private static File sExtractedLibsDir;
 
   /* Synchronized on GeckoLoader.class. */
   private static boolean sSQLiteLibsLoaded;
@@ -201,10 +207,22 @@ public final class GeckoLoader {
       }
     }
 
-    throw new RuntimeException("Could not find mozglue path.");
+    path = getApkLibraryPath(GeckoAppShell.getApplicationContext().getApplicationInfo(), libraryName);
+    if (path != null) {
+      return path;
+    }
+
+    throw new RuntimeException("Could not find " + libraryName + " path.");
   }
 
-  private static String getLibraryBase() {
+  private static synchronized String getLibraryBase(final Context context) {
+    final File extractedLibsDir = ensureExtractedLibraryDir(context);
+    if (extractedLibsDir != null) {
+      final String base = extractedLibsDir.getAbsolutePath();
+      Log.d(LOGTAG, "Library base=" + base);
+      return base;
+    }
+
     final String mozglue = getLibraryPath("mozglue");
     final int lastSlash = mozglue.lastIndexOf('/');
     if (lastSlash < 0) {
@@ -217,7 +235,7 @@ public final class GeckoLoader {
 
   private static void loadLibsSetupLocked(final Context context) {
     putenv("GRE_HOME=" + getGREDir(context).getPath());
-    putenv("MOZ_ANDROID_LIBDIR=" + getLibraryBase());
+    putenv("MOZ_ANDROID_LIBDIR=" + getLibraryBase(context));
   }
 
   @RobocopTarget
@@ -258,14 +276,6 @@ public final class GeckoLoader {
    */
   private static boolean extractLibrary(
       final Context context, final String lib, final String outDir) {
-    final String apkPath = context.getApplicationInfo().sourceDir;
-
-    // Sanity check.
-    if (!apkPath.endsWith(".apk")) {
-      Log.w(LOGTAG, "sourceDir is not an APK.");
-      return false;
-    }
-
     // Try to extract the named library from the APK.
     final File outDirFile = new File(outDir);
     if (!outDirFile.isDirectory()) {
@@ -277,6 +287,10 @@ public final class GeckoLoader {
 
     final String[] abis = Build.SUPPORTED_ABIS;
     for (final String abi : abis) {
+      final String apkPath = getApkPathForAbi(context.getApplicationInfo(), abi);
+      if (apkPath == null || !apkPath.endsWith(".apk")) {
+        continue;
+      }
       if (tryLoadWithABI(lib, outDir, apkPath, abi)) {
         return true;
       }
@@ -344,7 +358,7 @@ public final class GeckoLoader {
 
   private static boolean attemptLoad(final String path) {
     try {
-      System.loadLibrary(path);
+      System.load(path);
       return true;
     } catch (final Throwable e) {
       Log.wtf(LOGTAG, "Couldn't load " + path + ": " + e);
@@ -364,7 +378,13 @@ public final class GeckoLoader {
       System.loadLibrary(lib);
       return null;
     } catch (final Throwable e) {
-      final String libPath = getLibraryPath(lib);
+      final File extractedLibsDir = ensureExtractedLibraryDir(context);
+      String libPath = null;
+      if (extractedLibsDir != null) {
+        libPath = new File(extractedLibsDir, "lib" + lib + ".so").getAbsolutePath();
+      } else {
+        libPath = getLibraryPath(lib);
+      }
       // Does it even exist?
       if (new File(libPath).exists()) {
         if (attemptLoad(libPath)) {
@@ -376,6 +396,134 @@ public final class GeckoLoader {
       }
       throw new RuntimeException(
           "Library doesn't exist when it should." + "Path: " + libPath + " lib: " + lib, e);
+    }
+  }
+
+  private static synchronized File ensureExtractedLibraryDir(final Context context) {
+    if (sExtractedLibsDir != null && sExtractedLibsDir.isDirectory()) {
+      return sExtractedLibsDir;
+    }
+
+    final String abi = getPrimaryCpuAbi(context.getApplicationInfo());
+    if (abi == null) {
+      return null;
+    }
+
+    final File outDir = new File(getGREDir(context), "lib");
+    if (!outDir.exists() && !outDir.mkdirs()) {
+      Log.e(LOGTAG, "Couldn't create " + outDir);
+      return null;
+    }
+
+    final Set<String> apkPaths = new HashSet<>();
+    apkPaths.add(context.getApplicationInfo().sourceDir);
+    final String[] splitSourceDirs = context.getApplicationInfo().splitSourceDirs;
+    if (splitSourceDirs != null) {
+      for (final String splitSourceDir : splitSourceDirs) {
+        if (splitSourceDir != null) {
+          apkPaths.add(splitSourceDir);
+        }
+      }
+    }
+
+    boolean extractedAny = false;
+    for (final String apkPath : apkPaths) {
+      if (apkPath != null && apkPath.endsWith(".apk")) {
+        extractedAny |= extractLibrariesForAbi(apkPath, abi, outDir);
+      }
+    }
+
+    if (!extractedAny) {
+      return null;
+    }
+
+    sExtractedLibsDir = outDir;
+    return sExtractedLibsDir;
+  }
+
+  private static boolean extractLibrariesForAbi(
+      final String apkPath, final String abi, final File outDir) {
+    final String libPrefix = "lib/" + abi + "/";
+    boolean extractedAny = false;
+    try (ZipFile zipFile = new ZipFile(new File(apkPath))) {
+      for (final ZipEntry entry : java.util.Collections.list(zipFile.entries())) {
+        final String entryName = entry.getName();
+        if (!entryName.startsWith(libPrefix) || !entryName.endsWith(".so")) {
+          continue;
+        }
+
+        final File outFile = new File(outDir, new File(entryName).getName());
+        if (outFile.exists() && outFile.length() == entry.getSize()) {
+          extractedAny = true;
+          continue;
+        }
+
+        try (InputStream in = zipFile.getInputStream(entry);
+            FileOutputStream out = new FileOutputStream(outFile)) {
+          final byte[] bytes = new byte[8192];
+          int read;
+          while ((read = in.read(bytes, 0, bytes.length)) != -1) {
+            out.write(bytes, 0, read);
+          }
+        }
+        outFile.setExecutable(true);
+        extractedAny = true;
+      }
+    } catch (final IOException e) {
+      Log.w(LOGTAG, "Failed to extract libs from APK " + apkPath, e);
+    }
+    return extractedAny;
+  }
+
+  private static String getApkLibraryPath(
+      final ApplicationInfo applicationInfo, final String libraryName) {
+    final String primaryCpuAbi = getPrimaryCpuAbi(applicationInfo);
+    if (primaryCpuAbi == null) {
+      return null;
+    }
+    final String apkPath = getApkPathForAbi(applicationInfo, primaryCpuAbi);
+    if (apkPath == null) {
+      return null;
+    }
+    return apkPath + "!/lib/" + primaryCpuAbi + "/" + System.mapLibraryName(libraryName);
+  }
+
+  private static String getApkPathForAbi(final ApplicationInfo applicationInfo, final String abi) {
+    final String[] splitNames = applicationInfo.splitNames;
+    final String[] splitSourceDirs = applicationInfo.splitSourceDirs;
+    if (splitNames != null && splitSourceDirs != null) {
+      final String abiToken = abi.replace('-', '_');
+      final String baseConfigSplitName = "config." + abiToken;
+      for (int i = 0; i < splitNames.length && i < splitSourceDirs.length; i++) {
+        if (baseConfigSplitName.equals(splitNames[i])) {
+          return splitSourceDirs[i];
+        }
+      }
+
+      final String baseConfigApkName = "split_config." + abiToken + ".apk";
+      for (final String splitSourceDir : splitSourceDirs) {
+        if (splitSourceDir != null && splitSourceDir.endsWith("/" + baseConfigApkName)) {
+          return splitSourceDir;
+        }
+      }
+
+      for (final String splitSourceDir : splitSourceDirs) {
+        if (splitSourceDir != null && splitSourceDir.contains("split_config." + abiToken + ".apk")) {
+          return splitSourceDir;
+        }
+      }
+    }
+
+    return applicationInfo.sourceDir;
+  }
+
+  private static String getPrimaryCpuAbi(final ApplicationInfo applicationInfo) {
+    try {
+      final Field primaryCpuAbiField = applicationInfo.getClass().getField("primaryCpuAbi");
+      return (String) primaryCpuAbiField.get(applicationInfo);
+    } catch (final ReflectiveOperationException e) {
+      Log.w(LOGTAG, "Unable to read primaryCpuAbi.", e);
+      return null;
     }
   }
 
