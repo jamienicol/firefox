@@ -32,6 +32,7 @@ import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.pixelSizeFor
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.showToolbar
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.settings.PhoneFeature
 import org.mozilla.fenix.settings.PhoneFeature.AUTOPLAY_AUDIBLE
 import org.mozilla.fenix.settings.PhoneFeature.AUTOPLAY_INAUDIBLE
@@ -58,6 +59,7 @@ enum class AutoplaySettingMetricsExtraKey {
 class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPaddedFragment {
 
     private val args by navArgs<SitePermissionsManagePhoneFeatureFragmentArgs>()
+    private val phoneFeature by lazy { args.phoneFeature.toEnum<PhoneFeature>() }
     private val settings by lazy { requireContext().settings() }
     private lateinit var blockedByAndroidView: View
     private var _binding: FragmentManageSitePermissionsFeaturePhoneBinding? = null
@@ -81,8 +83,8 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
 
     override fun onResume() {
         super.onResume()
-        showToolbar(args.phoneFeature.getLabel(requireContext()))
-        initBlockedByAndroidView(args.phoneFeature, blockedByAndroidView)
+        showToolbar(phoneFeature.getLabel(requireContext()))
+        initBlockedByAndroidView(phoneFeature, blockedByAndroidView)
     }
 
     override fun onDestroyView() {
@@ -92,7 +94,7 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
 
     private fun initFirstRadio() {
         with(binding.askToAllowRadio) {
-            if (args.phoneFeature == AUTOPLAY_AUDIBLE) {
+            if (phoneFeature == AUTOPLAY_AUDIBLE) {
                 text = getString(R.string.preference_option_autoplay_allowed2)
                 setOnClickListener {
                     saveActionInSettings(AUTOPLAY_ALLOW_ALL)
@@ -115,7 +117,7 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
 
     private fun initSecondRadio() {
         with(binding.blockRadio) {
-            if (args.phoneFeature == AUTOPLAY_AUDIBLE) {
+            if (phoneFeature == AUTOPLAY_AUDIBLE) {
                 text = getCombinedLabel(
                     getString(R.string.preference_option_autoplay_allowed_wifi_only2),
                     getString(R.string.preference_option_autoplay_allowed_wifi_subtext),
@@ -136,7 +138,7 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
 
     private fun initThirdRadio() {
         with(binding.thirdRadio) {
-            if (args.phoneFeature == AUTOPLAY_AUDIBLE) {
+            if (phoneFeature == AUTOPLAY_AUDIBLE) {
                 visibility = View.VISIBLE
                 text = getCombinedLabel(
                     getString(R.string.preference_option_autoplay_block_audio2),
@@ -146,7 +148,7 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
                     saveActionInSettings(AUTOPLAY_BLOCK_AUDIBLE)
                 }
                 restoreState(AUTOPLAY_BLOCK_AUDIBLE)
-            } else if (args.phoneFeature == PhoneFeature.MEDIA_KEY_SYSTEM_ACCESS) {
+            } else if (phoneFeature == PhoneFeature.MEDIA_KEY_SYSTEM_ACCESS) {
                 visibility = View.VISIBLE
                 text = getString(R.string.preference_option_phone_feature_allowed)
                 setOnClickListener {
@@ -161,7 +163,7 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
 
     private fun initFourthRadio() {
         with(binding.fourthRadio) {
-            if (args.phoneFeature == AUTOPLAY_AUDIBLE) {
+            if (phoneFeature == AUTOPLAY_AUDIBLE) {
                 visibility = View.VISIBLE
                 text = getString(R.string.preference_option_autoplay_blocked3)
 
@@ -176,7 +178,7 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
     }
 
     private fun RadioButton.restoreState(buttonAction: SitePermissionsRules.Action) {
-        if (args.phoneFeature.getAction(settings) == buttonAction) {
+        if (phoneFeature.getAction(settings) == buttonAction) {
             this.isChecked = true
             this.setStartCheckedIndicator()
         }
@@ -190,7 +192,7 @@ class SitePermissionsManagePhoneFeatureFragment : Fragment(), SystemInsetsPadded
     }
 
     private fun saveActionInSettings(action: SitePermissionsRules.Action) {
-        settings.setSitePermissionsPhoneFeatureAction(args.phoneFeature, action)
+        settings.setSitePermissionsPhoneFeatureAction(phoneFeature, action)
     }
 
     /**

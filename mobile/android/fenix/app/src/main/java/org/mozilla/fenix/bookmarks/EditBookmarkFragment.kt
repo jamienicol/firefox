@@ -81,7 +81,7 @@ class EditBookmarkFragment : Fragment(R.layout.fragment_edit_bookmark), SystemIn
                                         navController
                                             .navigate(
                                                 BookmarkFragmentDirections.actionGlobalTurnOnSync(
-                                                    entrypoint = FenixFxAEntryPoint.BookmarkView,
+                                                    entrypoint = FenixFxAEntryPoint.BookmarkView.name,
                                                 ),
                                             )
                                     },

@@ -27,6 +27,7 @@ import mozilla.components.concept.engine.translate.OperationLevel
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -34,6 +35,7 @@ import org.mozilla.fenix.theme.FirefoxTheme
  */
 class LanguageDialogPreferenceFragment : DialogFragment() {
     private val args by navArgs<LanguageDialogPreferenceFragmentArgs>()
+    private val itemType by lazy { args.itemType.toEnum<DownloadLanguageItemTypePreference>() }
     private val browserStore: BrowserStore by lazy { requireComponents.core.store }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
@@ -69,12 +71,11 @@ class LanguageDialogPreferenceFragment : DialogFragment() {
                     DeleteLanguageFileDialog(
                         language = args.languageDisplayName,
                         isAllLanguagesItemType =
-                        args.itemType ==
-                            DownloadLanguageItemTypePreference.AllLanguages,
+                        itemType == DownloadLanguageItemTypePreference.AllLanguages,
                         fileSizeFormatter = requireComponents.core.fileSizeFormatter,
                         fileSize = args.modelSize,
                         onConfirmDelete = {
-                            if (args.itemType == DownloadLanguageItemTypePreference.AllLanguages) {
+                            if (itemType == DownloadLanguageItemTypePreference.AllLanguages) {
                                 val options = ModelManagementOptions(
                                     operation = ModelOperation.DELETE,
                                     operationLevel = OperationLevel.ALL,
@@ -108,7 +109,7 @@ class LanguageDialogPreferenceFragment : DialogFragment() {
                     var checkBoxEnabled by remember { mutableStateOf(false) }
 
                     DownloadLanguageFileDialog(
-                        downloadLanguageDialogType = if (args.itemType ==
+                        downloadLanguageDialogType = if (itemType ==
                             DownloadLanguageItemTypePreference.AllLanguages
                         ) {
                             DownloadLanguageFileDialogType.AllLanguages
@@ -123,7 +124,7 @@ class LanguageDialogPreferenceFragment : DialogFragment() {
                             requireContext().settings().ignoreTranslationsDataSaverWarning =
                                 checkBoxEnabled
 
-                            if (args.itemType == DownloadLanguageItemTypePreference.AllLanguages) {
+                            if (itemType == DownloadLanguageItemTypePreference.AllLanguages) {
                                 val options = ModelManagementOptions(
                                     operation = ModelOperation.DOWNLOAD,
                                     operationLevel = OperationLevel.ALL,

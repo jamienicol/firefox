@@ -328,9 +328,9 @@ class DefaultBrowserToolbarMenuController(
                             tabIds = arrayOf(currentSession.id),
                             selectedTabIds = arrayOf(currentSession.id),
                             saveCollectionStep = if (tabCollectionStorage.cachedTabCollections.isEmpty()) {
-                                SaveCollectionStep.NameCollection
+                                SaveCollectionStep.NameCollection.name
                             } else {
-                                SaveCollectionStep.SelectCollection
+                                SaveCollectionStep.SelectCollection.name
                             },
                         )
                     navController.nav(R.id.browserFragment, directions)

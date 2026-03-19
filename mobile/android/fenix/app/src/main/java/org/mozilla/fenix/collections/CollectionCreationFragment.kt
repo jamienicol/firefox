@@ -19,6 +19,7 @@ import mozilla.components.lib.state.helpers.StoreProvider.Companion.storeProvide
 import org.mozilla.fenix.R
 import org.mozilla.fenix.databinding.FragmentCreateCollectionBinding
 import org.mozilla.fenix.ext.requireComponents
+import org.mozilla.fenix.ext.toEnum
 
 class CollectionCreationFragment : DialogFragment() {
     private lateinit var collectionCreationView: CollectionCreationView
@@ -27,6 +28,8 @@ class CollectionCreationFragment : DialogFragment() {
 
     private var _binding: FragmentCreateCollectionBinding? = null
     private val binding get() = _binding!!
+    private val args: CollectionCreationFragmentArgs by navArgs()
+    private val saveCollectionStep by lazy { args.saveCollectionStep.toEnum<SaveCollectionStep>() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -40,15 +43,13 @@ class CollectionCreationFragment : DialogFragment() {
         savedInstanceState: Bundle?,
     ): View {
         _binding = FragmentCreateCollectionBinding.inflate(inflater, container, false)
-        val args: CollectionCreationFragmentArgs by navArgs()
-
         collectionCreationStore = storeProvider.get { restoredState ->
             CollectionCreationStore(
                 restoredState ?: createInitialCollectionCreationState(
                     browserState = requireComponents.core.store.state,
                     tabCollectionStorage = requireComponents.core.tabCollectionStorage,
                     publicSuffixList = requireComponents.publicSuffixList,
-                    saveCollectionStep = args.saveCollectionStep,
+                    saveCollectionStep = saveCollectionStep,
                     tabIds = args.tabIds,
                     selectedTabIds = args.selectedTabIds,
                     selectedTabCollectionId = args.selectedTabCollectionId,

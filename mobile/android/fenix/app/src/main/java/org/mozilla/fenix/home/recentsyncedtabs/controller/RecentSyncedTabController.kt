@@ -79,8 +79,8 @@ class DefaultRecentSyncedTabController(
         RecentSyncedTabs.showAllSyncedTabsClicked.add()
         navController.navigate(
             HomeFragmentDirections.actionGlobalTabManagementFragment(
-                page = Page.SyncedTabs,
-                accessPoint = accessPoint,
+                page = Page.SyncedTabs.name,
+                accessPoint = accessPoint.name,
             ),
         )
     }

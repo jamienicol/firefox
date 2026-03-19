@@ -15,6 +15,7 @@ import org.mozilla.fenix.databinding.FragmentTrackingProtectionBlockingBinding
 import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.showToolbar
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.utils.Settings
 
 /**
@@ -31,6 +32,7 @@ class TrackingProtectionBlockingFragment :
     SystemInsetsPaddedFragment {
 
     private val args: TrackingProtectionBlockingFragmentArgs by navArgs()
+    private val protectionMode by lazy { args.protectionMode.toEnum<TrackingProtectionMode>() }
 
     internal var settingsProvider: () -> Settings = { requireContext().settings() }
     private val settings: Settings by lazy { settingsProvider() }
@@ -45,7 +47,7 @@ class TrackingProtectionBlockingFragment :
 
         setTotalCookieProtectionText()
 
-        updateCategoryVisibility(args.protectionMode, settings)
+        updateCategoryVisibility(protectionMode, settings)
     }
 
     /**
@@ -100,6 +102,6 @@ class TrackingProtectionBlockingFragment :
 
     override fun onResume() {
         super.onResume()
-        showToolbar(getString(args.protectionMode.titleRes))
+        showToolbar(getString(protectionMode.titleRes))
     }
 }

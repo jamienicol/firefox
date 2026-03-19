@@ -29,7 +29,7 @@ enum class GlobalDirections(val navDirections: NavDirections, val destinationId:
         R.id.settingsFragment,
     ),
     Sync(
-        NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.DeepLink),
+        NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.DeepLink.name),
         R.id.turnOnSyncFragment,
     ),
     SearchEngine(

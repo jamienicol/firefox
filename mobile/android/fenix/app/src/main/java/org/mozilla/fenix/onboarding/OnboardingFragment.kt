@@ -228,7 +228,7 @@ class OnboardingFragment : Fragment() {
                 findNavController().nav(
                     id = R.id.onboardingFragment,
                     directions = OnboardingFragmentDirections.actionGlobalTurnOnSync(
-                        entrypoint = FenixFxAEntryPoint.NewUserOnboarding,
+                        entrypoint = FenixFxAEntryPoint.NewUserOnboarding.name,
                     ),
                 )
                 telemetryRecorder.onSyncSignInClick(
@@ -344,7 +344,7 @@ class OnboardingFragment : Fragment() {
                 findNavController().nav(
                     id = R.id.onboardingFragment,
                     directions = OnboardingFragmentDirections.actionGlobalTurnOnSync(
-                        entrypoint = FenixFxAEntryPoint.NewUserOnboarding,
+                        entrypoint = FenixFxAEntryPoint.NewUserOnboarding.name,
                     ),
                 )
                 telemetryRecorder.onSyncSignInClick(

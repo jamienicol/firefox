@@ -27,6 +27,7 @@ import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.SyncAuth
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.databinding.FragmentTurnOnSyncBinding
 import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
@@ -36,6 +37,7 @@ import org.mozilla.fenix.ext.navigateWithBreadcrumb
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.showToolbar
+import org.mozilla.fenix.ext.toEnum
 
 /**
  * Settings screen allowing users to log into their Firefox account.
@@ -43,6 +45,7 @@ import org.mozilla.fenix.ext.showToolbar
 class TurnOnSyncFragment : Fragment(), AccountObserver, SystemInsetsPaddedFragment {
 
     private val args by navArgs<TurnOnSyncFragmentArgs>()
+    private val entryPoint by lazy { args.entrypoint.toEnum<FenixFxAEntryPoint>() }
     private lateinit var interactor: DefaultSyncInteractor
 
     private var shouldLoginJustWithEmail = false
@@ -72,7 +75,7 @@ class TurnOnSyncFragment : Fragment(), AccountObserver, SystemInsetsPaddedFragme
 
     private fun navigateToPairFragment() {
         val directions = TurnOnSyncFragmentDirections.actionTurnOnSyncFragmentToPairFragment(
-            entrypoint = args.entrypoint,
+            entrypoint = entryPoint.name,
         )
         context?.let {
             requireView().findNavController().navigateWithBreadcrumb(
@@ -177,7 +180,7 @@ class TurnOnSyncFragment : Fragment(), AccountObserver, SystemInsetsPaddedFragme
     private fun navigateToPairWithEmail() {
         requireComponents.services.accountsAuthFeature.beginAuthentication(
             requireContext(),
-            entrypoint = args.entrypoint,
+            entrypoint = entryPoint,
             setOf(SCOPE_PROFILE, SCOPE_SYNC),
         )
         SyncAuth.useEmail.record(NoExtras())

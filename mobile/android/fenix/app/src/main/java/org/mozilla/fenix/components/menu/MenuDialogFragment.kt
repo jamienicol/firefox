@@ -98,6 +98,7 @@ import org.mozilla.fenix.ext.pixelSizeFor
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.settings.deletebrowsingdata.DefaultDeleteBrowsingDataController
@@ -143,6 +144,7 @@ private object MenuAnimationConfig {
 class MenuDialogFragment : BottomSheetDialogFragment() {
 
     private val args by navArgs<MenuDialogFragmentArgs>()
+    private val accessPoint by lazy { args.accesspoint.toEnum<MenuAccessPoint>() }
     private val webExtensionsMenuBinding = ViewBoundFeatureWrapper<WebExtensionsMenuBinding>()
     private var bottomSheetBehavior: BottomSheetBehavior<View>? = null
     private var isPrivate: Boolean = false
@@ -190,7 +192,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
 
                 isPrivate = appStore.state.mode.isPrivate
 
-                if (isPrivate && args.accesspoint == MenuAccessPoint.Home) {
+                if (isPrivate && accessPoint == MenuAccessPoint.Home) {
                     window?.setBackgroundDrawable(
                         Color.BLACK.toDrawable().mutate().apply {
                             alpha = PRIVATE_HOME_MENU_BACKGROUND_ALPHA
@@ -300,7 +302,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                                 null
                             },
                             customTabSessionId = args.customTabSessionId,
-                            isDesktopMode = when (args.accesspoint) {
+                            isDesktopMode = when (accessPoint) {
                                 MenuAccessPoint.Home -> {
                                     false // this is not supported on Home
                                 }
@@ -312,7 +314,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                                 }
                             },
                             extensionMenuState = ExtensionMenuState(
-                                accesspoint = args.accesspoint,
+                                accesspoint = accessPoint,
                             ),
                         ),
                         middleware = listOf(
@@ -374,7 +376,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                                 ),
                             ),
                             MenuTelemetryMiddleware(
-                                accessPoint = args.accesspoint,
+                                accessPoint = accessPoint,
                             ),
                         ),
                     )
@@ -385,7 +387,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
 
                 var handlebarContentDescription by remember {
                     mutableStateOf(
-                        if (args.accesspoint == MenuAccessPoint.External) descCustom else descMain,
+                        if (accessPoint == MenuAccessPoint.External) descCustom else descMain,
                     )
                 }
 
@@ -404,7 +406,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                     isMenuDragBarDark = !settings.shouldUseBottomToolbar &&
                             !settings.shouldUseExpandedToolbar &&
                             (isExtensionsExpanded || isMoreMenuExpanded) &&
-                            args.accesspoint == MenuAccessPoint.Browser,
+                            accessPoint == MenuAccessPoint.Browser,
                     cornerShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                     menuCfrState = if (settings.shouldShowMenuCFR) {
                         MenuCFRState(
@@ -512,7 +514,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                             .map { state -> state.extensionMenuState.allWebExtensionsDisabled }
                     }.collectAsState(initial = false)
 
-                    val initRoute = when (args.accesspoint) {
+                    val initRoute = when (accessPoint) {
                         MenuAccessPoint.Browser,
                         MenuAccessPoint.Home,
                         -> Route.MainMenu
@@ -646,7 +648,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                                 }.collectAsState(initial = false)
 
                                 MainMenu(
-                                    accessPoint = args.accesspoint,
+                                    accessPoint = accessPoint,
                                     account = account,
                                     accountState = accountState,
                                     showQuitMenu = settings.shouldDeleteBrowsingDataOnQuit,
@@ -675,7 +677,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                                         store.dispatch(
                                             MenuAction.Navigate.MozillaAccount(
                                                 accountState = accountState,
-                                                accesspoint = args.accesspoint,
+                                                accesspoint = accessPoint,
                                             ),
                                         )
                                     },
@@ -815,7 +817,7 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
                                     },
                                     extensionSubmenu = {
                                         Addons(
-                                            accessPoint = args.accesspoint,
+                                            accessPoint = accessPoint,
                                             availableAddons = availableAddons,
                                             webExtensionMenuItems = webExtensionMenuItems,
                                             addonInstallationInProgress = addonInstallationInProgress,
@@ -954,11 +956,11 @@ class MenuDialogFragment : BottomSheetDialogFragment() {
         availableAddons: List<Addon>,
         browserWebExtensionMenuItems: List<WebExtensionMenuItem>,
     ): String? {
-        val isBrowserOrExternal = args.accesspoint == MenuAccessPoint.Browser ||
-                args.accesspoint == MenuAccessPoint.External
+        val isBrowserOrExternal = accessPoint == MenuAccessPoint.Browser ||
+                accessPoint == MenuAccessPoint.External
 
         return when {
-            args.accesspoint == MenuAccessPoint.Home -> null
+            accessPoint == MenuAccessPoint.Home -> null
 
             isExtensionsProcessDisabled -> {
                 requireContext().getString(R.string.browser_menu_extensions_disabled_description)

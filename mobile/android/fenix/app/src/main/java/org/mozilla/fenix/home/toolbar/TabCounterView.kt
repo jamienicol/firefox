@@ -48,8 +48,8 @@ class TabCounterView(
                 navController.currentDestination?.id,
                 NavGraphDirections.actionGlobalTabManagementFragment(
                     page = when (browsingModeManager.mode) {
-                        BrowsingMode.Normal -> Page.NormalTabs
-                        BrowsingMode.Private -> Page.PrivateTabs
+                        BrowsingMode.Normal -> Page.NormalTabs.name
+                        BrowsingMode.Private -> Page.PrivateTabs.name
                     },
                 ),
             )

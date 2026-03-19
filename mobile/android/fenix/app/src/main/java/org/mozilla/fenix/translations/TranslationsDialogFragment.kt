@@ -39,6 +39,7 @@ import org.mozilla.fenix.ext.openToBrowser
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnumOrDefault
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.theme.FirefoxTheme
@@ -60,6 +61,9 @@ enum class TranslationsDialogAccessPoint {
 class TranslationsDialogFragment : BottomSheetDialogFragment() {
 
     private val args by navArgs<TranslationsDialogFragmentArgs>()
+    private val translationsDialogAccessPoint by lazy {
+        args.translationsDialogAccessPoint.toEnumOrDefault(TranslationsDialogAccessPoint.Translations)
+    }
 
     private val appStore: AppStore by lazy { requireComponents.appStore }
     private val browserStore: BrowserStore by lazy { requireComponents.core.store }
@@ -110,7 +114,7 @@ class TranslationsDialogFragment : BottomSheetDialogFragment() {
             FirefoxTheme {
                 var translationsVisibility by remember {
                     mutableStateOf(
-                        args.translationsDialogAccessPoint == TranslationsDialogAccessPoint.Translations,
+                        translationsDialogAccessPoint == TranslationsDialogAccessPoint.Translations,
                     )
                 }
 

@@ -330,7 +330,7 @@ class DefaultSessionControlController(
             .toTypedArray()
         val directions = HomeFragmentDirections.actionGlobalCollectionCreationFragment(
             tabIds = tabIds,
-            saveCollectionStep = step,
+            saveCollectionStep = step.name,
             selectedTabIds = selectedTabIds,
             selectedTabCollectionId = selectedTabCollectionId ?: -1,
         )
@@ -388,7 +388,7 @@ class DefaultSessionControlController(
         ChecklistItem.Task.Type.SET_AS_DEFAULT -> requestSetDefaultBrowserPrompt()
 
         ChecklistItem.Task.Type.SIGN_IN ->
-            navigateTo(HomeFragmentDirections.actionGlobalTurnOnSync(FenixFxAEntryPoint.NewUserOnboarding))
+            navigateTo(HomeFragmentDirections.actionGlobalTurnOnSync(FenixFxAEntryPoint.NewUserOnboarding.name))
 
         ChecklistItem.Task.Type.SELECT_THEME ->
             navigateTo(HomeFragmentDirections.actionGlobalCustomizationFragment())

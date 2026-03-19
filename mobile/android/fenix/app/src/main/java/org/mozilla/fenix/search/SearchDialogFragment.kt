@@ -84,6 +84,7 @@ import org.mozilla.fenix.GleanMetrics.VoiceSearch
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.appstate.AppAction
+import org.mozilla.fenix.components.metrics.MetricsUtils
 import org.mozilla.fenix.components.search.BOOKMARKS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.HISTORY_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.search.TABS_SEARCH_ENGINE_ID
@@ -98,6 +99,7 @@ import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.secure
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnumOrDefault
 import org.mozilla.fenix.navigation.DefaultNavControllerProvider
 import org.mozilla.fenix.navigation.NavControllerProvider
 import org.mozilla.fenix.nimbus.FxNimbus
@@ -120,6 +122,8 @@ typealias SearchDialogFragmentStore = SearchFragmentStore
 
 @SuppressWarnings("LargeClass", "TooManyFunctions")
 class SearchDialogFragment : AppCompatDialogFragment(), UserInteractionHandler {
+    private val args by navArgs<SearchDialogFragmentArgs>()
+    private val searchAccessPoint by lazy { args.searchAccessPoint.toEnumOrDefault(MetricsUtils.Source.NONE) }
     private var _binding: FragmentSearchDialogBinding? = null
     private val binding get() = _binding!!
 
@@ -184,8 +188,6 @@ class SearchDialogFragment : AppCompatDialogFragment(), UserInteractionHandler {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val args by navArgs<SearchDialogFragmentArgs>()
-
         if (context?.settings()?.isTabStripEnabled == true) {
             setStyle(STYLE_NORMAL, R.style.SearchDialogStyleTabStrip)
         } else {
@@ -205,7 +207,7 @@ class SearchDialogFragment : AppCompatDialogFragment(), UserInteractionHandler {
         requireComponents.appStore.dispatch(
             AppAction.SearchAction.SearchStarted(
                 tabId = args.sessionId,
-                source = args.searchAccessPoint,
+                source = searchAccessPoint,
             ),
         )
     }
@@ -246,7 +248,6 @@ class SearchDialogFragment : AppCompatDialogFragment(), UserInteractionHandler {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View {
-        val args by navArgs<SearchDialogFragmentArgs>()
         _binding = FragmentSearchDialogBinding.inflate(inflater, container, false)
         val activity = requireActivity() as HomeActivity
         val isPrivate = requireComponents.appStore.state.mode.isPrivate
@@ -257,7 +258,7 @@ class SearchDialogFragment : AppCompatDialogFragment(), UserInteractionHandler {
                 requireComponents,
                 tabId = args.sessionId,
                 pastedText = args.pastedText,
-                searchAccessPoint = args.searchAccessPoint,
+                searchAccessPoint = searchAccessPoint,
                 searchEngine = requireComponents.core.store.state.search.searchEngines.firstOrNull {
                     it.id == args.searchEngine
                 },

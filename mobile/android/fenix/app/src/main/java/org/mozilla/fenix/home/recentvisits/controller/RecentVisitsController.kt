@@ -21,6 +21,7 @@ import org.mozilla.fenix.home.HomeFragmentDirections
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem.RecentHistoryGroup
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem.RecentHistoryHighlight
 import org.mozilla.fenix.library.history.toHistoryMetadata
+import org.mozilla.fenix.library.historymetadata.HistoryMetadataGroupFragment
 import org.mozilla.fenix.utils.Settings
 
 /**
@@ -92,11 +93,13 @@ class DefaultRecentVisitsController(
      * @param recentHistoryGroup The [RecentHistoryGroup] to which to navigate to.
      */
     override fun handleRecentHistoryGroupClicked(recentHistoryGroup: RecentHistoryGroup) {
+        navController.currentBackStackEntry?.savedStateHandle?.set(
+            HistoryMetadataGroupFragment.HISTORY_METADATA_ITEMS_KEY,
+            ArrayList(recentHistoryGroup.historyMetadata.mapIndexed { index, item -> item.toHistoryMetadata(index) }),
+        )
         navController.navigate(
             HomeFragmentDirections.actionGlobalHistoryMetadataGroup(
                 title = recentHistoryGroup.title,
-                historyMetadataItems = recentHistoryGroup.historyMetadata
-                    .mapIndexed { index, item -> item.toHistoryMetadata(index) }.toTypedArray(),
             ),
         )
     }

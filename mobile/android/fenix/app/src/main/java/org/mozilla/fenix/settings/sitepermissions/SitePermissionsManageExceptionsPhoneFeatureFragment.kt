@@ -32,6 +32,7 @@ import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.showToolbar
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.settings.PhoneFeature
 import org.mozilla.fenix.settings.quicksettings.AutoplayValue
 import org.mozilla.fenix.settings.setStartCheckedIndicator
@@ -51,6 +52,7 @@ class SitePermissionsManageExceptionsPhoneFeatureFragment : Fragment(), SystemIn
     @VisibleForTesting
     internal lateinit var rootView: View
     private val args by navArgs<SitePermissionsManageExceptionsPhoneFeatureFragmentArgs>()
+    private val phoneFeature by lazy { args.phoneFeature.toEnum<PhoneFeature>() }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -72,7 +74,7 @@ class SitePermissionsManageExceptionsPhoneFeatureFragment : Fragment(), SystemIn
     }
 
     @VisibleForTesting
-    internal fun getFeature(): PhoneFeature = args.phoneFeature
+    internal fun getFeature(): PhoneFeature = phoneFeature
 
     @VisibleForTesting
     internal fun getSitePermission(): SitePermissions = args.sitePermissions

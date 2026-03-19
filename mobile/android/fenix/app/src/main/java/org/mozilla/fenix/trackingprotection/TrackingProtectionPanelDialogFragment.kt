@@ -48,6 +48,7 @@ import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.openToBrowser
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.settings.SupportUtils
 import com.google.android.material.R as materialR
 
@@ -55,6 +56,7 @@ import com.google.android.material.R as materialR
 class TrackingProtectionPanelDialogFragment : AppCompatDialogFragment(), UserInteractionHandler {
 
     private val args by navArgs<TrackingProtectionPanelDialogFragmentArgs>()
+    private val cookieBannerUIMode by lazy { args.cookieBannerUIMode.toEnum<CookieBannerUIMode>() }
 
     private fun inflateRootView(container: ViewGroup? = null): View {
         val contextThemeWrapper = ContextThemeWrapper(
@@ -94,7 +96,7 @@ class TrackingProtectionPanelDialogFragment : AppCompatDialogFragment(), UserInt
                     tab = tab,
                     url = args.url,
                     isTrackingProtectionEnabled = args.trackingProtectionEnabled,
-                    cookieBannerUIMode = args.cookieBannerUIMode,
+                    cookieBannerUIMode = cookieBannerUIMode,
                     listTrackers = listOf(),
                     mode = ProtectionsState.Mode.Normal,
                     lastAccessedCategory = "",

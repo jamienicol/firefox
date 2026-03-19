@@ -338,7 +338,7 @@ class SettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragment 
             resources.getString(R.string.pref_key_sign_in) -> {
                 SettingsMetrics.signIntoSync.add()
                 SettingsFragmentDirections.actionSettingsFragmentToTurnOnSyncFragment(
-                    entrypoint = FenixFxAEntryPoint.SettingsMenu,
+                    entrypoint = FenixFxAEntryPoint.SettingsMenu.name,
                 )
             }
 
@@ -348,7 +348,7 @@ class SettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragment 
 
             resources.getString(R.string.pref_key_account_auth_error) -> {
                 SettingsFragmentDirections.actionSettingsFragmentToAccountProblemFragment(
-                    entrypoint = FenixFxAEntryPoint.SettingsMenu,
+                    entrypoint = FenixFxAEntryPoint.SettingsMenu.name,
                 )
             }
 

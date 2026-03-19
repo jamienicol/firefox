@@ -51,7 +51,7 @@ class StartSearchIntentProcessor(private val userHasBeenOnboarded: () -> Boolean
                         id = null,
                         directions = NavGraphDirections.actionGlobalHome(
                             focusOnAddressBar = true,
-                            searchAccessPoint = it,
+                            searchAccessPoint = it.name,
                         ),
                     )
 
@@ -59,7 +59,7 @@ class StartSearchIntentProcessor(private val userHasBeenOnboarded: () -> Boolean
                         id = null,
                         directions = NavGraphDirections.actionGlobalSearchDialog(
                             sessionId = null,
-                            searchAccessPoint = it,
+                            searchAccessPoint = it.name,
                         ),
                         navOptions = navOptions { popUpTo(R.id.homeFragment) },
                     )

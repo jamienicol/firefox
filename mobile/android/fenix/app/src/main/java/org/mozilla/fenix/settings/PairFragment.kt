@@ -21,15 +21,18 @@ import mozilla.components.service.fxa.manager.SCOPE_SYNC
 import mozilla.components.support.base.feature.UserInteractionHandler
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.showToolbar
+import org.mozilla.fenix.ext.toEnum
 
 /**
  * Settings screen allowing users log into their Firefox Account.
  */
 class PairFragment : Fragment(R.layout.fragment_pair), UserInteractionHandler, SystemInsetsPaddedFragment {
     private val args by navArgs<PairFragmentArgs>()
+    private val entryPoint by lazy { args.entrypoint.toEnum<FenixFxAEntryPoint>() }
 
     private val qrFeature = ViewBoundFeatureWrapper<QrFeature>()
 
@@ -58,7 +61,7 @@ class PairFragment : Fragment(R.layout.fragment_pair), UserInteractionHandler, S
                     requireComponents.services.accountsAuthFeature.beginPairingAuthentication(
                         requireContext(),
                         pairingUrl,
-                        args.entrypoint,
+                        entryPoint,
                         setOf(SCOPE_SYNC, SCOPE_PROFILE, SCOPE_SESSION),
                     )
                     val vibrator = requireContext().getSystemService<Vibrator>()!!

@@ -102,14 +102,14 @@ class SavedLoginsAuthFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFr
             onSyncSignInClicked = {
                 val directions =
                     SavedLoginsAuthFragmentDirections.actionSavedLoginsAuthFragmentToTurnOnSyncFragment(
-                        entrypoint = FenixFxAEntryPoint.SavedLogins,
+                        entrypoint = FenixFxAEntryPoint.SavedLogins.name,
                     )
                 findNavController().navigate(directions)
             },
             onReconnectClicked = {
                 val directions =
                     SavedLoginsAuthFragmentDirections.actionGlobalAccountProblemFragment(
-                        entrypoint = FenixFxAEntryPoint.SavedLogins,
+                        entrypoint = FenixFxAEntryPoint.SavedLogins.name,
                     )
                 findNavController().navigate(directions)
             },

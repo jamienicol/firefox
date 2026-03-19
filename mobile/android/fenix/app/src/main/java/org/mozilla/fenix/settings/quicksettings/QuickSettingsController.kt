@@ -222,7 +222,7 @@ class DefaultQuickSettingsController(
                 sessionId = sessionId,
                 url = state.url,
                 trackingProtectionEnabled = state.isTrackingProtectionEnabled,
-                cookieBannerUIMode = state.cookieBannerUIMode,
+                cookieBannerUIMode = state.cookieBannerUIMode.name,
                 gravity = context.components.settings.toolbarPosition.androidGravity,
                 sitePermissions = sitePermissions,
             )
@@ -238,7 +238,7 @@ class DefaultQuickSettingsController(
                 sessionId = sessionId,
                 url = state.url,
                 trackingProtectionEnabled = state.isTrackingProtectionEnabled,
-                cookieBannerUIMode = state.cookieBannerUIMode,
+                cookieBannerUIMode = state.cookieBannerUIMode.name,
                 gravity = context.components.settings.toolbarPosition.androidGravity,
                 sitePermissions = sitePermissions,
             )
@@ -317,7 +317,7 @@ class DefaultQuickSettingsController(
      */
     private fun navigateToManagePhoneFeature(phoneFeature: PhoneFeature) {
         val directions = QuickSettingsSheetDialogFragmentDirections
-            .actionGlobalSitePermissionsManagePhoneFeature(phoneFeature)
+            .actionGlobalSitePermissionsManagePhoneFeature(phoneFeature.name)
         navController.navigate(directions)
     }
 }

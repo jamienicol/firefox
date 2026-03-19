@@ -277,7 +277,7 @@ class BrowserToolbarMiddleware(
                 navController.nav(
                     R.id.browserFragment,
                     BrowserFragmentDirections.actionGlobalMenuDialogFragment(
-                        accesspoint = MenuAccessPoint.Browser,
+                        accesspoint = MenuAccessPoint.Browser.name,
                     ),
                 )
 
@@ -291,8 +291,8 @@ class BrowserToolbarMiddleware(
                     R.id.browserFragment,
                     BrowserFragmentDirections.actionGlobalTabManagementFragment(
                         page = when (browsingModeManager.mode) {
-                            Normal -> Page.NormalTabs
-                            Private -> Page.PrivateTabs
+                            Normal -> Page.NormalTabs.name
+                            Private -> Page.PrivateTabs.name
                         },
                     ),
                 )
@@ -616,7 +616,7 @@ class BrowserToolbarMiddleware(
                                 certificate = tab.content.securityInfo.certificate,
                                 permissionHighlights = tab.content.permissionHighlights,
                                 isTrackingProtectionEnabled = isTrackingProtectionEnabled,
-                                cookieBannerUIMode = cookieBannerUIMode,
+                                cookieBannerUIMode = cookieBannerUIMode.name,
                             )
                         } else {
                             BrowserFragmentDirections.actionBrowserFragmentToQuickSettingsSheetDialogFragment(
@@ -630,7 +630,7 @@ class BrowserToolbarMiddleware(
                                 certificateName = tab.content.securityInfo.issuer,
                                 permissionHighlights = tab.content.permissionHighlights,
                                 isTrackingProtectionEnabled = isTrackingProtectionEnabled,
-                                cookieBannerUIMode = cookieBannerUIMode,
+                                cookieBannerUIMode = cookieBannerUIMode.name,
                             )
                         }
                         navController.nav(

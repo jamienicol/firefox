@@ -502,7 +502,11 @@ abstract class BaseBrowserFragment :
         observePrivateModeLock {
             findNavController().navigate(
                 NavGraphDirections.actionGlobalUnlockPrivateTabsFragment(
-                    if (customTabSessionId != null) NavigationOrigin.CUSTOM_TAB else NavigationOrigin.TAB,
+                    if (customTabSessionId != null) {
+                        NavigationOrigin.CUSTOM_TAB.name
+                    } else {
+                        NavigationOrigin.TAB.name
+                    },
                 ),
             )
         }
@@ -1797,8 +1801,8 @@ abstract class BaseBrowserFragment :
             R.id.browserFragment,
             BrowserFragmentDirections.actionGlobalTabManagementFragment(
                 page = when (browsingMode) {
-                    BrowsingMode.Normal -> Page.NormalTabs
-                    BrowsingMode.Private -> Page.PrivateTabs
+                    BrowsingMode.Normal -> Page.NormalTabs.name
+                    BrowsingMode.Private -> Page.PrivateTabs.name
                 },
             ),
         )

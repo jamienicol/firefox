@@ -61,6 +61,9 @@ import org.mozilla.fenix.utils.allowUndo
 @SuppressWarnings("TooManyFunctions")
 class HistoryMetadataGroupFragment :
     LibraryPageFragment<History.Metadata>(), UserInteractionHandler, MenuProvider, SystemInsetsPaddedFragment {
+    companion object {
+        const val HISTORY_METADATA_ITEMS_KEY = "historyMetadataItems"
+    }
 
     private lateinit var historyMetadataGroupStore: HistoryMetadataGroupFragmentStore
     private lateinit var interactor: HistoryMetadataGroupInteractor
@@ -85,7 +88,10 @@ class HistoryMetadataGroupFragment :
     ): View {
         _binding = FragmentHistoryMetadataGroupBinding.inflate(inflater, container, false)
 
-        val historyItems = args.historyMetadataItems.filterIsInstance<History.Metadata>()
+        val historyItems = findNavController().previousBackStackEntry
+            ?.savedStateHandle
+            ?.remove<ArrayList<History.Metadata>>(HISTORY_METADATA_ITEMS_KEY)
+            .orEmpty()
         historyMetadataGroupStore = fragmentStore(
             HistoryMetadataGroupFragmentState(
                 items = historyItems,
@@ -272,9 +278,9 @@ class HistoryMetadataGroupFragment :
             R.id.historyMetadataGroupFragment,
             HistoryMetadataGroupFragmentDirections.actionGlobalTabManagementFragment(
                 page = if (openInPrivate) {
-                    Page.PrivateTabs
+                    Page.PrivateTabs.name
                 } else {
-                    Page.NormalTabs
+                    Page.NormalTabs.name
                 },
             ),
         )

@@ -43,7 +43,7 @@ fun SyncedTabsView.ErrorType.toSyncedTabsListItem(context: Context, navControlle
                 ) {
                     navController.navigate(
                         NavGraphDirections.actionGlobalTurnOnSync(
-                            entrypoint = FenixFxAEntryPoint.SyncedTabsMenu,
+                            entrypoint = FenixFxAEntryPoint.SyncedTabsMenu.name,
                         ),
                     )
                 },

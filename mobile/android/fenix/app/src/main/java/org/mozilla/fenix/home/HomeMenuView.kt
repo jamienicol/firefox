@@ -47,7 +47,7 @@ class HomeMenuView(
                     navController.nav(
                         R.id.homeFragment,
                         HomeFragmentDirections.actionGlobalMenuDialogFragment(
-                            accesspoint = MenuAccessPoint.Home,
+                            accesspoint = MenuAccessPoint.Home.name,
                         ),
                     )
 

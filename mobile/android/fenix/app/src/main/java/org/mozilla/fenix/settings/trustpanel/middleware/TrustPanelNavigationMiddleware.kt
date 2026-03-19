@@ -60,7 +60,7 @@ class TrustPanelNavigationMiddleware(
 
                 is TrustPanelAction.Navigate.ManagePhoneFeature -> navController.nav(
                     R.id.trustPanelFragment,
-                    TrustPanelFragmentDirections.actionGlobalSitePermissionsManagePhoneFeature(action.phoneFeature),
+                    TrustPanelFragmentDirections.actionGlobalSitePermissionsManagePhoneFeature(action.phoneFeature.name),
                 )
 
                 is TrustPanelAction.Navigate.SecurityCertificate -> {

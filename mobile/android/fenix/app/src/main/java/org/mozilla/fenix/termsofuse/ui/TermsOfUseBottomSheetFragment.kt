@@ -16,8 +16,10 @@ import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import mozilla.components.lib.state.helpers.StoreProvider.Companion.fragmentStore
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.termsofuse.experimentation.getTermsOfUsePromptContent
+import org.mozilla.fenix.termsofuse.store.Surface
 import org.mozilla.fenix.termsofuse.store.TermsOfUsePromptAction
 import org.mozilla.fenix.termsofuse.store.TermsOfUsePromptPreferencesMiddleware
 import org.mozilla.fenix.termsofuse.store.TermsOfUsePromptState
@@ -32,6 +34,7 @@ import com.google.android.material.R as materialR
 class TermsOfUseBottomSheetFragment : BottomSheetDialogFragment() {
 
     private val args by navArgs<TermsOfUseBottomSheetFragmentArgs>()
+    private val surface by lazy { args.surface.toEnum<Surface>() }
 
     private var isAlreadyShowing: Boolean = false
 
@@ -54,7 +57,7 @@ class TermsOfUseBottomSheetFragment : BottomSheetDialogFragment() {
                 bottomSheet?.setBackgroundResource(android.R.color.transparent)
 
                 if (!isAlreadyShowing) {
-                    termsOfUsePromptStore.dispatch(TermsOfUsePromptAction.OnImpression(args.surface))
+                    termsOfUsePromptStore.dispatch(TermsOfUsePromptAction.OnImpression(surface))
                     isAlreadyShowing = true
                 }
             }
@@ -74,7 +77,7 @@ class TermsOfUseBottomSheetFragment : BottomSheetDialogFragment() {
                     id = settings().termsOfUsePromptContentOptionId,
                     onLearnMoreClicked = {
                         termsOfUsePromptStore.dispatch(
-                            TermsOfUsePromptAction.OnLearnMoreClicked(args.surface),
+                            TermsOfUsePromptAction.OnLearnMoreClicked(surface),
                         )
                         SupportUtils.launchSandboxCustomTab(
                             context,
@@ -93,22 +96,22 @@ class TermsOfUseBottomSheetFragment : BottomSheetDialogFragment() {
                     onDismiss = { dismiss() },
                     onDismissRequest = {
                         termsOfUsePromptStore.dispatch(
-                            TermsOfUsePromptAction.OnPromptManuallyDismissed(args.surface),
+                            TermsOfUsePromptAction.OnPromptManuallyDismissed(surface),
                         )
 
                         dismiss()
                     },
                     onAcceptClicked = {
-                        termsOfUsePromptStore.dispatch(TermsOfUsePromptAction.OnAcceptClicked(args.surface))
+                        termsOfUsePromptStore.dispatch(TermsOfUsePromptAction.OnAcceptClicked(surface))
                     },
                     onRemindMeLaterClicked = {
                         termsOfUsePromptStore.dispatch(
-                            TermsOfUsePromptAction.OnRemindMeLaterClicked(args.surface),
+                            TermsOfUsePromptAction.OnRemindMeLaterClicked(surface),
                         )
                     },
                     onTermsOfUseClicked = {
                         termsOfUsePromptStore.dispatch(
-                            TermsOfUsePromptAction.OnTermsOfUseClicked(args.surface),
+                            TermsOfUsePromptAction.OnTermsOfUseClicked(surface),
                         )
                         SupportUtils.launchSandboxCustomTab(
                             context,
@@ -117,7 +120,7 @@ class TermsOfUseBottomSheetFragment : BottomSheetDialogFragment() {
                     },
                     onPrivacyNoticeClicked = {
                         termsOfUsePromptStore.dispatch(
-                            TermsOfUsePromptAction.OnPrivacyNoticeClicked(args.surface),
+                            TermsOfUsePromptAction.OnPrivacyNoticeClicked(surface),
                         )
                         SupportUtils.launchSandboxCustomTab(
                             context,

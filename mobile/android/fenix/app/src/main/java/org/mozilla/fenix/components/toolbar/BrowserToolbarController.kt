@@ -301,7 +301,7 @@ class DefaultBrowserToolbarController(
     ) {
         navController.navigate(
             BrowserFragmentDirections.actionGlobalMenuDialogFragment(
-                accesspoint = accessPoint,
+                accesspoint = accessPoint.name,
                 customTabSessionId = customTabSessionId,
                 isSandboxCustomTab = isSandboxCustomTab,
             ),

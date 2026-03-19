@@ -86,7 +86,7 @@ class DownloadLanguagesPreferenceFragment : Fragment(), SystemInsetsPaddedFragme
                             DownloadLanguagesPreferenceFragmentDirections
                                 .actionDownloadLanguagesPreferenceToDownloadLanguagesDialogPreference(
                                     modelState = downloadLanguageItemPreference.languageModel.status,
-                                    itemType = downloadLanguageItemPreference.type,
+                                    itemType = downloadLanguageItemPreference.type.name,
                                     languageCode = downloadLanguageItemPreference.languageModel.language?.code,
                                     languageDisplayName =
                                     downloadLanguageItemPreference.languageModel.language?.localizedDisplayName,

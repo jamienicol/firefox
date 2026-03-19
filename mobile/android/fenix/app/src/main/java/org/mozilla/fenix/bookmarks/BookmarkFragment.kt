@@ -139,7 +139,7 @@ class BookmarkFragment : Fragment(), SystemInsetsPaddedFragment {
                                     navController
                                         .navigate(
                                             BookmarkFragmentDirections.actionGlobalTurnOnSync(
-                                                entrypoint = FenixFxAEntryPoint.BookmarkView,
+                                                entrypoint = FenixFxAEntryPoint.BookmarkView.name,
                                             ),
                                         )
                                 },
@@ -289,9 +289,9 @@ class BookmarkFragment : Fragment(), SystemInsetsPaddedFragment {
     private fun showTabTray(openInPrivate: Boolean = false) {
         val directions = BookmarkFragmentDirections.actionGlobalTabManagementFragment(
             page = if (openInPrivate) {
-                Page.PrivateTabs
+                Page.PrivateTabs.name
             } else {
-                Page.NormalTabs
+                Page.NormalTabs.name
             },
         )
         navigateToBookmarkFragment(directions = directions)

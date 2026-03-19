@@ -116,7 +116,7 @@ class DefaultShareController(
 
     override fun handleReauth() {
         val directions = ShareFragmentDirections.actionGlobalAccountProblemFragment(
-            entrypoint = fxaEntrypoint as FenixFxAEntryPoint,
+            entrypoint = (fxaEntrypoint as FenixFxAEntryPoint).name,
         )
         navController.nav(R.id.shareFragment, directions)
         dismiss(ShareController.Result.DISMISSED)
@@ -205,7 +205,7 @@ class DefaultShareController(
     override fun handleSignIn() {
         SyncAccount.signInToSendTab.record(NoExtras())
         val directions = ShareFragmentDirections.actionGlobalTurnOnSync(
-            entrypoint = fxaEntrypoint as FenixFxAEntryPoint,
+            entrypoint = (fxaEntrypoint as FenixFxAEntryPoint).name,
         )
         navController.nav(R.id.shareFragment, directions)
         dismiss(ShareController.Result.DISMISSED)

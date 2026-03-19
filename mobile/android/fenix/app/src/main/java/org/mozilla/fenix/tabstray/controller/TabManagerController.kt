@@ -665,7 +665,7 @@ class DefaultTabManagerController(
     override fun handleSignInClicked() {
         navController.navigate(
             TabManagementFragmentDirections.actionGlobalTurnOnSync(
-                entrypoint = FenixFxAEntryPoint.SyncedTabsMenu,
+                entrypoint = FenixFxAEntryPoint.SyncedTabsMenu.name,
             ),
         )
     }
@@ -677,7 +677,7 @@ class DefaultTabManagerController(
             TabManagementFragmentDirections.actionGlobalAccountSettingsFragment()
         } else {
             TabManagementFragmentDirections.actionGlobalTurnOnSync(
-                entrypoint = FenixFxAEntryPoint.NavigationInteraction,
+                entrypoint = FenixFxAEntryPoint.NavigationInteraction.name,
             )
         }
         navController.navigate(direction)

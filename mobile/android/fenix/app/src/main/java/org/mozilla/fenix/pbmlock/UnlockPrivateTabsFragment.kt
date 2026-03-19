@@ -31,6 +31,7 @@ import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.registerForActivityResult
 import org.mozilla.fenix.ext.requireComponents
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.home.HomeFragmentDirections
 import org.mozilla.fenix.settings.biometric.DefaultBiometricUtils
 import org.mozilla.fenix.tabstray.redux.state.Page
@@ -42,7 +43,7 @@ import org.mozilla.fenix.theme.FirefoxTheme
 class UnlockPrivateTabsFragment : Fragment(), UserInteractionHandler, SystemInsetsPaddedFragment {
     private lateinit var startForResult: ActivityResultLauncher<Intent>
     private val args: UnlockPrivateTabsFragmentArgs by navArgs()
-    private val navigationOrigin by lazy { args.navigationOrigin }
+    private val navigationOrigin by lazy { args.navigationOrigin.toEnum<NavigationOrigin>() }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -133,7 +134,7 @@ class UnlockPrivateTabsFragment : Fragment(), UserInteractionHandler, SystemInse
                 if (hasNormalTabs) {
                     findNavController().navigate(
                         HomeFragmentDirections.actionGlobalTabManagementFragment(
-                            page = Page.NormalTabs,
+                            page = Page.NormalTabs.name,
                         ),
                     )
                 }
@@ -146,7 +147,7 @@ class UnlockPrivateTabsFragment : Fragment(), UserInteractionHandler, SystemInse
 
                 findNavController().navigate(
                     HomeFragmentDirections.actionGlobalTabManagementFragment(
-                        page = Page.NormalTabs,
+                        page = Page.NormalTabs.name,
                     ),
                 )
             }
@@ -166,7 +167,7 @@ class UnlockPrivateTabsFragment : Fragment(), UserInteractionHandler, SystemInse
         if (navigationOrigin == NavigationOrigin.TABS_TRAY) {
             findNavController().navigate(
                 HomeFragmentDirections.actionGlobalTabManagementFragment(
-                    page = Page.PrivateTabs,
+                    page = Page.PrivateTabs.name,
                 ),
             )
         }

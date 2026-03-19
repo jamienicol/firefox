@@ -212,7 +212,7 @@ class ExternalAppBrowserFragment : BaseBrowserFragment(), SystemInsetsPaddedFrag
                                 certificate = tab.content.securityInfo.certificate,
                                 permissionHighlights = tab.content.permissionHighlights,
                                 isTrackingProtectionEnabled = tab.trackingProtection.enabled && !contains,
-                                cookieBannerUIMode = cookieBannerUIMode,
+                                cookieBannerUIMode = cookieBannerUIMode.name,
                             )
                         } else {
                             ExternalAppBrowserFragmentDirections
@@ -227,7 +227,7 @@ class ExternalAppBrowserFragment : BaseBrowserFragment(), SystemInsetsPaddedFrag
                                     certificateName = tab.content.securityInfo.issuer,
                                     permissionHighlights = tab.content.permissionHighlights,
                                     isTrackingProtectionEnabled = tab.trackingProtection.enabled && !contains,
-                                    cookieBannerUIMode = cookieBannerUIMode,
+                                    cookieBannerUIMode = cookieBannerUIMode.name,
                                 )
                         }
                         nav(R.id.externalAppBrowserFragment, directions)

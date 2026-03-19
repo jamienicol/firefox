@@ -78,7 +78,7 @@ class DefaultConnectionDetailsController(
                                 certificateName = tab.content.securityInfo.issuer,
                                 permissionHighlights = tab.content.permissionHighlights,
                                 isTrackingProtectionEnabled = isTrackingProtectionEnabled,
-                                cookieBannerUIMode = cookieBannerUIMode,
+                                cookieBannerUIMode = cookieBannerUIMode.name,
                             )
                         navController().navigate(directions)
                     }

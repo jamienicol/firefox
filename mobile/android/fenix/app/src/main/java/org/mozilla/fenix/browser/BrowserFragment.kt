@@ -627,7 +627,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler, SystemIns
 
         if (requireComponents.termsOfUseManager.shouldShowTermsOfUsePromptOnBrowserFragment()) {
             findNavController().navigate(
-                BrowserFragmentDirections.actionGlobalTermsOfUseDialog(Surface.BROWSER),
+                BrowserFragmentDirections.actionGlobalTermsOfUseDialog(Surface.BROWSER.name),
             )
         }
     }
@@ -700,7 +700,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler, SystemIns
                                 certificate = tab.content.securityInfo.certificate,
                                 permissionHighlights = tab.content.permissionHighlights,
                                 isTrackingProtectionEnabled = isTrackingProtectionEnabled,
-                                cookieBannerUIMode = cookieBannerUIMode,
+                                cookieBannerUIMode = cookieBannerUIMode.name,
                             )
                         } else {
                             BrowserFragmentDirections.actionBrowserFragmentToQuickSettingsSheetDialogFragment(
@@ -714,7 +714,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler, SystemIns
                                 certificateName = tab.content.securityInfo.issuer,
                                 permissionHighlights = tab.content.permissionHighlights,
                                 isTrackingProtectionEnabled = isTrackingProtectionEnabled,
-                                cookieBannerUIMode = cookieBannerUIMode,
+                                cookieBannerUIMode = cookieBannerUIMode.name,
                             )
                         }
                         nav(R.id.browserFragment, directions)

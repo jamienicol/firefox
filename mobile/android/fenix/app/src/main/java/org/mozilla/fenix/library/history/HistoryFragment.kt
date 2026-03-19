@@ -119,6 +119,7 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.library.LibraryPageFragment
 import org.mozilla.fenix.library.history.HistoryFragmentAction.SearchClicked
 import org.mozilla.fenix.library.history.HistoryFragmentAction.SearchDismissed
+import org.mozilla.fenix.library.historymetadata.HistoryMetadataGroupFragment
 import org.mozilla.fenix.library.history.state.HistoryTelemetryMiddleware
 import org.mozilla.fenix.library.history.state.bindings.MenuBinding
 import org.mozilla.fenix.library.history.state.bindings.PendingDeletionBinding
@@ -613,9 +614,9 @@ class HistoryFragment :
             R.id.historyFragment,
             HistoryFragmentDirections.actionGlobalTabManagementFragment(
                 page = if (openInPrivate) {
-                    Page.PrivateTabs
+                    Page.PrivateTabs.name
                 } else {
-                    Page.NormalTabs
+                    Page.NormalTabs.name
                 },
             ),
         )
@@ -659,10 +660,13 @@ class HistoryFragment :
         when (item) {
             is History.Regular -> openRegularItem(item)
             is History.Group -> {
+                findNavController().currentBackStackEntry?.savedStateHandle?.set(
+                    HistoryMetadataGroupFragment.HISTORY_METADATA_ITEMS_KEY,
+                    ArrayList(item.items),
+                )
                 findNavController().navigate(
                     HistoryFragmentDirections.actionGlobalHistoryMetadataGroup(
                         title = item.title,
-                        historyMetadataItems = item.items.toTypedArray(),
                     ),
                     NavOptions.Builder()
                         .setPopUpTo(R.id.historyMetadataGroupFragment, true)

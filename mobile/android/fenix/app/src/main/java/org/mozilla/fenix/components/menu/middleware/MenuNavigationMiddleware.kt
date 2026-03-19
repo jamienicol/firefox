@@ -100,14 +100,14 @@ class MenuNavigationMiddleware(
                         AuthenticationProblem -> navController.nav(
                             R.id.menuDialogFragment,
                             MenuDialogFragmentDirections.actionGlobalAccountProblemFragment(
-                                entrypoint = action.accesspoint.toFenixFxAEntryPoint(),
+                                entrypoint = action.accesspoint.toFenixFxAEntryPoint().name,
                             ),
                         )
 
                         is Authenticating, NotAuthenticated -> navController.nav(
                             R.id.menuDialogFragment,
                             MenuDialogFragmentDirections.actionGlobalTurnOnSync(
-                                entrypoint = action.accesspoint.toFenixFxAEntryPoint(),
+                                entrypoint = action.accesspoint.toFenixFxAEntryPoint().name,
                             ),
                         )
                     }
@@ -181,9 +181,9 @@ class MenuNavigationMiddleware(
                                 tabIds = arrayOf(currentSession.id),
                                 selectedTabIds = arrayOf(currentSession.id),
                                 saveCollectionStep = if (action.hasCollection) {
-                                    SaveCollectionStep.SelectCollection
+                                    SaveCollectionStep.SelectCollection.name
                                 } else {
-                                    SaveCollectionStep.NameCollection
+                                    SaveCollectionStep.NameCollection.name
                                 },
                             ),
                             navOptions = NavOptions.Builder()

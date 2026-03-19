@@ -174,7 +174,7 @@ class TrackingProtectionFragment : PreferenceFragmentCompat(), SystemInsetsPadde
             nav(
                 R.id.trackingProtectionFragment,
                 TrackingProtectionFragmentDirections
-                    .actionTrackingProtectionFragmentToTrackingProtectionBlockingFragment(mode),
+                    .actionTrackingProtectionFragmentToTrackingProtectionBlockingFragment(mode.name),
             )
         }
 

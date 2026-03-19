@@ -34,8 +34,10 @@ import org.mozilla.fenix.databinding.FragmentQuickSettingsDialogSheetBinding
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnum
 import org.mozilla.fenix.settings.PhoneFeature
 import org.mozilla.fenix.settings.quicksettings.protections.ProtectionsView
+import org.mozilla.fenix.trackingprotection.CookieBannerUIMode
 
 /**
  * Dialog that presents the user with information about
@@ -59,6 +61,7 @@ class QuickSettingsSheetDialogFragment : FenixDialogFragment() {
 
     private var tryToRequestPermissions: Boolean = false
     private val args by navArgs<QuickSettingsSheetDialogFragmentArgs>()
+    private val cookieBannerUIMode by lazy { args.cookieBannerUIMode.toEnum<CookieBannerUIMode>() }
 
     private var _binding: FragmentQuickSettingsDialogSheetBinding? = null
 
@@ -93,7 +96,7 @@ class QuickSettingsSheetDialogFragment : FenixDialogFragment() {
             permissionHighlights = args.permissionHighlights,
             sessionId = args.sessionId,
             isTrackingProtectionEnabled = args.isTrackingProtectionEnabled,
-            cookieBannerUIMode = args.cookieBannerUIMode,
+            cookieBannerUIMode = cookieBannerUIMode,
         )
 
         quickSettingsController = DefaultQuickSettingsController(

@@ -141,7 +141,7 @@ class TranslationSettingsFragment : Fragment(), UserInteractionHandler, SystemIn
         return if (findNavController().previousBackStackEntry?.destination?.id == R.id.browserFragment) {
             findNavController().navigate(
                 TranslationSettingsFragmentDirections.actionTranslationSettingsFragmentToTranslationsDialogFragment(
-                    translationsDialogAccessPoint = TranslationsDialogAccessPoint.TranslationsOptions,
+                    translationsDialogAccessPoint = TranslationsDialogAccessPoint.TranslationsOptions.name,
                 ),
             )
             true

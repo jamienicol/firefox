@@ -67,6 +67,7 @@ import org.mozilla.fenix.ext.registerForActivityResult
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.ext.toEnumOrDefault
 import org.mozilla.fenix.home.HomeScreenViewModel
 import org.mozilla.fenix.navigation.DefaultNavControllerProvider
 import org.mozilla.fenix.navigation.NavControllerProvider
@@ -159,7 +160,9 @@ class TabManagementFragment : DialogFragment() {
         dialog?.window?.setDimAmount(0f)
 
         val args by navArgs<TabManagementFragmentArgs>()
-        args.accessPoint.takeIf { it != AccessPoint.None }?.let {
+        val accessPoint = args.accessPoint.toEnumOrDefault(AccessPoint.None)
+        val initialPage = args.page.toEnumOrDefault(Page.NormalTabs)
+        accessPoint.takeIf { it != AccessPoint.None }?.let {
             TabsTray.accessPoint[it.name.lowercase()].add()
         }
         val initialMode = if (args.enterMultiselect) {
@@ -167,7 +170,6 @@ class TabManagementFragment : DialogFragment() {
         } else {
             TabsTrayState.Mode.Normal
         }
-        val initialPage = args.page
         val initialInactiveExpanded = requireComponents.appStore.state.inactiveTabsExpanded
 
         tabsTrayStore = storeProvider.get { restoredState ->

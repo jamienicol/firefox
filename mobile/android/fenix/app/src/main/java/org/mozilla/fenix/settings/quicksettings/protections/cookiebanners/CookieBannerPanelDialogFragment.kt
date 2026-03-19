@@ -20,6 +20,8 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.android.FenixDialogFragment
 import org.mozilla.fenix.databinding.FragmentCookieBannerHandlingDetailsDialogBinding
 import org.mozilla.fenix.ext.requireComponents
+import org.mozilla.fenix.ext.toEnum
+import org.mozilla.fenix.trackingprotection.CookieBannerUIMode
 import org.mozilla.fenix.trackingprotection.ProtectionsState
 import org.mozilla.fenix.trackingprotection.ProtectionsStore
 
@@ -30,6 +32,7 @@ class CookieBannerPanelDialogFragment : FenixDialogFragment() {
     @VisibleForTesting
     private lateinit var cookieBannersView: CookieBannerHandlingDetailsView
     private val args by navArgs<CookieBannerPanelDialogFragmentArgs>()
+    private val cookieBannerUIMode by lazy { args.cookieBannerUIMode.toEnum<CookieBannerUIMode>() }
     private var _binding: FragmentCookieBannerHandlingDetailsDialogBinding? = null
 
     override val gravity: Int get() = args.gravity
@@ -56,7 +59,7 @@ class CookieBannerPanelDialogFragment : FenixDialogFragment() {
                     tab = tab,
                     url = args.url,
                     isTrackingProtectionEnabled = args.trackingProtectionEnabled,
-                    cookieBannerUIMode = args.cookieBannerUIMode,
+                    cookieBannerUIMode = cookieBannerUIMode,
                     listTrackers = listOf(),
                     mode = ProtectionsState.Mode.Normal,
                     lastAccessedCategory = "",

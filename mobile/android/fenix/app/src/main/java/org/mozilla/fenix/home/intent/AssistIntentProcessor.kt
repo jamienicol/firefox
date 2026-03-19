@@ -34,7 +34,7 @@ class AssistIntentProcessor : HomeIntentProcessor {
                 sessionId = null,
                 // Will follow this up with adding `ASSIST` as a search source.
                 // https://bugzilla.mozilla.org/show_bug.cgi?id=1808043
-                searchAccessPoint = MetricsUtils.Source.NONE,
+                searchAccessPoint = MetricsUtils.Source.NONE.name,
             )
 
             val options = navOptions {

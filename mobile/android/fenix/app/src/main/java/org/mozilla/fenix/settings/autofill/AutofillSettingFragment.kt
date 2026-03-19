@@ -260,13 +260,13 @@ class AutofillSettingFragment : BiometricPromptPreferenceFragment(), SystemInset
                 .getString(R.string.preferences_credit_cards_sync_cards),
             onSyncSignInClicked = {
                 findNavController().navigate(
-                    NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.AutofillSetting),
+                    NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.AutofillSetting.name),
                 )
             },
             onReconnectClicked = {
                 findNavController().navigate(
                     AutofillSettingFragmentDirections.actionGlobalAccountProblemFragment(
-                        entrypoint = FenixFxAEntryPoint.AutofillSetting,
+                        entrypoint = FenixFxAEntryPoint.AutofillSetting.name,
                     ),
                 )
             },
@@ -284,13 +284,13 @@ class AutofillSettingFragment : BiometricPromptPreferenceFragment(), SystemInset
                     .getString(R.string.preferences_addresses_sync_addresses),
                 onSyncSignInClicked = {
                     findNavController().navigate(
-                        NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.AutofillSetting),
+                        NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.AutofillSetting.name),
                     )
                 },
                 onReconnectClicked = {
                     findNavController().navigate(
                         AutofillSettingFragmentDirections.actionGlobalAccountProblemFragment(
-                            entrypoint = FenixFxAEntryPoint.AutofillSetting,
+                            entrypoint = FenixFxAEntryPoint.AutofillSetting.name,
                         ),
                     )
                 },
@@ -504,7 +504,7 @@ class AutofillSettingFragment : BiometricPromptPreferenceFragment(), SystemInset
 
     private fun syncSignIn() {
         findNavController().navigate(
-            NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.AutofillSetting),
+            NavGraphDirections.actionGlobalTurnOnSync(entrypoint = FenixFxAEntryPoint.AutofillSetting.name),
         )
     }
 

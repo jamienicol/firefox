@@ -198,7 +198,7 @@ class CustomTabBrowserToolbarMiddleware(
                                         permissionHighlights = safeCustomTab.content.permissionHighlights,
                                         isTrackingProtectionEnabled =
                                             safeCustomTab.trackingProtection.enabled && !isExcepted,
-                                        cookieBannerUIMode = cookieBannerUIMode,
+                                        cookieBannerUIMode = cookieBannerUIMode.name,
                                     )
                                 } else {
                                     ExternalAppBrowserFragmentDirections
@@ -214,7 +214,7 @@ class CustomTabBrowserToolbarMiddleware(
                                             permissionHighlights = safeCustomTab.content.permissionHighlights,
                                             isTrackingProtectionEnabled =
                                                 safeCustomTab.trackingProtection.enabled && !isExcepted,
-                                            cookieBannerUIMode = cookieBannerUIMode,
+                                            cookieBannerUIMode = cookieBannerUIMode.name,
                                         )
                                 }
                                 navController.nav(
@@ -265,7 +265,7 @@ class CustomTabBrowserToolbarMiddleware(
                 navController.nav(
                     R.id.externalAppBrowserFragment,
                     BrowserFragmentDirections.actionGlobalMenuDialogFragment(
-                        accesspoint = MenuAccessPoint.External,
+                        accesspoint = MenuAccessPoint.External.name,
                         customTabSessionId = customTabId,
                         isSandboxCustomTab = isSandboxCustomTab,
                     ),

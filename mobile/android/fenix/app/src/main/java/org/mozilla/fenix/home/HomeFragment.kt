@@ -99,6 +99,7 @@ import org.mozilla.fenix.components.appstate.AppAction.MessagingAction.Microsurv
 import org.mozilla.fenix.components.appstate.AppAction.ReviewPromptAction.CheckIfEligibleForReviewPrompt
 import org.mozilla.fenix.components.appstate.OrientationMode
 import org.mozilla.fenix.components.components
+import org.mozilla.fenix.components.metrics.MetricsUtils
 import org.mozilla.fenix.components.toolbar.BottomToolbarContainerView
 import org.mozilla.fenix.compose.snackbar.Snackbar
 import org.mozilla.fenix.compose.snackbar.SnackbarState
@@ -167,6 +168,7 @@ import org.mozilla.fenix.search.toolbar.DefaultSearchSelectorController
 import org.mozilla.fenix.search.toolbar.SearchSelectorMenu
 import org.mozilla.fenix.snackbar.FenixSnackbarDelegate
 import org.mozilla.fenix.snackbar.SnackbarBinding
+import org.mozilla.fenix.ext.toEnumOrDefault
 import org.mozilla.fenix.tabstray.redux.state.Page
 import org.mozilla.fenix.tabstray.ui.AccessPoint
 import org.mozilla.fenix.termsofuse.store.DefaultPrivacyNoticeBannerRepository
@@ -188,6 +190,7 @@ import java.lang.ref.WeakReference
 @Suppress("TooManyFunctions", "LargeClass")
 class HomeFragment : Fragment(), SystemInsetsPaddedFragment {
     private val args by navArgs<HomeFragmentArgs>()
+    private val searchAccessPoint by lazy { args.searchAccessPoint.toEnumOrDefault(MetricsUtils.Source.NONE) }
 
     @VisibleForTesting
     internal lateinit var bundleArgs: Bundle
@@ -706,7 +709,7 @@ class HomeFragment : Fragment(), SystemInsetsPaddedFragment {
                         startSearch = bundleArgs.getBoolean(FOCUS_ON_ADDRESS_BAR) ||
                                 FxNimbus.features.oneClickSearch.value().enabled,
                         sessionId = args.sessionToStartSearchFor,
-                        source = args.searchAccessPoint,
+                        source = searchAccessPoint,
                     ),
                     tabStripContent = { TabStrip(toolbarStore) },
                     searchSuggestionsContent = { modifier ->
@@ -952,7 +955,7 @@ class HomeFragment : Fragment(), SystemInsetsPaddedFragment {
 
         observePrivateModeLock {
             findNavController().navigate(
-                NavGraphDirections.actionGlobalUnlockPrivateTabsFragment(NavigationOrigin.HOME_PAGE),
+                NavGraphDirections.actionGlobalUnlockPrivateTabsFragment(NavigationOrigin.HOME_PAGE.name),
             )
         }
 
@@ -1263,7 +1266,7 @@ class HomeFragment : Fragment(), SystemInsetsPaddedFragment {
 
         if (requireComponents.termsOfUseManager.shouldShowTermsOfUsePromptOnHomepage()) {
             findNavController().navigate(
-                BrowserFragmentDirections.actionGlobalTermsOfUseDialog(Surface.HOMEPAGE_NEW_TAB),
+                BrowserFragmentDirections.actionGlobalTermsOfUseDialog(Surface.HOMEPAGE_NEW_TAB.name),
             )
         }
     }
@@ -1351,8 +1354,8 @@ class HomeFragment : Fragment(), SystemInsetsPaddedFragment {
             R.id.homeFragment,
             HomeFragmentDirections.actionGlobalTabManagementFragment(
                 page = when (browsingModeManager.mode) {
-                    BrowsingMode.Normal -> Page.NormalTabs
-                    BrowsingMode.Private -> Page.PrivateTabs
+                    BrowsingMode.Normal -> Page.NormalTabs.name
+                    BrowsingMode.Private -> Page.PrivateTabs.name
                 },
             ),
         )
@@ -1461,7 +1464,7 @@ class HomeFragment : Fragment(), SystemInsetsPaddedFragment {
             toolbarStore = toolbarStore,
             navController = findNavController(),
             tabId = args.sessionToStartSearchFor,
-            searchAccessPoint = args.searchAccessPoint,
+            searchAccessPoint = searchAccessPoint,
         ).also {
             awesomeBarComposable = it
         }

@@ -168,7 +168,7 @@ class BrowserToolbarMiddleware(
                 navController.nav(
                     R.id.homeFragment,
                     HomeFragmentDirections.actionGlobalMenuDialogFragment(
-                        accesspoint = MenuAccessPoint.Home,
+                        accesspoint = MenuAccessPoint.Home.name,
                     ),
                 )
                 removeMenuButtonHighlight()
@@ -180,8 +180,8 @@ class BrowserToolbarMiddleware(
                     R.id.homeFragment,
                     NavGraphDirections.actionGlobalTabManagementFragment(
                         page = when (browsingModeManager.mode) {
-                            Normal -> Page.NormalTabs
-                            Private -> Page.PrivateTabs
+                            Normal -> Page.NormalTabs.name
+                            Private -> Page.PrivateTabs.name
                         },
                     ),
                 )

@@ -215,11 +215,11 @@
         <argument
             android:name="page"
             android:defaultValue="NormalTabs"
-            app:argType="org.mozilla.fenix.tabstray.redux.state.Page" />
+            app:argType="string" />
         <argument
             android:name="accessPoint"
             android:defaultValue="None"
-            app:argType="org.mozilla.fenix.tabstray.ui.AccessPoint" />
+            app:argType="string" />
     </dialog>
 
     <fragment
@@ -259,7 +259,7 @@
         <argument
             android:name="search_access_point"
             android:defaultValue="NONE"
-            app:argType="org.mozilla.fenix.components.metrics.MetricsUtils$Source" />
+            app:argType="string" />
         <argument
             android:name="focusOnAddressBar"
             android:defaultValue="false"
@@ -328,7 +328,7 @@
         android:name="org.mozilla.fenix.termsofuse.ui.TermsOfUseBottomSheetFragment">
         <argument
             android:name="surface"
-            app:argType="org.mozilla.fenix.termsofuse.store.Surface"
+            app:argType="string"
             app:nullable="false" />
     </dialog>
 
@@ -348,7 +348,7 @@
         <argument
             android:name="search_access_point"
             android:defaultValue="NONE"
-            app:argType="org.mozilla.fenix.components.metrics.MetricsUtils$Source" />
+            app:argType="string" />
         <argument
             android:name="search_engine"
             android:defaultValue="@null"
@@ -372,7 +372,7 @@
         tools:layout="@layout/fragment_manage_site_permissions_feature_phone">
         <argument
             android:name="phoneFeature"
-            app:argType="org.mozilla.fenix.settings.PhoneFeature" />
+            app:argType="string" />
     </fragment>
 
     <fragment
@@ -451,9 +451,6 @@
         <argument
             android:name="title"
             app:argType="string" />
-        <argument
-            android:name="historyMetadataItems"
-            app:argType="org.mozilla.fenix.library.history.History[]" />
     </fragment>
 
     <fragment
@@ -941,7 +938,7 @@
             app:destination="@id/pairFragment" />
         <argument
             android:name="entrypoint"
-            app:argType="org.mozilla.fenix.components.accounts.FenixFxAEntryPoint" />
+            app:argType="string" />
     </fragment>
 
     <fragment
@@ -951,7 +948,7 @@
         tools:layout="@layout/fragment_pair" >
         <argument
             android:name="entrypoint"
-            app:argType="org.mozilla.fenix.components.accounts.FenixFxAEntryPoint" />
+            app:argType="string" />
     </fragment>
 
     <fragment
@@ -1145,7 +1142,7 @@
             app:argType="long" />
         <argument
             android:name="saveCollectionStep"
-            app:argType="org.mozilla.fenix.collections.SaveCollectionStep"
+            app:argType="string"
             app:nullable="false" />
     </dialog>
 
@@ -1226,7 +1223,7 @@
             app:argType="boolean" />
         <argument
             android:name="cookieBannerUIMode"
-            app:argType="org.mozilla.fenix.trackingprotection.CookieBannerUIMode" />
+            app:argType="string" />
     </dialog>
     <fragment
         android:id="@+id/accountProblemFragment"
@@ -1236,7 +1233,7 @@
             app:destination="@id/signOutFragment" />
         <argument
             android:name="entrypoint"
-            app:argType="org.mozilla.fenix.components.accounts.FenixFxAEntryPoint" />
+            app:argType="string" />
     </fragment>
     <dialog
         android:id="@+id/signOutFragment"
@@ -1257,7 +1254,7 @@
             app:argType="boolean" />
         <argument
             android:name="cookieBannerUIMode"
-            app:argType="org.mozilla.fenix.trackingprotection.CookieBannerUIMode" />
+            app:argType="string" />
         <argument
             android:name="gravity"
             android:defaultValue="80"
@@ -1315,7 +1312,7 @@
             app:argType="boolean" />
         <argument
             android:name="cookieBannerUIMode"
-            app:argType="org.mozilla.fenix.trackingprotection.CookieBannerUIMode" />
+            app:argType="string" />
         <argument
             android:name="gravity"
             android:defaultValue="80"
@@ -1332,7 +1329,7 @@
         tools:layout="@layout/fragment_tracking_protection_blocking">
         <argument
             android:name="protectionMode"
-            app:argType="org.mozilla.fenix.trackingprotection.TrackingProtectionMode" />
+            app:argType="string" />
     </fragment>
     <fragment
         android:id="@+id/deleteBrowsingDataOnQuitFragment"
@@ -1394,7 +1391,7 @@
         android:name="org.mozilla.fenix.pbmlock.UnlockPrivateTabsFragment">
         <argument
             android:name="navigationOrigin"
-            app:argType="org.mozilla.fenix.pbmlock.NavigationOrigin" />
+            app:argType="string" />
     </fragment>
 
     <fragment
@@ -1422,7 +1419,7 @@
             tools:layout="@layout/fragment_manage_site_permissions_feature_phone">
             <argument
                 android:name="phoneFeature"
-                app:argType="org.mozilla.fenix.settings.PhoneFeature" />
+                app:argType="string" />
             <argument
                 android:name="sitePermissions"
                 app:argType="mozilla.components.concept.engine.permission.SitePermissions" />
@@ -1676,7 +1673,7 @@
         <argument
             android:name="translationsDialogAccessPoint"
             android:defaultValue="Translations"
-            app:argType="org.mozilla.fenix.translations.TranslationsDialogAccessPoint" />
+            app:argType="string" />
         <action
             android:id="@+id/action_translationsDialogFragment_to_translationSettingsFragment"
             app:destination="@id/translations_settings_graph" />
@@ -1764,7 +1761,7 @@
                 app:argType="mozilla.components.concept.engine.translate.ModelState" />
             <argument
                 android:name="itemType"
-                app:argType="org.mozilla.fenix.translations.preferences.downloadlanguages.DownloadLanguageItemTypePreference" />
+                app:argType="string" />
             <argument
                 android:name="languageCode"
                 app:nullable="true"
@@ -1784,7 +1781,7 @@
         app:startDestination="@id/menuDialogFragment">
         <argument
             android:name="accesspoint"
-            app:argType="org.mozilla.fenix.components.menu.MenuAccessPoint" />
+            app:argType="string" />
         <argument
             android:name="customTabSessionId"
             android:defaultValue="@null"
@@ -1799,7 +1796,7 @@
             android:name="org.mozilla.fenix.components.menu.MenuDialogFragment">
             <argument
                 android:name="accesspoint"
-                app:argType="org.mozilla.fenix.components.menu.MenuAccessPoint" />
+                app:argType="string" />
             <argument
                 android:name="customTabSessionId"
                 android:defaultValue="@null"
@@ -1864,7 +1861,7 @@
             app:argType="boolean" />
         <argument
             android:name="cookieBannerUIMode"
-            app:argType="org.mozilla.fenix.trackingprotection.CookieBannerUIMode" />
+            app:argType="string" />
         <argument
             android:name="isLocalPdf"
             app:argType="boolean" />
@@ -1899,7 +1896,7 @@
                 app:argType="boolean" />
             <argument
                 android:name="cookieBannerUIMode"
-                app:argType="org.mozilla.fenix.trackingprotection.CookieBannerUIMode" />
+                app:argType="string" />
             <argument
                 android:name="isLocalPdf"
                 app:argType="boolean" />

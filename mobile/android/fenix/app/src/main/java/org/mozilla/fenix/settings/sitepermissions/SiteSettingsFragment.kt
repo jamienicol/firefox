@@ -124,7 +124,7 @@ class SiteSettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragm
 
     private fun navigateToPhoneFeature(phoneFeature: PhoneFeature) {
         val directions = SiteSettingsFragmentDirections
-            .actionSitePermissionsToManagePhoneFeatures(phoneFeature)
+            .actionSitePermissionsToManagePhoneFeatures(phoneFeature.name)
 
         if (phoneFeature == PhoneFeature.AUTOPLAY_AUDIBLE) {
             Autoplay.visitedSetting.record(NoExtras())

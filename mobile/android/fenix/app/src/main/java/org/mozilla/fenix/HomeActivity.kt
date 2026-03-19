@@ -1074,7 +1074,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
             when (currentFragment) {
                 is HomeFragment -> {
                     val action = NavGraphDirections.actionGlobalMenuDialogFragment(
-                        MenuAccessPoint.Home,
+                        MenuAccessPoint.Home.name,
                     )
                     navHost.navController.navigate(action)
                     return true
@@ -1082,7 +1082,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
 
                 is BrowserFragment -> {
                     val action = NavGraphDirections.actionGlobalMenuDialogFragment(
-                        MenuAccessPoint.Browser,
+                        MenuAccessPoint.Browser.name,
                     )
                     navHost.navController.navigate(action)
                     return true
