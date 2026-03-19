@@ -114,32 +114,17 @@ android.applicationVariants.configureEach { variant ->
 dependencies {
     implementation project(':components:browser-engine-gecko')
     implementation project(':components:feature-addons')
-    implementation project(':components:feature-findinpage')
     implementation project(':components:feature-pwa')
     implementation project(':components:feature-prompts')
-    implementation project(':components:feature-readerview')
     implementation project(':components:lib-crash')
-    implementation project(':components:ui-colors')
-    implementation project(':components:ui-icons')
-    implementation project(':components:ui-tabcounter')
-    implementation project(':components:ui-widgets')
-    implementation libs.androidx.appcompat
-    implementation libs.androidx.constraintlayout
-    implementation libs.androidx.coordinatorlayout
-    implementation libs.androidx.core
-    implementation libs.androidx.core.ktx
+
     implementation libs.androidx.core.splashscreen
-    implementation libs.androidx.fragment
+
     implementation libs.androidx.preferences
-    implementation libs.androidx.recyclerview
-    implementation libs.androidx.swiperefreshlayout
-    implementation libs.androidx.transition
-    implementation libs.androidx.viewpager2
+
     implementation libs.androidx.work.runtime
     implementation libs.google.material
-    implementation libs.play.services.ads.id
     implementation libs.play.review
-    implementation libs.play.review.ktx
 
     debugImplementation libs.leakcanary
 }
