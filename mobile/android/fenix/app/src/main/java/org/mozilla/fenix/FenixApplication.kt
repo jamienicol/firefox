@@ -187,11 +187,17 @@ open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
     }
 
     override fun attachBaseContext(base: Context): Context {
-        // Sets the locale information. Other threads do not have locale aware needs
-        return if (base.isMainProcess()) {
-            LocaleManager.updateResources(base)
+        val splitBase = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            runCatching { base.createContextForSplit("app") }.getOrDefault(base)
         } else {
             base
+        }
+
+        // Sets the locale information. Other threads do not have locale aware needs
+        return if (splitBase.isMainProcess()) {
+            LocaleManager.updateResources(splitBase)
+        } else {
+            splitBase
         }
     }
 
