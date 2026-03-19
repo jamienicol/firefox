@@ -112,6 +112,7 @@ android.applicationVariants.configureEach { variant ->
 }
 
 dependencies {
+    implementation project(':components:browser-engine-gecko')
     implementation project(':components:feature-addons')
     implementation project(':components:feature-findinpage')
     implementation project(':components:feature-pwa')
