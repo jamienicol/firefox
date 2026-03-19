@@ -4,8 +4,13 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:isolatedSplits="true">
 
-    <application android:name="org.mozilla.fenix.BaseApplication" />
+    <application android:name="org.mozilla.fenix.BaseApplication">
+        <provider
+            android:name="io.sentry.android.core.SentryPerformanceProvider"
+            tools:node="remove" />
+    </application>
 
 </manifest>
