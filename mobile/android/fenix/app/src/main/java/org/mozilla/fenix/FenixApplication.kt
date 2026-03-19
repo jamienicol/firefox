@@ -96,7 +96,6 @@ import org.mozilla.fenix.GleanMetrics.PerfStartup
 import org.mozilla.fenix.GleanMetrics.Preferences
 import org.mozilla.fenix.GleanMetrics.SearchDefaultEngine
 import org.mozilla.fenix.GleanMetrics.TabStrip
-import org.mozilla.fenix.GleanMetrics.TermsOfUse
 import org.mozilla.fenix.components.Components
 import org.mozilla.fenix.components.Core
 import org.mozilla.fenix.components.appstate.AppAction
@@ -134,7 +133,6 @@ import org.mozilla.fenix.theme.ThemeProvider
 import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.utils.isLargeScreenSize
 import org.mozilla.fenix.wallpapers.Wallpaper
-import java.util.Date
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 import mozilla.components.support.AppServicesInitializer.Config as AppServicesConfig
@@ -948,10 +946,6 @@ open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
             // Set this early to guarantee it's in every ping from here on.
             distributionId.set(components.distributionIdManager.getDistributionId())
 
-            if (settings.hasAcceptedTermsOfService) {
-                setTermsOfUseStartUpMetrics(settings)
-            }
-
             defaultBrowser.set(Browsers.isDefaultBrowser(applicationContext))
             mozillaProductDetector.getMozillaBrowserDefault(applicationContext)?.also {
                 defaultMozBrowser.set(it)
@@ -1062,11 +1056,6 @@ open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
                 }
             }
         }
-    }
-
-    private fun setTermsOfUseStartUpMetrics(settings: Settings) {
-        TermsOfUse.version.set(settings.termsOfUseAcceptedVersion.toLong())
-        TermsOfUse.date.set(Date(settings.termsOfUseAcceptedTimeInMillis))
     }
 
     @VisibleForTesting

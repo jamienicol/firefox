@@ -27,6 +27,9 @@ import org.mozilla.fenix.nimbus.FxNimbus
  * [client] an instance of [Client] used to upload metrics.
  */
 fun initializeGlean(applicationContext: Context, logger: Logger, isTelemetryUploadEnabled: Boolean, client: Client) {
+    logger.info("Skipping Glean initialization in split build")
+    return
+
     logger.debug("Initializing Glean (uploadEnabled=$isTelemetryUploadEnabled})")
 
     // for performance reasons, this is only available in Nightly or Debug builds
