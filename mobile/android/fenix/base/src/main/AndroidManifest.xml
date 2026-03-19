@@ -6,6 +6,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     android:isolatedSplits="true">
 
-    <application />
+    <application android:name="org.mozilla.fenix.BaseApplication" />
 
 </manifest>

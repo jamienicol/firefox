@@ -8,6 +8,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import mozilla.components.compose.base.utils.inComposePreview
+import org.mozilla.fenix.BaseApplication
 import org.mozilla.fenix.theme.Theme.Dark
 import org.mozilla.fenix.theme.Theme.Light
 
@@ -42,6 +43,7 @@ fun getThemeProvider(): ThemeProvider {
     return if (inComposePreview) {
         DefaultThemeProvider
     } else {
-        LocalContext.current.applicationContext as ThemeProvider
+        ((LocalContext.current.applicationContext as BaseApplication).impl as? ThemeProvider)
+            ?: DefaultThemeProvider
     }
 }

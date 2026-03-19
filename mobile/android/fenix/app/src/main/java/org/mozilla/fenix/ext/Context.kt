@@ -19,6 +19,7 @@ import androidx.annotation.StringRes
 import mozilla.components.compose.base.theme.layout.AcornWindowSize
 import mozilla.components.support.base.log.logger.Logger
 import mozilla.components.support.locale.LocaleManager
+import org.mozilla.fenix.BaseApplication
 import org.mozilla.fenix.FenixApplication
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.Components
@@ -32,14 +33,17 @@ import java.util.Locale
 /**
  * Get the BrowserApplication object from a context.
  */
-val Context.application: FenixApplication
-    get() = applicationContext as FenixApplication
+val Context.application: BaseApplication
+    get() = applicationContext as BaseApplication
+
+val BaseApplication.fenixApplication: FenixApplication
+    get() = requireImpl() as FenixApplication
 
 /**
  * Get the requireComponents of this application.
  */
 val Context.components: Components
-    get() = application.components
+    get() = application.fenixApplication.components
 
 /**
  * Helper function to get the MetricController off of context.

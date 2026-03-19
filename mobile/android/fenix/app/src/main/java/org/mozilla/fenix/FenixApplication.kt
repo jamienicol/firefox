@@ -6,9 +6,9 @@ package org.mozilla.fenix
 
 import android.annotation.SuppressLint
 import android.app.ActivityManager
-import android.app.Application
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Build
 import android.os.Build.VERSION.SDK_INT
 import android.os.StrictMode
@@ -101,7 +101,6 @@ import org.mozilla.fenix.components.initializeGlean
 import org.mozilla.fenix.components.metrics.MozillaProductDetector
 import org.mozilla.fenix.components.startMetricsIfEnabled
 import org.mozilla.fenix.experiments.maybeFetchExperiments
-import org.mozilla.fenix.ext.application
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.containsQueryParameters
 import org.mozilla.fenix.ext.isCustomEngine
@@ -145,7 +144,7 @@ private const val BYTES_TO_MEGABYTES_CONVERSION = 1024.0 * 1024.0
  * Installs [CrashReporter], initializes [Glean] in fenix builds and setup [Megazord] in the main process.
  */
 @Suppress("Registered", "TooManyFunctions", "LargeClass")
-open class FenixApplication : Application(), Provider, ThemeProvider {
+open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
     init {
         // [TIMER] Record startup timestamp as early as reasonable with some degree of consistency.
         //
@@ -162,25 +161,37 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
 
     private val logger = Logger("FenixApplication")
 
-    open val components by lazy { Components(this) }
+    protected lateinit var application: BaseApplication
+        private set
+
+    open val components by lazy { Components(application) }
+    private val applicationContext: Context
+        get() = application.applicationContext
 
     var visibilityLifecycleCallback: VisibilityLifecycleCallback? = null
         private set
 
     protected val applicationScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     protected val ioDispatcher = Dispatchers.IO
+
+    override fun setApplication(application: BaseApplication) {
+        this.application = application
+    }
+
+    private fun isMainProcess() = application.isMainProcess()
+
+    private fun settings() = application.settings()
+
     override fun onCreate() {
-        super.onCreate()
         initializeFenixProcess()
     }
 
-    override fun attachBaseContext(base: Context) {
+    override fun attachBaseContext(base: Context): Context {
         // Sets the locale information. Other threads do not have locale aware needs
-        if (base.isMainProcess()) {
-            val localeAwareContext = LocaleManager.updateResources(base)
-            super.attachBaseContext(localeAwareContext)
+        return if (base.isMainProcess()) {
+            LocaleManager.updateResources(base)
         } else {
-            super.attachBaseContext(base)
+            base
         }
     }
 
@@ -227,7 +238,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         //
         // Note: The A-C / Fenix crash service processes are responsible for their own setup and
         //       should minimize their dependencies to avoid also crashing.
-        runOnlyInMainProcess {
+        application.runOnlyInMainProcess {
             // Initialization is split into two phases based on if libmegazord is fully initialized.
             setupEarlyMain()
             setupPostMegazord()
@@ -248,7 +259,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         // We delay the Glean initialization until we have user consent from onboarding.
         // If onboarding is disabled (when in local builds), continue to initialize Glean.
         if (components.fenixOnboarding.userHasBeenOnboarded() || !FeatureFlags.onboardingFeatureEnabled) {
-            initializeGlean(this, logger, settings().isTelemetryEnabled, components.core.client)
+            initializeGlean(application, logger, settings().isTelemetryEnabled, components.core.client)
         }
     }
 
@@ -370,13 +381,13 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
 
         GlobalFxSuggestDependencyProvider.initialize(components.fxSuggest.storage)
 
-        visibilityLifecycleCallback = VisibilityLifecycleCallback(getSystemService())
-        registerActivityLifecycleCallbacks(visibilityLifecycleCallback)
-        registerActivityLifecycleCallbacks(MarkersActivityLifecycleCallbacks(components.core.engine))
+        visibilityLifecycleCallback = VisibilityLifecycleCallback(application.getSystemService())
+        application.registerActivityLifecycleCallbacks(visibilityLifecycleCallback)
+        application.registerActivityLifecycleCallbacks(MarkersActivityLifecycleCallbacks(components.core.engine))
 
-        components.appStartReasonProvider.registerInAppOnCreate(this)
-        components.startupActivityLog.registerInAppOnCreate(this)
-        components.appLinkIntentLaunchTypeProvider.registerInAppOnCreate(this)
+        components.appStartReasonProvider.registerInAppOnCreate(application)
+        components.startupActivityLog.registerInAppOnCreate(application)
+        components.appLinkIntentLaunchTypeProvider.registerInAppOnCreate(application)
 
         initVisualCompletenessQueueAndQueueTasks()
 
@@ -388,7 +399,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
             VisibilityLifecycleObserver(),
         )
 
-        components.analytics.metricsStorage.tryRegisterAsUsageRecorder(this)
+        components.analytics.metricsStorage.tryRegisterAsUsageRecorder(application)
 
         CoroutineScope(IO).launch {
             components.useCases.wallpaperUseCases.fetchCurrentWallpaperUseCase.invoke()
@@ -517,7 +528,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         // Because it may be slow to capture the storage stats, it might be preferred to
         // create a WorkManager task for this metric, however, I ran out of
         // implementation time and WorkManager is harder to test.
-        StorageStatsMetrics.report(this.applicationContext)
+        StorageStatsMetrics.report(application.applicationContext)
     }
 
     @OptIn(DelicateCoroutinesApi::class)
@@ -560,7 +571,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
             components.nimbus.geckoPrefHandler.start()
             GlobalScope.launch(IO) {
                 components.nimbus.sdk.maybeFetchExperiments(
-                    context = this@FenixApplication,
+                    context = application,
                 )
                 components.nimbus.geckoPrefHandler.getPreferenceStateFromGecko().await()
             }
@@ -656,7 +667,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         return components
             .analytics
             .crashReporter
-            .install(this, ::handleCaughtException)
+            .install(application, ::handleCaughtException)
     }
 
     private fun handleCaughtException() {
@@ -719,14 +730,12 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
 
     @SuppressLint("NewApi")
     override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-
         // Additional logging and breadcrumb to debug memory issues:
         // https://github.com/mozilla-mobile/fenix/issues/12731
 
         logger.info("onTrimMemory(), level=$level, main=${isMainProcess()}")
 
-        runOnlyInMainProcess {
+        application.runOnlyInMainProcess {
             components.analytics.crashReporter.recordCrashBreadcrumb(
                 Breadcrumb(
                     category = "Memory",
@@ -745,7 +754,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
     }
 
     private fun setDayNightTheme() {
-        val settings = this.settings()
+        val settings = application.settings()
         when {
             settings.shouldUseLightTheme -> {
                 AppCompatDelegate.setDefaultNightMode(
@@ -978,7 +987,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
             ramMoreThanThreshold.set(isDeviceRamAboveThreshold)
             deviceTotalRam.set(getDeviceTotalRAM())
 
-            isLargeDevice.set(isLargeScreenSize())
+            isLargeDevice.set(applicationContext.isLargeScreenSize())
         }
 
         with(AndroidAutofill) {
@@ -1031,7 +1040,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
     @VisibleForTesting
     internal fun getMemoryInfo(): ActivityManager.MemoryInfo {
         val memoryInfo = ActivityManager.MemoryInfo()
-        val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val activityManager = application.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
         activityManager.getMemoryInfo(memoryInfo)
 
         return memoryInfo
@@ -1167,7 +1176,7 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
         CustomizeHome.contile.set(settings.showContileFeature)
     }
 
-    override fun onConfigurationChanged(config: android.content.res.Configuration) {
+    override fun onConfigurationChanged(config: Configuration) {
         // Workaround for androidx appcompat issue where follow system day/night mode config changes
         // are not triggered when also using createConfigurationContext like we do in LocaleManager
         // https://issuetracker.google.com/issues/143570309#comment3
@@ -1181,12 +1190,9 @@ open class FenixApplication : Application(), Provider, ThemeProvider {
             // There's a strict mode violation in A-Cs LocaleManager which
             // reads from shared prefs: Bug 1793169
             components.strictMode.allowViolation(StrictMode::allowThreadDiskReads) {
-                super.onConfigurationChanged(config)
                 // Update locale on main process
-                LocaleManager.updateResources(this)
+                LocaleManager.updateResources(application)
             }
-        } else {
-            super.onConfigurationChanged(config)
         }
     }
 

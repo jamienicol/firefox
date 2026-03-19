@@ -57,6 +57,7 @@ import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.databinding.AmoCollectionOverrideDialogBinding
 import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.application
+import org.mozilla.fenix.ext.fenixApplication
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.navigateToNotificationsSettings
@@ -568,7 +569,7 @@ class SettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragment 
         if (!Config.channel.isReleased) {
             preferenceLeakCanary?.setOnPreferenceChangeListener { _, newValue ->
                 val isEnabled = newValue == true
-                context?.application?.updateLeakCanaryState(isEnabled)
+                context?.application?.fenixApplication?.updateLeakCanaryState(isEnabled)
                 true
             }
         }

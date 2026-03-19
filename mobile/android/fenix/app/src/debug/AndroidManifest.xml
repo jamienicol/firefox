@@ -16,9 +16,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
-    <application
-        tools:replace="android:name"
-        android:name="org.mozilla.fenix.FenixApplication">
+    <application>
 
         <activity android:name="androidx.activity.ComponentActivity" />
     </application>
