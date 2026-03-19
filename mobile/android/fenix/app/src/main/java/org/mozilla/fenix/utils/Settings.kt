@@ -54,6 +54,7 @@ import org.mozilla.fenix.debugsettings.addresses.EmptyAddressesDebugRegionReposi
 import org.mozilla.fenix.debugsettings.addresses.SharedPrefsAddressesDebugRegionRepository
 import org.mozilla.fenix.ext.TALL_SCREEN_HEIGHT_DP
 import org.mozilla.fenix.ext.WIDE_SCREEN_WIDTH_DP
+import org.mozilla.fenix.ext.appResources
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.pixelSizeFor
@@ -535,12 +536,12 @@ class Settings(
     )
 
     var privateBrowsingModeLocked by booleanPreference(
-        appContext.getString(R.string.pref_key_private_browsing_locked),
+        appContext.appResources.getString(R.string.pref_key_private_browsing_locked),
         false,
     )
 
     var shouldReturnToBrowser by booleanPreference(
-        appContext.getString(R.string.pref_key_return_to_browser),
+        appContext.appResources.getString(R.string.pref_key_return_to_browser),
         false,
     )
 
@@ -1035,16 +1036,16 @@ class Settings(
 
     fun getTabTimeoutString(): String = when {
         closeTabsAfterOneDay -> {
-            appContext.getString(R.string.close_tabs_after_one_day_summary)
+            appContext.appResources.getString(R.string.close_tabs_after_one_day_summary)
         }
         closeTabsAfterOneWeek -> {
-            appContext.getString(R.string.close_tabs_after_one_week_summary)
+            appContext.appResources.getString(R.string.close_tabs_after_one_week_summary)
         }
         closeTabsAfterOneMonth -> {
-            appContext.getString(R.string.close_tabs_after_one_month_summary)
+            appContext.appResources.getString(R.string.close_tabs_after_one_month_summary)
         }
         else -> {
-            appContext.getString(R.string.close_tabs_manually_summary)
+            appContext.appResources.getString(R.string.close_tabs_manually_summary)
         }
     }
 
@@ -1063,18 +1064,18 @@ class Settings(
      */
     fun getOpenLinksInAppsString(): String =
         when (openLinksInExternalApp) {
-            appContext.getString(R.string.pref_key_open_links_in_apps_always) -> {
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_always) -> {
                 if (lastKnownMode == BrowsingMode.Normal) {
-                    appContext.getString(R.string.preferences_open_links_in_apps_always)
+                    appContext.appResources.getString(R.string.preferences_open_links_in_apps_always)
                 } else {
-                    appContext.getString(R.string.preferences_open_links_in_apps_ask)
+                    appContext.appResources.getString(R.string.preferences_open_links_in_apps_ask)
                 }
             }
-            appContext.getString(R.string.pref_key_open_links_in_apps_ask) -> {
-                appContext.getString(R.string.preferences_open_links_in_apps_ask)
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_ask) -> {
+                appContext.appResources.getString(R.string.preferences_open_links_in_apps_ask)
             }
             else -> {
-                appContext.getString(R.string.preferences_open_links_in_apps_never)
+                appContext.appResources.getString(R.string.preferences_open_links_in_apps_never)
             }
         }
 
@@ -1083,17 +1084,17 @@ class Settings(
      */
     fun getRemoteSettingsServerString(): String =
         when (remoteSettingsServer) {
-            appContext.getString(R.string.remote_settings_server_prod) -> {
-                appContext.getString(R.string.preferences_remote_settings_server_prod_label)
+            appContext.appResources.getString(R.string.remote_settings_server_prod) -> {
+                appContext.appResources.getString(R.string.preferences_remote_settings_server_prod_label)
             }
-            appContext.getString(R.string.remote_settings_server_stage) -> {
-                appContext.getString(R.string.preferences_remote_settings_server_stage_label)
+            appContext.appResources.getString(R.string.remote_settings_server_stage) -> {
+                appContext.appResources.getString(R.string.preferences_remote_settings_server_stage_label)
             }
-            appContext.getString(R.string.remote_settings_server_dev) -> {
-                appContext.getString(R.string.preferences_remote_settings_server_dev_label)
+            appContext.appResources.getString(R.string.remote_settings_server_dev) -> {
+                appContext.appResources.getString(R.string.preferences_remote_settings_server_dev_label)
             }
             else -> {
-                appContext.getString(R.string.preferences_remote_settings_server_prod_label)
+                appContext.appResources.getString(R.string.preferences_remote_settings_server_prod_label)
             }
         }
 
@@ -1247,7 +1248,7 @@ class Settings(
 
     var remoteSettingsServer by stringPreference(
         key = appContext.getPreferenceKey(R.string.pref_key_remote_settings_server),
-        default = appContext.getString(R.string.remote_settings_server_prod),
+        default = appContext.appResources.getString(R.string.remote_settings_server_prod),
     )
 
     /**
@@ -1270,7 +1271,7 @@ class Settings(
 
     val blockCookiesSelectionInCustomTrackingProtection by stringPreference(
         key = appContext.getPreferenceKey(R.string.pref_key_tracking_protection_custom_cookies_select),
-        default = appContext.getString(R.string.total_protection),
+        default = appContext.appResources.getString(R.string.total_protection),
     )
 
     val blockTrackingContentInCustomTrackingProtection by booleanPreference(
@@ -1280,7 +1281,7 @@ class Settings(
 
     val blockTrackingContentSelectionInCustomTrackingProtection by stringPreference(
         appContext.getPreferenceKey(R.string.pref_key_tracking_protection_custom_tracking_content_select),
-        appContext.getString(R.string.all),
+        appContext.appResources.getString(R.string.all),
     )
 
     val blockCryptominersInCustomTrackingProtection by booleanPreference(
@@ -1311,13 +1312,13 @@ class Settings(
     val blockSuspectedFingerprinters: Boolean
         get() {
             return blockSuspectedFingerprintersInCustomTrackingProtection &&
-                blockSuspectedFingerprintersSelectionInCustomTrackingProtection == appContext.getString(R.string.all)
+                blockSuspectedFingerprintersSelectionInCustomTrackingProtection == appContext.appResources.getString(R.string.all)
         }
 
     val blockSuspectedFingerprintersPrivateBrowsing: Boolean
         get() {
             return blockSuspectedFingerprintersInCustomTrackingProtection &&
-                blockSuspectedFingerprintersSelectionInCustomTrackingProtection == appContext.getString(
+                blockSuspectedFingerprintersSelectionInCustomTrackingProtection == appContext.appResources.getString(
                     R.string.private_string,
                 )
         }
@@ -1803,10 +1804,10 @@ class Settings(
      */
     fun shouldOpenLinksInApp(isCustomTab: Boolean = false): Boolean {
         return when (openLinksInExternalApp) {
-            appContext.getString(R.string.pref_key_open_links_in_apps_always) -> true
-            appContext.getString(R.string.pref_key_open_links_in_apps_ask) -> true
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_always) -> true
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_ask) -> true
             // Some applications will not work if custom tab never open links in apps, return true if it's custom tab
-            appContext.getString(R.string.pref_key_open_links_in_apps_never) -> isCustomTab
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_never) -> isCustomTab
             else -> false
         }
     }
@@ -1816,9 +1817,9 @@ class Settings(
      */
     fun shouldPromptOpenLinksInApp(): Boolean {
         return when (openLinksInExternalApp) {
-            appContext.getString(R.string.pref_key_open_links_in_apps_always) -> false
-            appContext.getString(R.string.pref_key_open_links_in_apps_ask) -> true
-            appContext.getString(R.string.pref_key_open_links_in_apps_never) -> true
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_always) -> false
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_ask) -> true
+            appContext.appResources.getString(R.string.pref_key_open_links_in_apps_never) -> true
             else -> true
         }
     }
@@ -1826,8 +1827,8 @@ class Settings(
     var openLinksInExternalApp by stringPreference(
         key = appContext.getPreferenceKey(R.string.pref_key_open_links_in_apps),
         default = when (openLinksInExternalAppOld) {
-            true -> appContext.getString(R.string.pref_key_open_links_in_apps_ask)
-            false -> appContext.getString(R.string.pref_key_open_links_in_apps_never)
+            true -> appContext.appResources.getString(R.string.pref_key_open_links_in_apps_ask)
+            false -> appContext.appResources.getString(R.string.pref_key_open_links_in_apps_never)
         },
     )
 
@@ -2923,7 +2924,7 @@ class Settings(
      */
     fun shouldCleanUpDownloadsAutomatically(): Boolean {
         val sharedPreferences = PreferenceManager.getDefaultSharedPreferences(appContext)
-        val cleanupPreferenceKey = appContext.getString(R.string.pref_key_downloads_clean_up_files_automatically)
+        val cleanupPreferenceKey = appContext.appResources.getString(R.string.pref_key_downloads_clean_up_files_automatically)
         return sharedPreferences.getBoolean(cleanupPreferenceKey, false)
     }
 

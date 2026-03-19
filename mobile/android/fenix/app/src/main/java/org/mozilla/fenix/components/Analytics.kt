@@ -42,6 +42,7 @@ import org.mozilla.fenix.crashes.CrashFactCollector
 import org.mozilla.fenix.crashes.NimbusExperimentDataProvider
 import org.mozilla.fenix.crashes.ReleaseRuntimeTagProvider
 import org.mozilla.fenix.crashes.crashReportOption
+import org.mozilla.fenix.ext.appResources
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.perf.lazyMonitored
 import org.mozilla.geckoview.BuildConfig.MOZ_APP_BUILDID
@@ -132,7 +133,7 @@ class Analytics(
             ),
             shouldPrompt = CrashReporter.Prompt.ALWAYS,
             promptConfiguration = CrashReporter.PromptConfiguration(
-                appName = context.getString(R.string.app_name),
+                appName = context.appResources.getString(R.string.app_name),
                 organizationName = "Mozilla",
             ),
             enabled = true,

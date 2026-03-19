@@ -59,6 +59,7 @@ import org.mozilla.fenix.distributions.DefaultDistributionProviderChecker
 import org.mozilla.fenix.distributions.DefaultDistributionSettings
 import org.mozilla.fenix.distributions.DistributionIdManager
 import org.mozilla.fenix.ext.asRecentTabs
+import org.mozilla.fenix.ext.appResources
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.filterState
 import org.mozilla.fenix.ext.settings
@@ -215,9 +216,9 @@ class Components(private val context: Context) {
         RemoteSettingsService(
             context,
             when (context.settings().remoteSettingsServer) {
-                context.getString(R.string.remote_settings_server_prod) -> RemoteSettingsServer.Prod.into()
-                context.getString(R.string.remote_settings_server_dev) -> RemoteSettingsServer.Dev.into()
-                context.getString(R.string.remote_settings_server_stage) -> RemoteSettingsServer.Stage.into()
+                context.appResources.getString(R.string.remote_settings_server_prod) -> RemoteSettingsServer.Prod.into()
+                context.appResources.getString(R.string.remote_settings_server_dev) -> RemoteSettingsServer.Dev.into()
+                context.appResources.getString(R.string.remote_settings_server_stage) -> RemoteSettingsServer.Stage.into()
                 else -> RemoteSettingsServer.Prod.into()
             },
             channel = BuildConfig.BUILD_TYPE,
@@ -262,7 +263,7 @@ class Components(private val context: Context) {
             unlockActivity = AutofillUnlockActivity::class.java,
             confirmActivity = AutofillConfirmActivity::class.java,
             searchActivity = AutofillSearchActivity::class.java,
-            applicationName = context.getString(R.string.app_name),
+            applicationName = context.appResources.getString(R.string.app_name),
             httpClient = core.client,
         )
     }
@@ -404,8 +405,8 @@ class Components(private val context: Context) {
             store = relayEligibilityStore,
             appStore = appStore,
             errorMessages = ErrorMessages(
-                maxMasksReached = context.getString(R.string.email_masks_max_free_tier_reached),
-                errorRetrievingMasks = context.getString(R.string.email_masks_error_retrieving_masks),
+                maxMasksReached = context.appResources.getString(R.string.email_masks_max_free_tier_reached),
+                errorRetrievingMasks = context.appResources.getString(R.string.email_masks_error_retrieving_masks),
             ),
         )
     }

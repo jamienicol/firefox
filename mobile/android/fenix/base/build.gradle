@@ -3,7 +3,7 @@ apply plugin: 'com.android.application'
 android {
     compileSdk { version = release(config.compileSdkMajorVersion) { minorApiLevel = config.compileSdkMinorVersion } }
 
-    namespace = 'org.mozilla.fenix'
+    namespace = 'org.mozilla.fenix.base'
 
     dynamicFeatures = [":app"]
 

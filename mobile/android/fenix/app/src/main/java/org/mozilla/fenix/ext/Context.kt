@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
 import android.content.res.Resources
+import android.os.Build
 import android.provider.Settings
 import android.view.ContextThemeWrapper
 import android.view.View
@@ -57,7 +58,17 @@ fun Context.asActivity() = (this as? ContextThemeWrapper)?.baseContext as? Activ
 fun Context.getPreferenceKey(
     @StringRes resourceId: Int,
 ): String =
-    resources.getString(resourceId)
+    appResources.getString(resourceId)
+
+val Context.appResources: Resources
+    get() = appContext.resources
+
+val Context.appContext: Context
+    get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        runCatching { createContextForSplit("app") }.getOrDefault(this)
+    } else {
+        this
+    }
 
 /**
  * Gets the Root View with an activity context
