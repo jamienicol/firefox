@@ -123,14 +123,19 @@ public class BaseApplication extends Application implements Provider {
 
     private void configureJna(Context context, ClassLoader classLoader)
             throws NoSuchFieldException, IllegalAccessException, IOException {
-        ApplicationInfo applicationInfo = context.getApplicationInfo();
-        String path = getNativeLibraryPath(context, "jnidispatch");
-        if (path == null) {
+        File extractedDispatchLibrary = extractLibrary(context, "jnidispatch");
+        if (extractedDispatchLibrary == null) {
             throw new IllegalStateException("Failed to resolve libjnidispatch.so from base");
         }
 
-        File extractedLibrary = extractJnaLibrary(context, path);
-        System.setProperty("jna.boot.library.path", extractedLibrary.getParent());
+        File extractedMegazordLibrary = extractLibrary(context, "megazord");
+        if (extractedMegazordLibrary == null) {
+            throw new IllegalStateException("Failed to resolve libmegazord.so from base");
+        }
+
+        String extractedLibraryDir = extractedDispatchLibrary.getParent();
+        System.setProperty("jna.boot.library.path", extractedLibraryDir);
+        System.setProperty("jna.library.path", extractedLibraryDir);
     }
 
     private Impl loadImpl(Context context) {
@@ -226,7 +231,13 @@ public class BaseApplication extends Application implements Provider {
         return null;
     }
 
-    private File extractJnaLibrary(Context context, String path) throws IOException {
+    private File extractLibrary(Context context, String libraryName)
+            throws NoSuchFieldException, IllegalAccessException, IOException {
+        String path = getNativeLibraryPath(context, libraryName);
+        if (path == null) {
+            return null;
+        }
+
         if (!path.contains(".apk!/")) {
             return new File(path);
         }
