@@ -26,6 +26,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
+import org.mozilla.gecko.mozglue.GeckoLoader;
 
 public class BaseApplication extends Application implements Provider {
     private static final String APP_SPLIT_NAME = "app";
@@ -135,7 +136,15 @@ public class BaseApplication extends Application implements Provider {
 
         String extractedLibraryDir = extractedDispatchLibrary.getParent();
         System.setProperty("jna.boot.library.path", extractedLibraryDir);
-        System.setProperty("jna.library.path", extractedLibraryDir);
+        String geckoLibraryDir = GeckoLoader.ensureLibraryBase(context);
+        if (geckoLibraryDir == null || geckoLibraryDir.isEmpty() ||
+                geckoLibraryDir.equals(extractedLibraryDir)) {
+            System.setProperty("jna.library.path", extractedLibraryDir);
+        } else {
+            System.setProperty(
+                    "jna.library.path",
+                    extractedLibraryDir + File.pathSeparator + geckoLibraryDir);
+        }
     }
 
     private Impl loadImpl(Context context) {

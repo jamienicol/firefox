@@ -141,10 +141,14 @@ constinit Bootstrap::UniquePtr gBootstrap;
 static void* sqlite_handle = nullptr;
 static void* nspr_handle = nullptr;
 static void* plc_handle = nullptr;
+static void* gkcodecs_handle = nullptr;
+static void* lgpllibs_handle = nullptr;
 #else
 #  define sqlite_handle nss_handle
 #  define nspr_handle nss_handle
 #  define plc_handle nss_handle
+#  define gkcodecs_handle nss_handle
+#  define lgpllibs_handle nss_handle
 #endif
 static void* nss_handle = nullptr;
 
@@ -241,9 +245,14 @@ static mozglueresult loadSQLiteLibs() {
 }
 
 static mozglueresult loadNSSLibs() {
-  if (nss_handle && nspr_handle && plc_handle) return SUCCESS;
+  if (nss_handle && nspr_handle && plc_handle && gkcodecs_handle &&
+      lgpllibs_handle) {
+    return SUCCESS;
+  }
 
   nss_handle = dlopenLibrary("libnss3.so");
+  gkcodecs_handle = dlopenLibrary("libgkcodecs.so");
+  lgpllibs_handle = dlopenLibrary("liblgpllibs.so");
 
 #ifndef MOZ_FOLD_LIBS
   nspr_handle = dlopenLibrary("libnspr4.so");
@@ -254,6 +263,18 @@ static mozglueresult loadNSSLibs() {
   if (!nss_handle) {
     __android_log_print(ANDROID_LOG_ERROR, "GeckoLibLoad",
                         "Couldn't get a handle to libnss3!");
+    return FAILURE;
+  }
+
+  if (!gkcodecs_handle) {
+    __android_log_print(ANDROID_LOG_ERROR, "GeckoLibLoad",
+                        "Couldn't get a handle to libgkcodecs!");
+    return FAILURE;
+  }
+
+  if (!lgpllibs_handle) {
+    __android_log_print(ANDROID_LOG_ERROR, "GeckoLibLoad",
+                        "Couldn't get a handle to liblgpllibs!");
     return FAILURE;
   }
 

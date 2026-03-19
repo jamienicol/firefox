@@ -233,9 +233,21 @@ public final class GeckoLoader {
     return base;
   }
 
+  public static synchronized String ensureLibraryBase(final Context context) {
+    return getLibraryBase(context);
+  }
+
   private static void loadLibsSetupLocked(final Context context) {
     putenv("GRE_HOME=" + getGREDir(context).getPath());
-    putenv("MOZ_ANDROID_LIBDIR=" + getLibraryBase(context));
+    final String libraryBase = getLibraryBase(context);
+    putenv("MOZ_ANDROID_LIBDIR=" + libraryBase);
+    final String jnaLibraryPath = System.getProperty("jna.library.path");
+    if (jnaLibraryPath == null || jnaLibraryPath.isEmpty()) {
+      System.setProperty("jna.library.path", libraryBase);
+    } else if (!jnaLibraryPath.contains(libraryBase)) {
+      System.setProperty(
+          "jna.library.path", jnaLibraryPath + File.pathSeparator + libraryBase);
+    }
   }
 
   @RobocopTarget
@@ -400,16 +412,13 @@ public final class GeckoLoader {
   }
 
   private static synchronized File ensureExtractedLibraryDir(final Context context) {
-    if (sExtractedLibsDir != null && sExtractedLibsDir.isDirectory()) {
-      return sExtractedLibsDir;
-    }
-
     final String abi = getPrimaryCpuAbi(context.getApplicationInfo());
     if (abi == null) {
       return null;
     }
 
-    final File outDir = new File(getGREDir(context), "lib");
+    final File outDir =
+        sExtractedLibsDir != null ? sExtractedLibsDir : new File(getGREDir(context), "lib");
     if (!outDir.exists() && !outDir.mkdirs()) {
       Log.e(LOGTAG, "Couldn't create " + outDir);
       return null;
@@ -433,7 +442,7 @@ public final class GeckoLoader {
       }
     }
 
-    if (!extractedAny) {
+    if (!extractedAny && !outDir.isDirectory()) {
       return null;
     }
 

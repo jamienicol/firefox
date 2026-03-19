@@ -307,11 +307,6 @@ open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
         // construct the instance.
         components.core.engine
 
-        // Kick off initialization of Glean backend off-thread. Glean will continue to queue
-        // metric samples until the backend is ready. If we don't have data-upload consent then
-        // this will be a no-op and initialization may be attempted after onboarding.
-        maybeInitializeGlean()
-
         // Initialize the [BrowserStore] so that [setStartupMetrics] can reference this.
         // Note: This is a historical artifact and should be revisited.
         val store = components.core.store
@@ -360,6 +355,8 @@ open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
      * rendering.
      */
     private fun setupPostMegazord() {
+        maybeInitializeGlean()
+
         setupLeakCanary()
 
         if (components.fenixOnboarding.userHasBeenOnboarded()) {
