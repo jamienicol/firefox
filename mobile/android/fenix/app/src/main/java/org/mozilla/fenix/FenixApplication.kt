@@ -25,6 +25,9 @@ import androidx.emoji2.text.EmojiCompat
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration.Builder
 import androidx.work.Configuration.Provider
+import androidx.work.ListenableWorker
+import androidx.work.WorkerFactory
+import androidx.work.WorkerParameters
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -145,6 +148,42 @@ private const val BYTES_TO_MEGABYTES_CONVERSION = 1024.0 * 1024.0
  */
 @Suppress("Registered", "TooManyFunctions", "LargeClass")
 open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
+    private class SplitWorkerFactory(
+        private val classLoader: ClassLoader,
+    ) : WorkerFactory() {
+        override fun createWorker(
+            appContext: Context,
+            workerClassName: String,
+            workerParameters: WorkerParameters,
+        ): ListenableWorker? {
+            val splitContext = if (SDK_INT >= Build.VERSION_CODES.O) {
+                runCatching { appContext.createContextForSplit("app") }.getOrDefault(appContext)
+            } else {
+                appContext
+            }
+            val candidateClassLoaders = listOfNotNull(
+                splitContext.classLoader,
+                appContext.classLoader,
+                classLoader,
+            )
+
+            candidateClassLoaders.forEach { candidateClassLoader ->
+                val worker = runCatching {
+                    Class.forName(workerClassName, false, candidateClassLoader)
+                        .asSubclass(ListenableWorker::class.java)
+                        .getDeclaredConstructor(Context::class.java, WorkerParameters::class.java)
+                        .newInstance(splitContext, workerParameters)
+                }.getOrNull()
+
+                if (worker != null) {
+                    return worker
+                }
+            }
+
+            return null
+        }
+    }
+
     init {
         // [TIMER] Record startup timestamp as early as reasonable with some degree of consistency.
         //
@@ -1200,7 +1239,10 @@ open class FenixApplication : BaseApplication.Impl, Provider, ThemeProvider {
     }
 
     override val workManagerConfiguration
-        get() = Builder().setMinimumLoggingLevel(INFO).build()
+        get() = Builder()
+            .setMinimumLoggingLevel(INFO)
+            .setWorkerFactory(SplitWorkerFactory(javaClass.classLoader!!))
+            .build()
 
     @OptIn(DelicateCoroutinesApi::class)
     open fun downloadWallpapers() {

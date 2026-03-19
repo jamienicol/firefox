@@ -592,9 +592,7 @@ open class HomeActivity : LocaleAwareAppCompatActivity(), NavHostActivity {
             true,
         )
 
-        if (settings().showContileFeature) {
-            components.core.contileTopSitesUpdater.startPeriodicWork()
-        }
+        components.core.contileTopSitesUpdater.stopPeriodicWork()
 
         if (!settings().hiddenEnginesRestored) {
             settings().hiddenEnginesRestored = true

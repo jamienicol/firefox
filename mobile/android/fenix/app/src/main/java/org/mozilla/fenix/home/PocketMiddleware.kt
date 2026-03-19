@@ -76,13 +76,8 @@ class PocketMiddleware(
             is AppAction.AppLifecycleAction.StartAction -> {
                 visualCompletenessQueue.runIfReadyOrQueue {
                     coroutineScope.launch(IO) {
-                        if (settings.showPocketRecommendationsFeature) {
-                            pocketStoriesService.value.startPeriodicContentRecommendationsRefresh()
-                        }
-
-                        if (settings.showPocketSponsoredStories) {
-                            pocketStoriesService.value.startPeriodicSponsoredContentsRefresh()
-                        }
+                        pocketStoriesService.value.stopPeriodicContentRecommendationsRefresh()
+                        pocketStoriesService.value.stopPeriodicSponsoredContentsRefresh()
                     }
                 }
             }

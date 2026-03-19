@@ -115,7 +115,7 @@ class HomeSettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragm
 
                 when (newBooleanValue) {
                     true -> {
-                        fenixComponents.core.pocketStoriesService.startPeriodicSponsoredContentsRefresh()
+                        fenixComponents.core.pocketStoriesService.stopPeriodicSponsoredContentsRefresh()
                     }
                     false -> {
                         fenixComponents.core.pocketStoriesService.deleteUser()

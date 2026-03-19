@@ -75,7 +75,6 @@ import mozilla.components.feature.session.middleware.undo.UndoMiddleware
 import mozilla.components.feature.sitepermissions.OnDiskSitePermissionsStorage
 import mozilla.components.feature.top.sites.DefaultTopSitesStorage
 import mozilla.components.feature.top.sites.PinnedSiteStorage
-import mozilla.components.feature.webcompat.WebCompatFeature
 import mozilla.components.feature.webnotifications.WebNotificationFeature
 import mozilla.components.lib.dataprotect.SecureAbove22Preferences
 import mozilla.components.service.digitalassetlinks.RelationChecker
@@ -250,9 +249,7 @@ class Core(
             context = context,
             defaultSettings = defaultSettings,
             runtime = geckoRuntime,
-        ).also {
-            WebCompatFeature.install(it)
-        }
+        )
     }
 
     /**
