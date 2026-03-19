@@ -7,6 +7,7 @@ package org.mozilla.fenix;
 import android.app.ActivityManager;
 import android.app.Application;
 import android.content.Context;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
 import android.os.Build;
@@ -15,8 +16,16 @@ import android.os.Process;
 import androidx.work.Configuration.Builder;
 import androidx.work.Configuration.Provider;
 
+import dalvik.system.BaseDexClassLoader;
+
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.util.List;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 public class BaseApplication extends Application implements Provider {
     private static final String APP_SPLIT_NAME = "app";
@@ -112,6 +121,18 @@ public class BaseApplication extends Application implements Provider {
         return impl;
     }
 
+    private void configureJna(Context context, ClassLoader classLoader)
+            throws NoSuchFieldException, IllegalAccessException, IOException {
+        ApplicationInfo applicationInfo = context.getApplicationInfo();
+        String path = getNativeLibraryPath(context, "jnidispatch");
+        if (path == null) {
+            throw new IllegalStateException("Failed to resolve libjnidispatch.so from base");
+        }
+
+        File extractedLibrary = extractJnaLibrary(context, path);
+        System.setProperty("jna.boot.library.path", extractedLibrary.getParent());
+    }
+
     private Impl loadImpl(Context context) {
         if (!isParentProcess(context)) {
             return null;
@@ -119,14 +140,127 @@ public class BaseApplication extends Application implements Provider {
 
         try {
             Context splitContext = getSplitContext(context);
+            configureJna(context, splitContext.getClassLoader());
             Class<?> implClass = splitContext.getClassLoader().loadClass(IMPL_CLASS_NAME);
             Object instance = implClass.getDeclaredConstructor().newInstance();
             return (Impl) instance;
-        } catch (ClassNotFoundException | ClassCastException | IllegalAccessException |
+        } catch (ClassCastException | IllegalAccessException |
                  InstantiationException | NoSuchMethodException | InvocationTargetException |
-                 PackageManager.NameNotFoundException e) {
+                 NoSuchFieldException | PackageManager.NameNotFoundException | IOException |
+                 ClassNotFoundException e) {
             throw new IllegalStateException("Failed to load FenixApplication from split " + APP_SPLIT_NAME, e);
         }
+    }
+
+    private String getNativeLibraryPath(Context context, String libraryName)
+            throws NoSuchFieldException, IllegalAccessException {
+        String path = findLibraryPath(BaseApplication.class.getClassLoader(), libraryName);
+        if (path != null) {
+            return path;
+        }
+
+        path = findLibraryPath(context.getClassLoader(), libraryName);
+        if (path != null) {
+            return path;
+        }
+
+        return getApkLibraryPath(context.getApplicationInfo(), libraryName);
+    }
+
+    private String findLibraryPath(ClassLoader classLoader, String libraryName) {
+        if (classLoader instanceof BaseDexClassLoader) {
+            return ((BaseDexClassLoader) classLoader).findLibrary(libraryName);
+        }
+        return null;
+    }
+
+    private String getApkLibraryPath(ApplicationInfo applicationInfo, String libraryName)
+            throws NoSuchFieldException, IllegalAccessException {
+        String primaryCpuAbi = (String) applicationInfo.getClass().getField("primaryCpuAbi")
+                .get(applicationInfo);
+        if (primaryCpuAbi == null) {
+            return null;
+        }
+
+        String abiSplitPath = getAbiSplitPath(applicationInfo, primaryCpuAbi);
+        String apkPath = abiSplitPath != null ? abiSplitPath : applicationInfo.sourceDir;
+        return apkPath + "!/lib/" + primaryCpuAbi + "/" + System.mapLibraryName(libraryName);
+    }
+
+    private String getAbiSplitPath(ApplicationInfo applicationInfo, String primaryCpuAbi) {
+        String[] splitNames = applicationInfo.splitNames;
+        String[] splitSourceDirs = applicationInfo.splitSourceDirs;
+        if (splitNames == null || splitSourceDirs == null) {
+            return null;
+        }
+
+        String abiToken = primaryCpuAbi.replace('-', '_');
+        String baseConfigSplitName = "config." + abiToken;
+        for (int i = 0; i < splitNames.length && i < splitSourceDirs.length; i++) {
+            String splitName = splitNames[i];
+            if (baseConfigSplitName.equals(splitName)) {
+                return splitSourceDirs[i];
+            }
+        }
+
+        String baseConfigApkName = "split_config." + abiToken + ".apk";
+        for (String splitSourceDir : splitSourceDirs) {
+            if (splitSourceDir != null && splitSourceDir.endsWith("/" + baseConfigApkName)) {
+                return splitSourceDir;
+            }
+        }
+
+        for (String splitSourceDir : splitSourceDirs) {
+            if (splitSourceDir != null && splitSourceDir.contains("split_config." + abiToken + ".apk")) {
+                return splitSourceDir;
+            }
+        }
+
+        for (int i = 0; i < splitNames.length && i < splitSourceDirs.length; i++) {
+            String splitName = splitNames[i];
+            if (splitName != null && splitName.endsWith("." + abiToken)) {
+                return splitSourceDirs[i];
+            }
+        }
+
+        return null;
+    }
+
+    private File extractJnaLibrary(Context context, String path) throws IOException {
+        if (!path.contains(".apk!/")) {
+            return new File(path);
+        }
+
+        int separatorIndex = path.indexOf("!/");
+        String apkPath = path.substring(0, separatorIndex);
+        String entryName = path.substring(separatorIndex + 2);
+        File outputDir = new File(context.getDir("jna", Context.MODE_PRIVATE), "lib");
+        if (!outputDir.exists() && !outputDir.mkdirs()) {
+            throw new IOException("Failed to create JNA output directory");
+        }
+
+        File outputFile = new File(outputDir, new File(entryName).getName());
+        try (ZipFile zipFile = new ZipFile(apkPath)) {
+            ZipEntry entry = zipFile.getEntry(entryName);
+            if (entry == null) {
+                throw new IOException("Missing " + entryName + " in " + apkPath);
+            }
+
+            if (outputFile.exists() && outputFile.length() == entry.getSize()) {
+                return outputFile;
+            }
+
+            try (InputStream inputStream = zipFile.getInputStream(entry);
+                 FileOutputStream outputStream = new FileOutputStream(outputFile)) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = inputStream.read(buffer)) != -1) {
+                    outputStream.write(buffer, 0, read);
+                }
+            }
+        }
+
+        return outputFile;
     }
 
     private Context getSplitContext(Context context) throws PackageManager.NameNotFoundException {
