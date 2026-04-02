@@ -2717,52 +2717,41 @@ nsresult nsWindow::MakeFullScreen(bool aFullScreen) {
   return NS_OK;
 }
 
-mozilla::WindowRenderer* nsWindow::GetWindowRenderer() {
-  if (!mWindowRenderer) {
-    CreateLayerManager();
-  }
-
-  return mWindowRenderer;
-}
-
-void nsWindow::CreateLayerManager() {
-  if (mWindowRenderer) {
-    return;
-  }
-
+bool nsWindow::ShouldCreateWindowRenderer() {
   nsWindow* topLevelWindow = FindTopLevel();
   if (!topLevelWindow || topLevelWindow->mWindowType == WindowType::Invisible) {
     // don't create a layer manager for an invisible top-level window
-    return;
+    return false;
+  }
+  return true;
+}
+
+mozilla::WindowRenderer* nsWindow::CreateFallbackRenderer() {
+  if (ComputeShouldAccelerate()) {
+    return CreateBackgroundedFallbackRenderer();
   }
 
   // Ensure that gfxPlatform is initialized first.
   gfxPlatform::GetPlatform();
+  printf_stderr(" -- creating basic, not accelerated\n");
+  return nsIWidget::CreateFallbackRenderer();
+}
 
-  if (ShouldUseOffMainThreadCompositing()) {
-    LayoutDeviceIntRect rect = GetBounds();
-    CreateCompositor(rect.Width(), rect.Height());
-    if (mWindowRenderer) {
-      if (mLayerViewSupport.IsAttached()) {
-        DispatchToUiThread(
-            "LayerViewSupport::NotifyCompositorCreated",
-            [lvs = mLayerViewSupport,
-             uiCompositorController = GetUiCompositorControllerChild()] {
-              if (auto lvsAccess{lvs.Access()}) {
-                lvsAccess->NotifyCompositorCreated(uiCompositorController);
-              }
-            });
-      }
-      return;
-    }
+void nsWindow::OnWindowRendererCreated() {
+  if (!GetRemoteRenderer() || !mLayerViewSupport.IsAttached()) {
+    return;
   }
 
-  if (ComputeShouldAccelerate()) {
-    mWindowRenderer = CreateBackgroundedFallbackRenderer();
-  } else {
-    printf_stderr(" -- creating basic, not accelerated\n");
-    mWindowRenderer = CreateFallbackRenderer();
-  }
+  // Notify Java that the compositor is ready after the renderer has been
+  // created on the Gecko side.
+  DispatchToUiThread(
+      "LayerViewSupport::NotifyCompositorCreated",
+      [lvs = mLayerViewSupport,
+       uiCompositorController = GetUiCompositorControllerChild()] {
+        if (auto lvsAccess{lvs.Access()}) {
+          lvsAccess->NotifyCompositorCreated(uiCompositorController);
+        }
+      });
 }
 
 void nsWindow::NotifyCompositorSessionLost(

@@ -1628,16 +1628,21 @@ void nsIWidget::NotifyCompositorSessionLost(CompositorSession* aSession) {
   DestroyLayerManager();
 }
 
+bool nsIWidget::ShouldCreateWindowRenderer() { return true; }
+
 bool nsIWidget::ShouldUseOffMainThreadCompositing() {
   return gfxPlatform::UsesOffMainThreadCompositing();
 }
 
 WindowRenderer* nsIWidget::GetWindowRenderer() {
   if (!mWindowRenderer) {
-    if (!mShutdownObserver) {
+    if (!mShutdownObserver || ShouldCreateWindowRenderer()) {
       // We are shutting down, do not try to re-create a LayerManager
       return nullptr;
     }
+
+    EnsureLocalesChangedObserver();
+
     // Try to use an async compositor first, if possible
     if (ShouldUseOffMainThreadCompositing()) {
       CreateCompositor();
@@ -1645,6 +1650,10 @@ WindowRenderer* nsIWidget::GetWindowRenderer() {
 
     if (!mWindowRenderer) {
       mWindowRenderer = CreateFallbackRenderer();
+    }
+
+    if (mWindowRenderer) {
+      OnWindowRendererCreated();
     }
   }
   return mWindowRenderer;

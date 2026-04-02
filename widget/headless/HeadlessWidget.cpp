@@ -232,10 +232,6 @@ LayoutDeviceIntPoint HeadlessWidget::WidgetToScreenOffset() {
   return GetTopLevelWidget()->GetBounds().TopLeft();
 }
 
-WindowRenderer* HeadlessWidget::GetWindowRenderer() {
-  return nsIWidget::GetWindowRenderer();
-}
-
 void HeadlessWidget::SetCompositorWidgetDelegate(
     CompositorWidgetDelegate* delegate) {
   if (delegate) {

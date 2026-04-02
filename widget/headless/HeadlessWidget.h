@@ -83,8 +83,6 @@ class HeadlessWidget final : public nsIWidget {
   }
   InputContext GetInputContext() override { return mInputContext; }
 
-  WindowRenderer* GetWindowRenderer() override;
-
   void SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) override;
 
   [[nodiscard]] nsresult AttachNativeKeyEvent(

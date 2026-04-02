@@ -3807,61 +3807,35 @@ bool nsWindow::HasPendingInputEvent() {
   return GUI_INMOVESIZE == (guiInfo.flags & GUI_INMOVESIZE);
 }
 
-/**************************************************************
- *
- * SECTION: nsIWidget::GetWindowRenderer
- *
- * Get the window renderer associated with this widget.
- *
- **************************************************************/
+WindowRenderer* nsWindow::CreateFallbackRenderer() {
+  MOZ_ASSERT(!mCompositorSession && !mCompositorBridgeChild);
+  MOZ_ASSERT(!mCompositorWidgetDelegate);
 
-WindowRenderer* nsWindow::GetWindowRenderer() {
-  if (mWindowRenderer) {
-    return mWindowRenderer;
+  // Ensure we have a widget proxy even if we're not using the compositor,
+  // since all our transparent window handling lives there.
+  WinCompositorWidgetInitData initData(
+      reinterpret_cast<uintptr_t>(mWnd),
+      reinterpret_cast<uintptr_t>(static_cast<nsIWidget*>(this)),
+      mTransparencyMode);
+  // If we're not using the compositor, the options don't actually matter.
+  CompositorOptions options(false, false);
+  mBasicLayersSurface = new InProcessWinCompositorWidget(initData, options, this);
+  mCompositorWidgetDelegate = mBasicLayersSurface;
+  return nsIWidget::CreateFallbackRenderer();
+}
+
+void nsWindow::OnWindowRendererCreated() {
+  // Update the size constraints now that the layer manager has been created.
+  KnowsCompositor* knowsCompositor = mWindowRenderer->AsKnowsCompositor();
+  if (!knowsCompositor) {
+    return;
   }
 
-  EnsureLocalesChangedObserver();
-
-  // Try OMTC first.
-  if (!mWindowRenderer && ShouldUseOffMainThreadCompositing()) {
-    gfxWindowsPlatform::GetPlatform()->UpdateRenderMode();
-    CreateCompositor();
-  }
-
-  if (!mWindowRenderer) {
-    MOZ_ASSERT(!mCompositorSession && !mCompositorBridgeChild);
-    MOZ_ASSERT(!mCompositorWidgetDelegate);
-
-    // Ensure we have a widget proxy even if we're not using the compositor,
-    // since all our transparent window handling lives there.
-    WinCompositorWidgetInitData initData(
-        reinterpret_cast<uintptr_t>(mWnd),
-        reinterpret_cast<uintptr_t>(static_cast<nsIWidget*>(this)),
-        mTransparencyMode);
-    // If we're not using the compositor, the options don't actually matter.
-    CompositorOptions options(false, false);
-    mBasicLayersSurface =
-        new InProcessWinCompositorWidget(initData, options, this);
-    mCompositorWidgetDelegate = mBasicLayersSurface;
-    mWindowRenderer = CreateFallbackRenderer();
-  }
-
-  NS_ASSERTION(mWindowRenderer, "Couldn't provide a valid window renderer.");
-
-  if (mWindowRenderer) {
-    // Update the size constraints now that the layer manager has been
-    // created.
-    KnowsCompositor* knowsCompositor = mWindowRenderer->AsKnowsCompositor();
-    if (knowsCompositor) {
-      SizeConstraints c = mSizeConstraints;
-      mMaxTextureSize = knowsCompositor->GetMaxTextureSize();
-      c.mMaxSize.width = std::min(c.mMaxSize.width, mMaxTextureSize);
-      c.mMaxSize.height = std::min(c.mMaxSize.height, mMaxTextureSize);
-      nsIWidget::SetSizeConstraints(c);
-    }
-  }
-
-  return mWindowRenderer;
+  SizeConstraints c = mSizeConstraints;
+  mMaxTextureSize = knowsCompositor->GetMaxTextureSize();
+  c.mMaxSize.width = std::min(c.mMaxSize.width, mMaxTextureSize);
+  c.mMaxSize.height = std::min(c.mMaxSize.height, mMaxTextureSize);
+  nsIWidget::SetSizeConstraints(c);
 }
 
 /**************************************************************
@@ -6950,7 +6924,12 @@ bool nsWindow::ShouldUseOffMainThreadCompositing() {
   if (mWindowType == WindowType::Popup && mPopupType == PopupType::Tooltip) {
     return false;
   }
-  return nsIWidget::ShouldUseOffMainThreadCompositing();
+
+  bool shouldUseCompositor = nsIWidget::ShouldUseOffMainThreadCompositing();
+  if (shouldUseCompositor) {
+    gfxWindowsPlatform::GetPlatform()->UpdateRenderMode();
+  }
+  return shouldUseCompositor;
 }
 
 void nsWindow::WindowUsesOMTC() {

@@ -6773,15 +6773,10 @@ bool nsWindow::GetDragInfo(WidgetMouseEvent* aMouseEvent, GdkWindow** aWindow,
   return true;
 }
 
-nsIWidget::WindowRenderer* nsWindow::GetWindowRenderer() {
-  if (mIsDestroyed) {
-    // Prevent external code from triggering the re-creation of the
-    // LayerManager/Compositor during shutdown. Just return what we currently
-    // have, which is most likely null.
-    return mWindowRenderer;
-  }
-
-  return nsIWidget::GetWindowRenderer();
+bool nsWindow::ShouldCreateWindowRenderer() {
+  // Prevent external code from triggering the re-creation of the
+  // LayerManager/Compositor during shutdown.
+  return !mIsDestroyed;
 }
 
 void nsWindow::DidGetNonBlankPaint() {

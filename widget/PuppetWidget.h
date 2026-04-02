@@ -158,7 +158,8 @@ class PuppetWidget final : public nsIWidget,
     return TransparencyMode::Transparent;
   }
 
-  WindowRenderer* GetWindowRenderer() override;
+  bool ShouldUseOffMainThreadCompositing() override;
+  WindowRenderer* CreateFallbackRenderer() override;
 
   // This is used for creating remote layer managers and for re-creating
   // them after a compositor reset. The lambda aInitializeFunc is used to

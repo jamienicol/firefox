@@ -499,25 +499,20 @@ bool PuppetWidget::GetEditCommands(NativeKeyBindingsType aType,
   return true;
 }
 
-WindowRenderer* PuppetWidget::GetWindowRenderer() {
-  if (!mWindowRenderer) {
-    if (XRE_IsParentProcess()) {
-      // On the parent process there is no CompositorBridgeChild which confuses
-      // some layers code, so we use basic layers instead. Note that we create
-      mWindowRenderer = CreateFallbackRenderer();
-      return mWindowRenderer;
-    }
+bool PuppetWidget::ShouldUseOffMainThreadCompositing() { return false; }
 
-    // If we know for sure that the parent side of this BrowserChild is not
-    // connected to the compositor, we don't want to use a "remote" layer
-    // manager like WebRender or Client. Instead we use a Basic one which
-    // can do drawing in this process.
-    MOZ_ASSERT(!mBrowserChild ||
-               mBrowserChild->IsLayersConnected() != Some(true));
-    mWindowRenderer = CreateFallbackRenderer();
+WindowRenderer* PuppetWidget::CreateFallbackRenderer() {
+  // On the parent process there is no CompositorBridgeChild which confuses
+  // some layers code, so we use basic layers instead.
+  if (!XRE_IsParentProcess()) {
+    MOZ_ASSERT(!mBrowserChild || mBrowserChild->IsLayersConnected() != Some(true));
   }
 
-  return mWindowRenderer;
+  // If we know for sure that the parent side of this BrowserChild is not
+  // connected to the compositor, we don't want to use a "remote" layer
+  // manager like WebRender or Client. Instead we use a Basic one which
+  // can do drawing in this process.
+  return nsIWidget::CreateFallbackRenderer();
 }
 
 bool PuppetWidget::CreateRemoteLayerManager(

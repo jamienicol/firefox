@@ -1865,7 +1865,9 @@ class nsIWidget : public nsSupportsWeakReference {
   };
   friend class AutoLayerManagerSetup;
 
+  virtual bool ShouldCreateWindowRenderer();
   virtual bool ShouldUseOffMainThreadCompositing();
+  virtual void OnWindowRendererCreated() {}
 
   static nsIRollupListener* GetActiveRollupListener();
 
@@ -1901,7 +1903,7 @@ class nsIWidget : public nsSupportsWeakReference {
   virtual void CreateCompositor(int aWidth, int aHeight);
   virtual void SetCompositorWidgetDelegate(CompositorWidgetDelegate*) {}
 
-  WindowRenderer* CreateFallbackRenderer();
+  virtual WindowRenderer* CreateFallbackRenderer();
 
   /**
    * Returns a FallbackRenderer which is intended to be temporary while

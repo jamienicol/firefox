@@ -185,8 +185,6 @@ class nsWindow final : public nsIWidget {
   InputContext GetInputContext() override;
   void PostHandleKeyEvent(mozilla::WidgetKeyboardEvent* aEvent) override;
 
-  WindowRenderer* GetWindowRenderer() override;
-
   void NotifyCompositorSessionLost(
       mozilla::layers::CompositorSession* aSession) override;
 
@@ -266,13 +264,15 @@ class nsWindow final : public nsIWidget {
   already_AddRefed<GeckoContentController> CreateRootContentController()
       override;
 
+  bool ShouldCreateWindowRenderer() override;
+  WindowRenderer* CreateFallbackRenderer() override;
+  void OnWindowRendererCreated() override;
   bool UseExternalCompositingSurface() const override { return true; }
 
   static void DumpWindows();
   static void DumpWindows(const nsTArray<nsWindow*>& wins, int indent = 0);
   static void LogWindow(nsWindow* win, int index, int indent);
 
-  void CreateLayerManager();
   void RedrawAll();
 
   void OnSizeChanged(const mozilla::LayoutDeviceIntSize& aSize);

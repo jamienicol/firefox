@@ -781,7 +781,7 @@ class nsWindow : public nsIWidget {
   bool IsAlwaysUndecoratedWindow() const;
 
   // nsIWidget
-  WindowRenderer* GetWindowRenderer() override;
+  bool ShouldCreateWindowRenderer() override;
   void DidGetNonBlankPaint() override;
 
   void SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) override;

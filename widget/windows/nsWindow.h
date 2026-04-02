@@ -241,7 +241,6 @@ class nsWindow final : public nsIWidget {
   void CaptureRollupEvents(bool aDoCapture) override;
   [[nodiscard]] nsresult GetAttention(int32_t aCycleCount) override;
   bool HasPendingInputEvent() override;
-  WindowRenderer* GetWindowRenderer() override;
   void SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) override;
   [[nodiscard]] nsresult OnDefaultButtonLoaded(
       const LayoutDeviceIntRect& aButtonRect) override;
@@ -375,6 +374,8 @@ class nsWindow final : public nsIWidget {
   bool DestroyCalled() { return mDestroyCalled; }
 
   bool IsPopup();
+  WindowRenderer* CreateFallbackRenderer() override;
+  void OnWindowRendererCreated() override;
   bool ShouldUseOffMainThreadCompositing() override;
 
   const IMEContext& DefaultIMC() const { return mDefaultIMC; }
