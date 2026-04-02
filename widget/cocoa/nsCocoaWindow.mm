@@ -851,31 +851,6 @@ void nsCocoaWindow::HandleMainThreadCATransaction() {
   MaybeScheduleUnsuspendAsyncCATransactions();
 }
 
-void nsCocoaWindow::CreateCompositor(int aWidth, int aHeight) {
-  // Ensure we are on the parent process.
-  MOZ_ASSERT(XRE_IsParentProcess());
-
-  // It's possible we might reach this before the GPU process has even
-  // been started. That makes it hard to reason about the different
-  // scenarios, which are:
-  // 1) GPU process started successfully, and we're creating a compositor
-  //    that should run on that process.
-  // 2) GPU process startup failed, and we're creating an in-process
-  //    compositor.
-  // To clarify, we'll attempt to start the gpu process ourself, and
-  // handle the error cases here.
-
-  // Make sure the gfxPlatform is initialized, which is necessary to create
-  // the GPUProcessManager.
-  (void)gfxPlatform::GetPlatform();
-  MOZ_ASSERT(
-      mozilla::gfx::GPUProcessManager::Get(),
-      "Getting the gfxPlatform should have created the GPUProcessManager.");
-
-  // Do the rest of the compositor setup.
-  nsIWidget::CreateCompositor(aWidth, aHeight);
-}
-
 void nsCocoaWindow::GetCompositorWidgetInitData(
     mozilla::widget::CompositorWidgetInitData* aInitData) {
   // If we already have an mNativeLayerRootRemoteMacParent, close it first.

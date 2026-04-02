@@ -3879,6 +3879,10 @@ void nsWindow::SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate) {
     MOZ_ASSERT(mCompositorWidgetDelegate,
                "nsWindow::SetCompositorWidgetDelegate called with a "
                "non-PlatformCompositorWidgetDelegate");
+    MaybeEnableWindowOcclusion(/* aEnable */ true);
+    if (mRequestFxrOutputPending) {
+      GetRemoteRenderer()->SendRequestFxrOutput();
+    }
   } else {
     mCompositorWidgetDelegate = nullptr;
   }

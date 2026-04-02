@@ -377,19 +377,6 @@ void nsWindow::MaybeEnableWindowOcclusion(bool aEnable) {
   }
 }
 
-// This override of CreateCompositor is to add support for sending the IPC
-// call for RequesetFxrOutput as soon as the compositor for this widget is
-// available.
-void nsWindow::CreateCompositor() {
-  nsIWidget::CreateCompositor();
-
-  MaybeEnableWindowOcclusion(/* aEnable */ true);
-
-  if (mRequestFxrOutputPending) {
-    GetRemoteRenderer()->SendRequestFxrOutput();
-  }
-}
-
 void nsWindow::DestroyCompositor() {
   MaybeEnableWindowOcclusion(/* aEnable */ false);
 
