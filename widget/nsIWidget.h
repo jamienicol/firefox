@@ -15,6 +15,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
@@ -1226,6 +1227,10 @@ class nsIWidget : public nsSupportsWeakReference {
    * Note that this tries to create a renderer if it doesn't exist.
    */
   virtual WindowRenderer* GetWindowRenderer();
+
+  using WindowRendererPromise =
+      mozilla::MozPromise<RefPtr<WindowRenderer>, mozilla::Ok, false>;
+  RefPtr<WindowRendererPromise> GetWindowRendererAsync();
 
   /**
    * Returns whether there's an existing window renderer.

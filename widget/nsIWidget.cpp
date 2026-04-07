@@ -1650,6 +1650,14 @@ WindowRenderer* nsIWidget::GetWindowRenderer() {
   return mWindowRenderer;
 }
 
+RefPtr<nsIWidget::WindowRendererPromise> nsIWidget::GetWindowRendererAsync() {
+  RefPtr<WindowRenderer> renderer = GetWindowRenderer();
+  if (renderer) {
+    return WindowRendererPromise::CreateAndResolve(renderer, __func__);
+  }
+  return WindowRendererPromise::CreateAndReject(Ok{}, __func__);
+}
+
 WindowRenderer* nsIWidget::CreateFallbackRenderer() {
   // We don't provide a reference to ourself because we want to stay with the
   // fallback renderer regardless of changes in compositing.
