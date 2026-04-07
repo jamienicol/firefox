@@ -121,8 +121,7 @@ bool WebRenderLayerManager::EnsureInitialized(
 }
 
 RefPtr<WebRenderLayerManager::InitPromise>
-WebRenderLayerManager::InitializeAsync(PCompositorBridgeChild* aCBChild,
-                                       wr::PipelineId aLayersId) {
+WebRenderLayerManager::InitializeAsync() {
   return mWrChild->OnConnected()->Then(
       GetCurrentSerialEventTarget(), __func__,
       [self = RefPtr{this}](Ok) {

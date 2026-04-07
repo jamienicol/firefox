@@ -17,10 +17,12 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/Result.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/gfx/Matrix.h"
 #include "mozilla/gfx/Rect.h"
+#include "mozilla/layers/CompositorOptions.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layers/ScrollableLayerGuid.h"
 #include "mozilla/layers/ZoomConstraints.h"
@@ -420,6 +422,11 @@ class nsIWidget : public nsSupportsWeakReference {
   typedef mozilla::WindowRenderer WindowRenderer;
   typedef mozilla::layers::LayersBackend LayersBackend;
   typedef mozilla::layers::LayersId LayersId;
+  using CreateCompositorInitPromise =
+      mozilla::MozPromise<mozilla::Ok, nsCString, true>;
+  using CreateCompositorPromise =
+      mozilla::MozPromise<RefPtr<mozilla::layers::WebRenderLayerManager>,
+                          nsCString, true>;
   typedef mozilla::layers::ZoomConstraints ZoomConstraints;
   typedef mozilla::widget::IMEEnabled IMEEnabled;
   typedef mozilla::widget::IMEMessage IMEMessage;
@@ -1398,6 +1405,12 @@ class nsIWidget : public nsSupportsWeakReference {
  protected:
   // Returns whether compositing should use an external surface size.
   virtual bool UseExternalCompositingSurface() const { return false; }
+  bool PreCreateCompositor();
+  void PostCreateCompositor(
+      mozilla::layers::WebRenderLayerManager* aLayerManager);
+  void ClearPendingCompositorCreation();
+  bool HandleCompositorInitFailure(const nsCString& aError);
+  void DestroyCompositorInternal(bool aRejectPendingCreate);
 
   /**
    * Starts the OMTC compositor destruction sequence.
@@ -1899,8 +1912,13 @@ class nsIWidget : public nsSupportsWeakReference {
   already_AddRefed<mozilla::CompositorVsyncDispatcher>
   GetCompositorVsyncDispatcher();
   virtual void CreateCompositorVsyncDispatcher();
-  virtual void CreateCompositor();
-  virtual void CreateCompositor(int aWidth, int aHeight);
+  virtual already_AddRefed<mozilla::layers::WebRenderLayerManager>
+  CreateCompositor();
+  virtual already_AddRefed<mozilla::layers::WebRenderLayerManager>
+  CreateCompositor(int aWidth, int aHeight);
+  virtual RefPtr<CreateCompositorPromise> CreateCompositorAsync();
+  virtual RefPtr<CreateCompositorPromise> CreateCompositorAsync(int aWidth,
+                                                                int aHeight);
   virtual void SetCompositorWidgetDelegate(CompositorWidgetDelegate*) {}
 
   virtual WindowRenderer* CreateFallbackRenderer();
@@ -2396,8 +2414,14 @@ class nsIWidget : public nsSupportsWeakReference {
   nsIWidgetListener* mAttachedWidgetListener = nullptr;
   nsIWidgetListener* mPreviouslyAttachedWidgetListener = nullptr;
   RefPtr<WindowRenderer> mWindowRenderer;
+  RefPtr<mozilla::layers::WebRenderLayerManager> mPendingCompositorLayerManager;
+  mozilla::Maybe<mozilla::layers::CompositorOptions> mPendingCompositorOptions;
+  bool mPendingCompositorInitialized = false;
   RefPtr<CompositorSession> mCompositorSession;
   RefPtr<CompositorBridgeChild> mCompositorBridgeChild;
+  mozilla::MozPromiseRequestHolder<CreateCompositorInitPromise>
+      mPendingCompositorRequest;
+  mozilla::MozPromiseHolder<CreateCompositorPromise> mCreateCompositorPromise;
 
   mozilla::UniquePtr<mozilla::Mutex> mCompositorVsyncDispatcherLock;
   RefPtr<mozilla::CompositorVsyncDispatcher> mCompositorVsyncDispatcher;
@@ -2481,7 +2505,8 @@ class nsIWidget : public nsSupportsWeakReference {
  private:
   already_AddRefed<mozilla::layers::WebRenderLayerManager>
   CreateCompositorSession(int aWidth, int aHeight,
-                          mozilla::layers::CompositorOptions* aOptionsOut);
+                          mozilla::layers::CompositorOptions* aOptionsOut,
+                          bool* aRetryOut, nsCString* aErrorOut);
 };
 
 #endif  // nsIWidget_h_

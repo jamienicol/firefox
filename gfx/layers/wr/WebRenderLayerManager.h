@@ -73,8 +73,7 @@ class WebRenderLayerManager final : public WindowRenderer {
   // which resolves when the WebRenderBridge is connected. This promise must
   // have either resolved succesfully, or separately EnsureInitialized() must
   // have returned true prior to using the layer manager.
-  RefPtr<InitPromise> InitializeAsync(PCompositorBridgeChild* aCBChild,
-                                      wr::PipelineId aLayersId);
+  RefPtr<InitPromise> InitializeAsync();
 
   void Destroy() override;
   bool IsDestroyed() { return mDestroyed; }

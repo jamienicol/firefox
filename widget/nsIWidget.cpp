@@ -332,7 +332,22 @@ void nsIWidget::QuitIME() {
   this->mIMEHasQuit = true;
 }
 
-void nsIWidget::DestroyCompositor() {
+void nsIWidget::ClearPendingCompositorCreation() {
+  mPendingCompositorRequest.DisconnectIfExists();
+  mPendingCompositorLayerManager = nullptr;
+  mPendingCompositorOptions.reset();
+  mPendingCompositorInitialized = false;
+}
+
+void nsIWidget::DestroyCompositor() { DestroyCompositorInternal(true); }
+
+void nsIWidget::DestroyCompositorInternal(bool aRejectPendingCreate) {
+  if (aRejectPendingCreate) {
+    mCreateCompositorPromise.RejectIfExists(
+        "FEATURE_FAILURE_WEBRENDER_DESTROYED"_ns, __func__);
+  }
+  ClearPendingCompositorCreation();
+
   RevokeTransactionIdAllocator();
 
   // We release this before releasing the compositor, since it may hold the
@@ -1007,9 +1022,9 @@ bool nsIWidget::UseAPZ() const {
   return false;
 }
 
-void nsIWidget::CreateCompositor() {
+already_AddRefed<WebRenderLayerManager> nsIWidget::CreateCompositor() {
   LayoutDeviceIntRect rect = GetBounds();
-  CreateCompositor(rect.Width(), rect.Height());
+  return CreateCompositor(rect.Width(), rect.Height());
 }
 
 void nsIWidget::PauseOrResumeCompositor(bool aPause) {
@@ -1451,104 +1466,16 @@ nsIWidget::GetCompositorVsyncDispatcher() {
   return dispatcher.forget();
 }
 
-already_AddRefed<WebRenderLayerManager> nsIWidget::CreateCompositorSession(
-    int aWidth, int aHeight, CompositorOptions* aOptionsOut) {
-  MOZ_ASSERT(aOptionsOut);
-
-  do {
-    CreateCompositorVsyncDispatcher();
-
-    // Make sure GPU process is ready for use.
-    // If it failed to connect to GPU process, GPU process usage is disabled in
-    // EnsureGPUReady(). It could update gfxVars and gfxConfigs.
-    gfx::GPUProcessManager* gpm = gfx::GPUProcessManager::Get();
-    if (NS_WARN_IF(!gpm) || NS_WARN_IF(NS_FAILED(gpm->EnsureGPUReady()))) {
-      return nullptr;
-    }
-
-    // If widget type does not supports acceleration, we may be allowed to use
-    // software WebRender instead.
-    bool supportsAcceleration = WidgetTypeSupportsAcceleration();
-    bool enableSWWR = true;
-    if (supportsAcceleration ||
-        StaticPrefs::gfx_webrender_unaccelerated_widget_force()) {
-      enableSWWR = gfx::gfxVars::UseSoftwareWebRender();
-    }
-    bool enableAPZ = UseAPZ();
-    CompositorOptions options(enableAPZ, enableSWWR);
-
-#ifdef XP_WIN
-    if (supportsAcceleration) {
-      options.SetAllowSoftwareWebRenderD3D11(
-          gfx::gfxVars::AllowSoftwareWebRenderD3D11());
-    }
-    if (mNeedFastSnaphot) {
-      options.SetNeedFastSnaphot(true);
-    }
-#elif defined(MOZ_WIDGET_ANDROID)
-    MOZ_ASSERT(supportsAcceleration);
-    options.SetAllowSoftwareWebRenderOGL(
-        gfx::gfxVars::AllowSoftwareWebRenderOGL());
-#elif defined(MOZ_WIDGET_GTK)
-    if (supportsAcceleration) {
-      options.SetAllowSoftwareWebRenderOGL(
-          gfx::gfxVars::AllowSoftwareWebRenderOGL());
-    }
-    options.SetAllowNativeCompositor(WidgetTypeSupportsNativeCompositing());
-#endif
-
-#ifdef MOZ_WIDGET_ANDROID
-    // Unconditionally set the compositor as initially paused, as we have not
-    // yet had a chance to send the compositor surface to the GPU process. We
-    // will do so shortly once we have returned to nsWindow::CreateLayerManager,
-    // where we will also resume the compositor if required.
-    options.SetInitiallyPaused(true);
-#else
-    options.SetInitiallyPaused(CompositorInitiallyPaused());
-#endif
-
-    uint64_t innerWindowId = 0;
-    if (Document* doc = GetDocument()) {
-      innerWindowId = doc->InnerWindowID();
-    }
-
-    bool retry = false;
-    mCompositorSession = gpm->CreateTopLevelCompositor(
-        this, GetDefaultScale(), options, UseExternalCompositingSurface(),
-        gfx::IntSize(aWidth, aHeight), innerWindowId, &retry);
-
-    RefPtr<WebRenderLayerManager> lm;
-    if (mCompositorSession) {
-      nsCString error;
-      TextureFactoryIdentifier textureFactoryIdentifier;
-      lm = mCompositorSession->GetCompositorBridgeChild()->CreateLayerManager(
-          this, wr::AsPipelineId(mCompositorSession->RootLayerTreeId()), error);
-      if (lm) {
-        lm->EnsureInitialized(&textureFactoryIdentifier, error);
-      }
-      if (textureFactoryIdentifier.mParentBackend != LayersBackend::LAYERS_WR) {
-        retry = true;
-        DestroyCompositor();
-        // gfxVars::UseDoubleBufferingWithCompositor() is also disabled.
-        gpm->DisableWebRender(wr::WebRenderError::INITIALIZE, error);
-      }
-    }
-
-    // We need to retry in a loop because the act of failing to create the
-    // compositor can change our state (e.g. disable WebRender).
-    if (mCompositorSession || !retry) {
-      *aOptionsOut = options;
-      return lm.forget();
-    }
-  } while (true);
-}
-
-void nsIWidget::CreateCompositor(int aWidth, int aHeight) {
+bool nsIWidget::PreCreateCompositor() {
   // This makes sure that gfxPlatforms gets initialized if it hasn't by now.
   gfxPlatform::GetPlatform();
 
   MOZ_ASSERT(gfxPlatform::UsesOffMainThreadCompositing(),
              "This function assumes OMTC");
+
+  if (mPendingCompositorLayerManager) {
+    return true;
+  }
 
   MOZ_ASSERT(!mCompositorSession && !mCompositorBridgeChild,
              "Should have properly cleaned up the previous PCompositor pair "
@@ -1558,33 +1485,26 @@ void nsIWidget::CreateCompositor(int aWidth, int aHeight) {
     mCompositorBridgeChild->Destroy();
   }
 
-  // Recreating this is tricky, as we may still have an old and we need
-  // to make sure it's properly destroyed by calling DestroyCompositor!
-
-  // If we've already received a shutdown notification, don't try
-  // create a new compositor.
   if (!mShutdownObserver) {
-    return;
+    return false;
   }
 
-  // The controller thread must be configured before the compositor
-  // session is created, so that the input bridge runs on the right
-  // thread.
   ConfigureAPZControllerThread();
+  return true;
+}
 
-  CompositorOptions options;
-  RefPtr<WebRenderLayerManager> lm =
-      CreateCompositorSession(aWidth, aHeight, &options);
-  if (!lm) {
-    return;
-  }
-
+void nsIWidget::PostCreateCompositor(WebRenderLayerManager* aLayerManager) {
+  MOZ_ASSERT(aLayerManager);
+  MOZ_ASSERT(mPendingCompositorLayerManager == aLayerManager);
+  MOZ_ASSERT(mPendingCompositorInitialized);
+  MOZ_ASSERT(mPendingCompositorOptions.isSome());
   MOZ_ASSERT(mCompositorSession);
+
   mCompositorBridgeChild = mCompositorSession->GetCompositorBridgeChild();
   SetCompositorWidgetDelegate(
       mCompositorSession->GetCompositorWidgetDelegate());
 
-  if (options.UseAPZ()) {
+  if (mPendingCompositorOptions->UseAPZ()) {
     mAPZC = mCompositorSession->GetAPZCTreeManager();
     ConfigureAPZCTreeManager();
   } else {
@@ -1599,7 +1519,7 @@ void nsIWidget::CreateCompositor(int aWidth, int aHeight) {
   }
 
   TextureFactoryIdentifier textureFactoryIdentifier =
-      lm->GetTextureFactoryIdentifier();
+      aLayerManager->GetTextureFactoryIdentifier();
   MOZ_ASSERT(textureFactoryIdentifier.mParentBackend ==
              LayersBackend::LAYERS_WR);
   ImageBridgeChild::IdentifyCompositorTextureHost(textureFactoryIdentifier);
@@ -1607,10 +1527,6 @@ void nsIWidget::CreateCompositor(int aWidth, int aHeight) {
 
   WindowUsesOMTC();
 
-  mWindowRenderer = std::move(lm);
-
-  // Only track compositors for top-level windows, since other window types
-  // may use the basic compositor.  Except on the OS X - see bug 1306383
 #if defined(XP_MACOSX)
   bool getCompositorFromThisWindow = true;
 #else
@@ -1619,8 +1535,254 @@ void nsIWidget::CreateCompositor(int aWidth, int aHeight) {
 
   if (getCompositorFromThisWindow) {
     gfxPlatform::GetPlatform()->NotifyCompositorCreated(
-        mWindowRenderer->GetCompositorBackendType());
+        aLayerManager->GetCompositorBackendType());
   }
+
+  ClearPendingCompositorCreation();
+}
+
+bool nsIWidget::HandleCompositorInitFailure(const nsCString& aError) {
+  gfx::GPUProcessManager* gpm = gfx::GPUProcessManager::Get();
+  if (!gpm) {
+    return false;
+  }
+
+  DestroyCompositorInternal(false);
+  gpm->DisableWebRender(wr::WebRenderError::INITIALIZE, aError);
+  return true;
+}
+
+already_AddRefed<WebRenderLayerManager> nsIWidget::CreateCompositorSession(
+    int aWidth, int aHeight, CompositorOptions* aOptionsOut, bool* aRetryOut,
+    nsCString* aErrorOut) {
+  MOZ_ASSERT(aOptionsOut);
+  MOZ_ASSERT(aRetryOut);
+  MOZ_ASSERT(aErrorOut);
+
+  *aRetryOut = false;
+  aErrorOut->Truncate();
+
+  CreateCompositorVsyncDispatcher();
+
+  // Make sure GPU process is ready for use.
+  // If it failed to connect to GPU process, GPU process usage is disabled in
+  // EnsureGPUReady(). It could update gfxVars and gfxConfigs.
+  gfx::GPUProcessManager* gpm = gfx::GPUProcessManager::Get();
+  if (NS_WARN_IF(!gpm) || NS_WARN_IF(NS_FAILED(gpm->EnsureGPUReady()))) {
+    aErrorOut->AssignLiteral("FEATURE_FAILURE_WEBRENDER_CREATE_COMPOSITOR");
+    return nullptr;
+  }
+
+  // If widget type does not supports acceleration, we may be allowed to use
+  // software WebRender instead.
+  bool supportsAcceleration = WidgetTypeSupportsAcceleration();
+  bool enableSWWR = true;
+  if (supportsAcceleration ||
+      StaticPrefs::gfx_webrender_unaccelerated_widget_force()) {
+    enableSWWR = gfx::gfxVars::UseSoftwareWebRender();
+  }
+  bool enableAPZ = UseAPZ();
+  CompositorOptions options(enableAPZ, enableSWWR);
+
+#ifdef XP_WIN
+  if (supportsAcceleration) {
+    options.SetAllowSoftwareWebRenderD3D11(
+        gfx::gfxVars::AllowSoftwareWebRenderD3D11());
+  }
+  if (mNeedFastSnaphot) {
+    options.SetNeedFastSnaphot(true);
+  }
+#elif defined(MOZ_WIDGET_ANDROID)
+  MOZ_ASSERT(supportsAcceleration);
+  options.SetAllowSoftwareWebRenderOGL(
+      gfx::gfxVars::AllowSoftwareWebRenderOGL());
+#elif defined(MOZ_WIDGET_GTK)
+  if (supportsAcceleration) {
+    options.SetAllowSoftwareWebRenderOGL(
+        gfx::gfxVars::AllowSoftwareWebRenderOGL());
+  }
+  options.SetAllowNativeCompositor(WidgetTypeSupportsNativeCompositing());
+#endif
+
+#ifdef MOZ_WIDGET_ANDROID
+  // Unconditionally set the compositor as initially paused, as we have not
+  // yet had a chance to send the compositor surface to the GPU process. We
+  // will do so shortly once we have returned to nsWindow::CreateLayerManager,
+  // where we will also resume the compositor if required.
+  options.SetInitiallyPaused(true);
+#else
+  options.SetInitiallyPaused(CompositorInitiallyPaused());
+#endif
+
+  uint64_t innerWindowId = 0;
+  if (Document* doc = GetDocument()) {
+    innerWindowId = doc->InnerWindowID();
+  }
+
+  mCompositorSession = gpm->CreateTopLevelCompositor(
+      this, GetDefaultScale(), options, UseExternalCompositingSurface(),
+      gfx::IntSize(aWidth, aHeight), innerWindowId, aRetryOut);
+
+  if (!mCompositorSession) {
+    if (!*aRetryOut) {
+      aErrorOut->AssignLiteral("FEATURE_FAILURE_WEBRENDER_CREATE_COMPOSITOR");
+    }
+    return nullptr;
+  }
+
+  *aOptionsOut = options;
+
+  RefPtr<WebRenderLayerManager> lm =
+      mCompositorSession->GetCompositorBridgeChild()->CreateLayerManager(
+          this, wr::AsPipelineId(mCompositorSession->RootLayerTreeId()),
+          *aErrorOut);
+  if (!lm) {
+    if (aErrorOut->IsEmpty()) {
+      aErrorOut->AssignLiteral(
+          "FEATURE_FAILURE_WEBRENDER_CREATE_LAYER_MANAGER");
+    }
+    DestroyCompositorInternal(false);
+  }
+
+  return lm.forget();
+}
+
+already_AddRefed<WebRenderLayerManager> nsIWidget::CreateCompositor(
+    int aWidth, int aHeight) {
+  if (!PreCreateCompositor()) {
+    return nullptr;
+  }
+
+  do {
+    RefPtr<WebRenderLayerManager> lm = mPendingCompositorLayerManager;
+    if (lm) {
+      if (!mPendingCompositorInitialized) {
+        mPendingCompositorRequest.DisconnectIfExists();
+
+        nsCString error;
+        TextureFactoryIdentifier textureFactoryIdentifier;
+        if (!lm->EnsureInitialized(&textureFactoryIdentifier, error) ||
+            textureFactoryIdentifier.mParentBackend !=
+                LayersBackend::LAYERS_WR) {
+          ClearPendingCompositorCreation();
+          if (!HandleCompositorInitFailure(error)) {
+            mCreateCompositorPromise.RejectIfExists(std::move(error), __func__);
+            return nullptr;
+          }
+          continue;
+        }
+
+        mPendingCompositorInitialized = true;
+        mCreateCompositorPromise.ResolveIfExists(lm, __func__);
+      }
+      return lm.forget();
+    }
+
+    bool retry = false;
+    nsCString error;
+    CompositorOptions options;
+    lm = CreateCompositorSession(aWidth, aHeight, &options, &retry, &error);
+    if (!lm) {
+      if (retry) {
+        continue;
+      }
+      mCreateCompositorPromise.RejectIfExists(std::move(error), __func__);
+      return nullptr;
+    }
+
+    mPendingCompositorLayerManager = lm;
+    mPendingCompositorOptions.emplace(options);
+
+    TextureFactoryIdentifier textureFactoryIdentifier;
+    if (!lm->EnsureInitialized(&textureFactoryIdentifier, error) ||
+        textureFactoryIdentifier.mParentBackend != LayersBackend::LAYERS_WR) {
+      ClearPendingCompositorCreation();
+      if (!HandleCompositorInitFailure(error)) {
+        mCreateCompositorPromise.RejectIfExists(std::move(error), __func__);
+        return nullptr;
+      }
+      continue;
+    }
+
+    mPendingCompositorInitialized = true;
+    return lm.forget();
+  } while (true);
+}
+
+RefPtr<nsIWidget::CreateCompositorPromise> nsIWidget::CreateCompositorAsync() {
+  LayoutDeviceIntRect rect = GetBounds();
+  return CreateCompositorAsync(rect.Width(), rect.Height());
+}
+
+RefPtr<nsIWidget::CreateCompositorPromise> nsIWidget::CreateCompositorAsync(
+    int aWidth, int aHeight) {
+  if (mWindowRenderer && mWindowRenderer->AsWebRender()) {
+    return CreateCompositorPromise::CreateAndResolve(
+        RefPtr{mWindowRenderer->AsWebRender()}, __func__);
+  }
+
+  if (!PreCreateCompositor()) {
+    return CreateCompositorPromise::CreateAndReject(
+        "FEATURE_FAILURE_WEBRENDER_CREATE_COMPOSITOR"_ns, __func__);
+  }
+
+  if (mPendingCompositorLayerManager) {
+    if (mPendingCompositorInitialized) {
+      return CreateCompositorPromise::CreateAndResolve(
+          mPendingCompositorLayerManager, __func__);
+    }
+    return mCreateCompositorPromise.Ensure(__func__);
+  }
+
+  RefPtr<CreateCompositorPromise> promise =
+      mCreateCompositorPromise.Ensure(__func__);
+
+  do {
+    bool retry = false;
+    nsCString error;
+    CompositorOptions options;
+    RefPtr<WebRenderLayerManager> lm =
+        CreateCompositorSession(aWidth, aHeight, &options, &retry, &error);
+    if (!lm) {
+      if (retry) {
+        continue;
+      }
+      mCreateCompositorPromise.RejectIfExists(std::move(error), __func__);
+      return promise;
+    }
+
+    mPendingCompositorLayerManager = lm;
+    mPendingCompositorOptions.emplace(options);
+    mPendingCompositorInitialized = false;
+
+    lm->InitializeAsync()
+        ->Then(
+            GetCurrentSerialEventTarget(), __func__,
+            [self = RefPtr{this}, lm = RefPtr{lm}](Ok) {
+              self->mPendingCompositorRequest.Complete();
+              if (self->mPendingCompositorLayerManager == lm) {
+                self->mPendingCompositorInitialized = true;
+              }
+              self->mCreateCompositorPromise.ResolveIfExists(lm, __func__);
+            },
+            [self = RefPtr{this}, lm = RefPtr{lm}, aWidth,
+             aHeight](nsCString aError) {
+              self->mPendingCompositorRequest.Complete();
+              if (self->mPendingCompositorLayerManager == lm) {
+                self->mPendingCompositorLayerManager = nullptr;
+                self->mPendingCompositorOptions.reset();
+                self->mPendingCompositorInitialized = false;
+              }
+              if (self->HandleCompositorInitFailure(aError)) {
+                self->CreateCompositorAsync(aWidth, aHeight);
+                return;
+              }
+              self->mCreateCompositorPromise.RejectIfExists(std::move(aError),
+                                                            __func__);
+            })
+        ->Track(mPendingCompositorRequest);
+    return promise;
+  } while (true);
 }
 
 void nsIWidget::NotifyCompositorSessionLost(CompositorSession* aSession) {
@@ -1636,7 +1798,7 @@ bool nsIWidget::ShouldUseOffMainThreadCompositing() {
 
 WindowRenderer* nsIWidget::GetWindowRenderer() {
   if (!mWindowRenderer) {
-    if (!mShutdownObserver || ShouldCreateWindowRenderer()) {
+    if (!mShutdownObserver || !ShouldCreateWindowRenderer()) {
       // We are shutting down, do not try to re-create a LayerManager
       return nullptr;
     }
@@ -1645,7 +1807,10 @@ WindowRenderer* nsIWidget::GetWindowRenderer() {
 
     // Try to use an async compositor first, if possible
     if (ShouldUseOffMainThreadCompositing()) {
-      CreateCompositor();
+      if (RefPtr<WebRenderLayerManager> compositor = CreateCompositor()) {
+        mWindowRenderer = compositor;
+        PostCreateCompositor(compositor);
+      }
     }
 
     if (!mWindowRenderer) {
@@ -1660,11 +1825,50 @@ WindowRenderer* nsIWidget::GetWindowRenderer() {
 }
 
 RefPtr<nsIWidget::WindowRendererPromise> nsIWidget::GetWindowRendererAsync() {
-  RefPtr<WindowRenderer> renderer = GetWindowRenderer();
-  if (renderer) {
-    return WindowRendererPromise::CreateAndResolve(renderer, __func__);
+  if (mWindowRenderer) {
+    return WindowRendererPromise::CreateAndResolve(mWindowRenderer, __func__);
   }
-  return WindowRendererPromise::CreateAndReject(Ok{}, __func__);
+
+  if (!mShutdownObserver || !ShouldCreateWindowRenderer()) {
+    return WindowRendererPromise::CreateAndReject(Ok{}, __func__);
+  }
+
+  EnsureLocalesChangedObserver();
+
+  if (!ShouldUseOffMainThreadCompositing()) {
+    mWindowRenderer = CreateFallbackRenderer();
+    if (!mWindowRenderer) {
+      return WindowRendererPromise::CreateAndReject(Ok{}, __func__);
+    }
+    OnWindowRendererCreated();
+    return WindowRendererPromise::CreateAndResolve(mWindowRenderer, __func__);
+  }
+
+  return CreateCompositorAsync()->Then(
+      GetCurrentSerialEventTarget(), __func__,
+      [self = RefPtr{this}](const RefPtr<WebRenderLayerManager>& aCompositor) {
+        if (!self->mWindowRenderer) {
+          self->mWindowRenderer = aCompositor;
+          self->PostCreateCompositor(aCompositor);
+          self->OnWindowRendererCreated();
+        }
+        if (!self->mWindowRenderer) {
+          return WindowRendererPromise::CreateAndReject(Ok{}, __func__);
+        }
+        return WindowRendererPromise::CreateAndResolve(self->mWindowRenderer,
+                                                       __func__);
+      },
+      [self = RefPtr{this}](nsCString) {
+        if (!self->mWindowRenderer) {
+          self->mWindowRenderer = self->CreateFallbackRenderer();
+          if (!self->mWindowRenderer) {
+            return WindowRendererPromise::CreateAndReject(Ok{}, __func__);
+          }
+          self->OnWindowRendererCreated();
+        }
+        return WindowRendererPromise::CreateAndResolve(self->mWindowRenderer,
+                                                       __func__);
+      });
 }
 
 WindowRenderer* nsIWidget::CreateFallbackRenderer() {
