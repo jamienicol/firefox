@@ -897,6 +897,8 @@ class BrowserParent final : public PBrowserParent,
   ContentCacheInParent mContentCache;
 
   layout::RemoteLayerTreeOwner mRemoteLayerTreeOwner;
+  MozPromiseRequestHolder<layout::RemoteLayerTreeOwner::InitializePromise>
+      mInitRenderingRequest;
 
   Maybe<LayoutDeviceToLayoutDeviceMatrix4x4> mChildToParentConversionMatrix;
   Maybe<ScreenRect> mRemoteDocumentRect;

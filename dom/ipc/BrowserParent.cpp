@@ -93,6 +93,7 @@
 #include "nsNetUtil.h"
 #include "nsQueryActor.h"
 #include "nsSHistory.h"
+#include "nsThreadUtils.h"
 #include "nsVariant.h"
 #ifndef XP_WIN
 #  include "nsJARProtocolHandler.h"
@@ -651,7 +652,8 @@ void BrowserParent::SetOwnerElement(Element* aElement) {
   mDPI = -1;
   TryCacheDPIAndScale();
 
-  if (mRemoteLayerTreeOwner.IsInitialized()) {
+  if (mRemoteLayerTreeOwner.IsInitialized() ||
+      mRemoteLayerTreeOwner.IsInitializing()) {
     mRemoteLayerTreeOwner.OwnerContentChanged();
   }
 
@@ -724,6 +726,8 @@ void BrowserParent::Destroy() {
     return;
   }
 
+  mInitRenderingRequest.DisconnectIfExists();
+
   Deactivated();
 
   RemoveWindowListeners();
@@ -785,7 +789,8 @@ mozilla::ipc::IPCResult BrowserParent::RecvDidUnsuppressPainting() {
 
 mozilla::ipc::IPCResult BrowserParent::RecvEnsureLayersConnected(
     Maybe<CompositorOptions>* aCompositorOptions) {
-  if (mRemoteLayerTreeOwner.IsInitialized()) {
+  if (mRemoteLayerTreeOwner.IsInitialized() ||
+      mRemoteLayerTreeOwner.IsInitializing()) {
     mRemoteLayerTreeOwner.EnsureLayersConnected(*aCompositorOptions);
   }
   return IPC_OK();
@@ -812,9 +817,12 @@ void BrowserParent::ActorDestroy(ActorDestroyReason why) {
     cpm->UnregisterRemoteFrame(mTabId);
   }
 
-  if (mRemoteLayerTreeOwner.IsInitialized()) {
+  mInitRenderingRequest.DisconnectIfExists();
+
+  if (mRemoteLayerTreeOwner.IsInitialized() ||
+      mRemoteLayerTreeOwner.IsInitializing()) {
     auto layersId = mRemoteLayerTreeOwner.GetLayersId();
-    if (mFrameElement) {
+    if (layersId.IsValid() && mFrameElement) {
       nsSubDocumentFrame* f = do_QueryFrame(mFrameElement->GetPrimaryFrame());
       if (f && f->HasRetainedPaintData() &&
           f->GetRemotePaintData().mLayersId == layersId) {
@@ -825,7 +833,9 @@ void BrowserParent::ActorDestroy(ActorDestroyReason why) {
     // It's important to unmap layers after the remote browser has been
     // destroyed, otherwise it may still send messages to the compositor which
     // will reject them, causing assertions.
-    RemoveBrowserParentFromTable(layersId);
+    if (layersId.IsValid()) {
+      RemoveBrowserParentFromTable(layersId);
+    }
     mRemoteLayerTreeOwner.Destroy();
   }
 
@@ -986,41 +996,55 @@ void BrowserParent::ResumeLoad(uint64_t aPendingSwitchID) {
 }
 
 void BrowserParent::InitRendering() {
-  if (mRemoteLayerTreeOwner.IsInitialized()) {
+  if (mRemoteLayerTreeOwner.IsInitialized() ||
+      mRemoteLayerTreeOwner.IsInitializing()) {
     return;
   }
-  mRemoteLayerTreeOwner.Initialize(this);
+  mRemoteLayerTreeOwner.Initialize(this)
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [self = RefPtr{this}](bool) {
+            self->mInitRenderingRequest.Complete();
 
-  layers::LayersId layersId = mRemoteLayerTreeOwner.GetLayersId();
-  AddBrowserParentToTable(layersId, this);
+            layers::LayersId layersId =
+                self->mRemoteLayerTreeOwner.GetLayersId();
+            AddBrowserParentToTable(layersId, self);
 
-  RefPtr<nsFrameLoader> frameLoader = GetFrameLoader();
-  if (frameLoader) {
-    nsIFrame* frame = frameLoader->GetPrimaryFrameOfOwningContent();
-    if (frame) {
-      frame->InvalidateFrame();
-    }
-  }
+            RefPtr<nsFrameLoader> frameLoader = self->GetFrameLoader();
+            if (frameLoader) {
+              nsIFrame* frame = frameLoader->GetPrimaryFrameOfOwningContent();
+              if (frame) {
+                frame->InvalidateFrame();
+              }
+            }
 
-  TextureFactoryIdentifier textureFactoryIdentifier;
-  mRemoteLayerTreeOwner.GetTextureFactoryIdentifier(&textureFactoryIdentifier);
-  (void)SendInitRendering(textureFactoryIdentifier, layersId,
-                          mRemoteLayerTreeOwner.GetCompositorOptions(),
-                          mRemoteLayerTreeOwner.IsLayersConnected());
+            TextureFactoryIdentifier textureFactoryIdentifier;
+            self->mRemoteLayerTreeOwner.GetTextureFactoryIdentifier(
+                &textureFactoryIdentifier);
+            (void)self->SendInitRendering(
+                textureFactoryIdentifier, layersId,
+                self->mRemoteLayerTreeOwner.GetCompositorOptions(),
+                self->mRemoteLayerTreeOwner.IsLayersConnected());
 
-  RefPtr<nsIWidget> widget = GetTopLevelWidget();
-  if (widget) {
-    (void)SendSafeAreaInsetsChanged(widget->GetSafeAreaInsets());
-  }
+            RefPtr<nsIWidget> widget = self->GetTopLevelWidget();
+            if (widget) {
+              (void)self->SendSafeAreaInsetsChanged(
+                  widget->GetSafeAreaInsets());
+            }
 
 #if defined(MOZ_WIDGET_ANDROID)
-  MOZ_ASSERT(widget);
+            MOZ_ASSERT(widget);
 
-  if (GetBrowsingContext()->IsTopContent()) {
-    (void)SendDynamicToolbarMaxHeightChanged(
-        widget->GetDynamicToolbarMaxHeight());
-  }
+            if (self->GetBrowsingContext()->IsTopContent()) {
+              (void)self->SendDynamicToolbarMaxHeightChanged(
+                  widget->GetDynamicToolbarMaxHeight());
+            }
 #endif
+          },
+          [self = RefPtr{this}](nsresult) {
+            self->mInitRenderingRequest.Complete();
+          })
+      ->Track(mInitRenderingRequest);
 }
 
 bool BrowserParent::AttachWindowRenderer() {
@@ -1041,7 +1065,11 @@ bool BrowserParent::Show(const OwnerShowInfo& aOwnerInfo) {
     return false;
   }
 
-  MOZ_ASSERT(mRemoteLayerTreeOwner.IsInitialized());
+  MOZ_ASSERT(mRemoteLayerTreeOwner.IsInitializing() ||
+             mRemoteLayerTreeOwner.IsInitialized());
+  if (!mRemoteLayerTreeOwner.IsInitialized()) {
+    return false;
+  }
   if (!mRemoteLayerTreeOwner.AttachWindowRenderer()) {
     return false;
   }
@@ -1115,6 +1143,9 @@ void BrowserParent::UpdateDimensions(const LayoutDeviceIntRect& rect,
   nsCOMPtr<nsIWidget> widget = GetWidget();
   if (!widget) {
     NS_WARNING("No widget found in BrowserParent::UpdateDimensions");
+    return;
+  }
+  if (!mRemoteLayerTreeOwner.IsInitialized()) {
     return;
   }
 

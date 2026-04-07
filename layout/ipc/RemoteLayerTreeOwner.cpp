@@ -16,9 +16,11 @@
 #include "mozilla/layers/WebRenderLayerManager.h"
 #include "mozilla/layers/WebRenderScrollData.h"
 #include "mozilla/webrender/WebRenderAPI.h"
+#include "nsError.h"
 #include "nsFrameLoader.h"
 #include "nsStyleStructInlines.h"
 #include "nsSubDocumentFrame.h"
+#include "nsThreadUtils.h"
 
 using namespace mozilla::dom;
 using namespace mozilla::gfx;
@@ -27,15 +29,26 @@ using namespace mozilla::layers;
 namespace mozilla {
 namespace layout {
 
+static already_AddRefed<nsIWidget> GetWidget(BrowserParent* aBrowserParent) {
+  RefPtr<nsIWidget> widget;
+  if (Element* element = aBrowserParent->GetOwnerElement()) {
+    widget = nsContentUtils::WidgetForContent(element);
+    if (widget) {
+      return widget.forget();
+    }
+    widget = nsContentUtils::WidgetForDocument(element->OwnerDoc());
+    if (widget) {
+      return widget.forget();
+    }
+  }
+  return nullptr;
+}
+
 static already_AddRefed<WindowRenderer> GetWindowRenderer(
     BrowserParent* aBrowserParent) {
   RefPtr<WindowRenderer> renderer;
-  if (Element* element = aBrowserParent->GetOwnerElement()) {
-    renderer = nsContentUtils::WindowRendererForContent(element);
-    if (renderer) {
-      return renderer.forget();
-    }
-    renderer = nsContentUtils::WindowRendererForDocument(element->OwnerDoc());
+  if (RefPtr<nsIWidget> widget = GetWidget(aBrowserParent)) {
+    renderer = widget->GetWindowRenderer();
     if (renderer) {
       return renderer.forget();
     }
@@ -46,21 +59,61 @@ static already_AddRefed<WindowRenderer> GetWindowRenderer(
 RemoteLayerTreeOwner::RemoteLayerTreeOwner()
     : mLayersId{0},
       mBrowserParent(nullptr),
+      mInitializing(false),
       mInitialized(false),
       mLayersConnected(false) {}
 
 RemoteLayerTreeOwner::~RemoteLayerTreeOwner() = default;
 
-bool RemoteLayerTreeOwner::Initialize(BrowserParent* aBrowserParent) {
-  if (mInitialized || !aBrowserParent) {
-    return false;
+RefPtr<RemoteLayerTreeOwner::InitializePromise>
+RemoteLayerTreeOwner::Initialize(BrowserParent* aBrowserParent) {
+  if (!aBrowserParent) {
+    return InitializePromise::CreateAndReject(NS_ERROR_INVALID_ARG, __func__);
+  }
+
+  if (mInitialized) {
+    return InitializePromise::CreateAndResolve(true, __func__);
+  }
+
+  if (mInitializing) {
+    return mInitializePromise.Ensure(__func__);
   }
 
   mBrowserParent = aBrowserParent;
-  RefPtr<WindowRenderer> renderer = GetWindowRenderer(mBrowserParent);
-  PCompositorBridgeChild* compositor =
-      renderer ? renderer->GetCompositorBridgeChild() : nullptr;
   mTabProcessId = mBrowserParent->Manager()->OtherPid();
+  mInitializing = true;
+
+  RefPtr<InitializePromise> promise = mInitializePromise.Ensure(__func__);
+  mInitializePromise.UseSynchronousTaskDispatch(__func__);
+
+  RefPtr<nsIWidget> widget = GetWidget(mBrowserParent);
+  if (!widget) {
+    CompleteInitialize(nullptr);
+    return promise.forget();
+  }
+
+  widget->GetWindowRendererAsync()
+      ->Then(
+          GetCurrentSerialEventTarget(), __func__,
+          [self = this](const RefPtr<WindowRenderer>& aRenderer) {
+            self->mInitializeWindowRendererRequest.Complete();
+            self->CompleteInitialize(aRenderer);
+          },
+          [self = this](Ok) {
+            self->mInitializeWindowRendererRequest.Complete();
+            self->CompleteInitialize(nullptr);
+          })
+      ->Track(mInitializeWindowRendererRequest);
+
+  return promise.forget();
+}
+
+void RemoteLayerTreeOwner::CompleteInitialize(WindowRenderer* aRenderer) {
+  MOZ_ASSERT(mInitializing);
+  MOZ_ASSERT(!mInitialized);
+
+  PCompositorBridgeChild* compositor =
+      aRenderer ? aRenderer->GetCompositorBridgeChild() : nullptr;
 
   // Our remote frame will push layers updates to the compositor,
   // and we'll keep an indirect reference to that tree.
@@ -68,11 +121,29 @@ bool RemoteLayerTreeOwner::Initialize(BrowserParent* aBrowserParent) {
   mLayersConnected = gpm->AllocateAndConnectLayerTreeId(
       compositor, mTabProcessId, &mLayersId, &mCompositorOptions);
 
+  mInitializing = false;
   mInitialized = true;
-  return true;
+  mInitializePromise.Resolve(true, __func__);
+}
+
+void RemoteLayerTreeOwner::EnsureInitialized() {
+  if (!mInitializing) {
+    return;
+  }
+
+  mInitializeWindowRendererRequest.DisconnectIfExists();
+  RefPtr<WindowRenderer> renderer =
+      mBrowserParent ? GetWindowRenderer(mBrowserParent) : nullptr;
+  CompleteInitialize(renderer);
 }
 
 void RemoteLayerTreeOwner::Destroy() {
+  mInitializeWindowRendererRequest.DisconnectIfExists();
+  if (mInitializing) {
+    mInitializing = false;
+  }
+  mInitializePromise.RejectIfExists(NS_ERROR_ABORT, __func__);
+
   if (mLayersId.IsValid()) {
     GPUProcessManager::Get()->UnmapLayerTreeId(mLayersId, mTabProcessId);
   }
@@ -83,6 +154,7 @@ void RemoteLayerTreeOwner::Destroy() {
 
 void RemoteLayerTreeOwner::EnsureLayersConnected(
     Maybe<CompositorOptions>& aCompositorOptions) {
+  EnsureInitialized();
   RefPtr<WindowRenderer> renderer = GetWindowRenderer(mBrowserParent);
   if (!renderer || !renderer->GetCompositorBridgeChild()) {
     aCompositorOptions = Nothing();
@@ -96,6 +168,7 @@ void RemoteLayerTreeOwner::EnsureLayersConnected(
 }
 
 bool RemoteLayerTreeOwner::AttachWindowRenderer() {
+  EnsureInitialized();
   RefPtr<WindowRenderer> renderer;
   if (mBrowserParent) {
     renderer = GetWindowRenderer(mBrowserParent);
@@ -118,6 +191,7 @@ void RemoteLayerTreeOwner::OwnerContentChanged() {
 
 void RemoteLayerTreeOwner::GetTextureFactoryIdentifier(
     TextureFactoryIdentifier* aTextureFactoryIdentifier) const {
+  const_cast<RemoteLayerTreeOwner*>(this)->EnsureInitialized();
   RefPtr<WindowRenderer> renderer =
       mBrowserParent ? GetWindowRenderer(mBrowserParent) : nullptr;
   // Perhaps the document containing this frame currently has no presentation?

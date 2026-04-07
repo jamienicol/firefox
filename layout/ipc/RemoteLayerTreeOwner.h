@@ -6,10 +6,12 @@
 #define mozilla_layout_RemoteLayerTreeOwner_h
 
 #include "base/process.h"
+#include "mozilla/MozPromise.h"
 #include "mozilla/dom/ipc/IdType.h"
 #include "mozilla/layers/CompositorOptions.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "nsDisplayList.h"
+#include "nsIWidget.h"
 
 class nsFrameLoader;
 class nsSubDocumentFrame;
@@ -37,10 +39,12 @@ class RemoteLayerTreeOwner final {
   typedef mozilla::layers::TextureFactoryIdentifier TextureFactoryIdentifier;
 
  public:
+  using InitializePromise = GenericPromise;
+
   RemoteLayerTreeOwner();
   virtual ~RemoteLayerTreeOwner();
 
-  bool Initialize(dom::BrowserParent* aBrowserParent);
+  RefPtr<InitializePromise> Initialize(dom::BrowserParent* aBrowserParent);
   void Destroy();
 
   void EnsureLayersConnected(Maybe<CompositorOptions>& aCompositorOptions);
@@ -54,9 +58,13 @@ class RemoteLayerTreeOwner final {
       TextureFactoryIdentifier* aTextureFactoryIdentifier) const;
 
   bool IsInitialized() const { return mInitialized; }
+  bool IsInitializing() const { return mInitializing; }
   bool IsLayersConnected() const { return mLayersConnected; }
 
  private:
+  void CompleteInitialize(WindowRenderer* aRenderer);
+  void EnsureInitialized();
+
   // The process id of the remote frame. This is used by the compositor to
   // do security checks on incoming layer transactions.
   base::ProcessId mTabProcessId;
@@ -69,7 +77,11 @@ class RemoteLayerTreeOwner final {
 
   dom::BrowserParent* mBrowserParent;
   RefPtr<WindowRenderer> mWindowRenderer;
+  MozPromiseHolder<InitializePromise> mInitializePromise;
+  MozPromiseRequestHolder<nsIWidget::WindowRendererPromise>
+      mInitializeWindowRendererRequest;
 
+  bool mInitializing;
   bool mInitialized;
   // A flag that indicates whether or not the compositor knows about the
   // layers id. In some cases this RemoteLayerTreeOwner is not connected to the
