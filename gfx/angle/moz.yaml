@@ -35,6 +35,6 @@ vendoring:
   # special setup and tag is the most analogous without needing to create a whole
   # new thing just for it.
   tracking: commit
-  source-hosting: googlesource
+  source-hosting: git
   vendor-directory: third_party/angle
   skip-vendoring-steps: ["update-moz-build"]
