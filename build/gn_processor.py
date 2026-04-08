@@ -423,6 +423,11 @@ def process_gn_config(
             else:
                 context_attrs["OS_LIBS"] += [lib_name]
 
+        context_attrs["USE_LIBS"] = []
+        for dep in spec.get("deps", []):
+            if dep.startswith("//:") and dep in targets:
+                context_attrs["USE_LIBS"] += [dep[3:] + "_gn"]
+
         # Add some features to all contexts. Put here in case LOCAL_INCLUDES
         # order matters.
         if mozilla_add_override_dir != "":
