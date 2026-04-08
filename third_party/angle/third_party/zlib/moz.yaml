@@ -1,0 +1,24 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: Graphics
+
+origin:
+  name: zlib
+
+  description: zlib is a free, general-purpose, legally unencumbered lossless data-compression library
+
+  url: https://chromium.googlesource.com/chromium/src/third_party/zlib
+
+  release: b'b80f1d1e5256ac25f6aea3f31f13d458981cb1f9' (b'2026-03-07 10:34:11 -0800').
+  revision: b'b80f1d1e5256ac25f6aea3f31f13d458981cb1f9'
+
+  license: Zlib
+
+vendoring:
+  url: https://chromium.googlesource.com/chromium/src/third_party/zlib
+  tracking: commit
+  source-hosting: git
+  vendor-directory: third_party/angle/third_party/zlib
+  skip-vendoring-steps: ["update-moz-build"]
