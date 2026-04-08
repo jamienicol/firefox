@@ -1,0 +1,24 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: Graphics
+
+origin:
+  name: spirv-tools
+
+  description: The SPIR-V Tools project provides an API and commands for processing SPIR-V modules.
+
+  url: https://github.com/KhronosGroup/SPIRV-Tools
+
+  release: b'7d8d9e58c384949f1615c069d4c9346bf51b9738' (b'2026-03-07 07:19:10 -0500').
+  revision: b'7d8d9e58c384949f1615c069d4c9346bf51b9738'
+
+  license: Apache-2.0
+
+vendoring:
+  url: https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Tools
+  tracking: commit
+  source-hosting: git
+  vendor-directory: third_party/angle/third_party/spirv-tools/src
+  skip-vendoring-steps: ["update-moz-build"]

@@ -1,0 +1,24 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: Graphics
+
+origin:
+  name: spirv-headers
+
+  description: This repository contains machine-readable files for the SPIR-V Registry.
+
+  url: https://github.com/KhronosGroup/SPIRV-Headers
+
+  release: b'f88a2d766840fc825af1fc065977953ba1fa4a91' (b'2026-02-18 08:47:57 -0800').
+  revision: b'f88a2d766840fc825af1fc065977953ba1fa4a91'
+
+  license: MIT
+
+vendoring:
+  url: https://chromium.googlesource.com/external/github.com/KhronosGroup/SPIRV-Headers
+  tracking: commit
+  source-hosting: git
+  vendor-directory: third_party/angle/third_party/spirv-headers/src
+  skip-vendoring-steps: ["update-moz-build"]
