@@ -7,11 +7,11 @@
 # As a result this file will only affect stand-alone ANGLE builds,
 # not chromium builds.
 
-import("//build/dotfile_settings.gni")
+import("//chromium/build/dotfile_settings.gni")
 import("//dotfile_settings.gni")
 
 # Location of the build configuration file.
-buildconfig = "//build/config/BUILDCONFIG.gn"
+buildconfig = "//chromium/build/config/BUILDCONFIG.gn"
 
 # The python interpreter to use by default. On Windows, this will look
 # for python3.exe and python3.bat.
@@ -29,10 +29,10 @@ script_executable = "python3"
 exec_script_allowlist = angle_dotfile_settings.exec_script_allowlist +
                         build_dotfile_settings.exec_script_allowlist +
                         [
-                          "//build/config/sysroot.gni",
-                          "//build/config/win/BUILD.gn",
-                          "//build/config/win/visual_studio_version.gni",
-                          "//build/gn_helpers.py",
+                          "//chromium/build/config/sysroot.gni",
+                          "//chromium/build/config/win/BUILD.gn",
+                          "//chromium/build/config/win/visual_studio_version.gni",
+                          "//chromium/build/gn_helpers.py",
                           "//build_overrides/build.gni",
                         ]
 

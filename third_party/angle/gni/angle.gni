@@ -4,7 +4,7 @@
 
 import("//build_overrides/angle.gni")
 if (angle_has_build) {
-  import("//build/config/gclient_args.gni")
+  import("//chromium/build/config/gclient_args.gni")
 }
 
 if (!defined(checkout_angle_cl_deps)) {
@@ -67,17 +67,17 @@ declare_args() {
 }
 
 if (angle_has_build) {
-  import("//build/config/dcheck_always_on.gni")
-  import("//build/config/ozone.gni")  # import the ozone_platform_x11 variable
-  import("//build/config/sanitizers/sanitizers.gni")
+  import("//chromium/build/config/dcheck_always_on.gni")
+  import("//chromium/build/config/ozone.gni")  # import the ozone_platform_x11 variable
+  import("//chromium/build/config/sanitizers/sanitizers.gni")
   import("//build_overrides/build.gni")
   import("//testing/test.gni")
   if (is_android) {
-    import("//build/config/android/config.gni")
+    import("//chromium/build/config/android/config.gni")
   }
 
   if (is_win) {
-    import("//build/config/win/visual_studio_version.gni")
+    import("//chromium/build/config/win/visual_studio_version.gni")
   }
 
   if (is_chromeos) {
@@ -363,22 +363,22 @@ angle_common_configs = [
 angle_remove_configs = []
 
 if (angle_has_build) {
-  angle_remove_configs += [ "//build/config/compiler:default_include_dirs" ]
+  angle_remove_configs += [ "//chromium/build/config/compiler:default_include_dirs" ]
 
   if (is_clang) {
-    angle_remove_configs += [ "//build/config/clang:find_bad_constructs" ]
+    angle_remove_configs += [ "//chromium/build/config/clang:find_bad_constructs" ]
   }
 
   if (!is_debug && !is_fuchsia) {
     # default->optimize_max (e.g. Android defaults to -Oz, optimize_max is -O2)
-    angle_remove_configs += [ "//build/config/compiler:default_optimization" ]
-    angle_common_configs += [ "//build/config/compiler:optimize_max" ]
+    angle_remove_configs += [ "//chromium/build/config/compiler:default_optimization" ]
+    angle_common_configs += [ "//chromium/build/config/compiler:optimize_max" ]
   }
 
   # See https://crbug.com/386992829
   if (defined(angle_sanitize_array_bounds) && !angle_sanitize_array_bounds) {
     angle_remove_configs +=
-        [ "//build/config/compiler:sanitize_c_array_bounds" ]
+        [ "//chromium/build/config/compiler:sanitize_c_array_bounds" ]
   }
 }
 
@@ -442,7 +442,7 @@ template("angle_executable") {
     configs -= invoker.suppressed_configs
 
     if (angle_has_build && is_win) {
-      data_deps += [ "//build/win:runtime_libs" ]
+      data_deps += [ "//chromium/build/win:runtime_libs" ]
     }
 
     if (is_ios) {
@@ -478,9 +478,9 @@ template("angle_shared_library") {
 
     if (is_apple) {
       # If a "build with ARC" config is present, remove it.
-      if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+      if (filter_include(configs, [ "//chromium/build/config/compiler:enable_arc" ]) !=
           []) {
-        configs -= [ "//build/config/compiler:enable_arc" ]
+        configs -= [ "//chromium/build/config/compiler:enable_arc" ]
       }
     }
 
@@ -488,7 +488,7 @@ template("angle_shared_library") {
 
     if (is_android) {
       configs += [ angle_root + ":build_id_config" ]
-      configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
+      configs -= [ "//chromium/build/config/android:hide_all_but_jni_onload" ]
     }
     if (is_ios) {
       info_plist = "$angle_root/util/ios/Info.plist"
@@ -531,9 +531,9 @@ template("angle_source_set") {
 
     if (is_apple) {
       # If a "build with ARC" config is present, remove it.
-      if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+      if (filter_include(configs, [ "//chromium/build/config/compiler:enable_arc" ]) !=
           []) {
-        configs -= [ "//build/config/compiler:enable_arc" ]
+        configs -= [ "//chromium/build/config/compiler:enable_arc" ]
       }
     }
   }
@@ -557,9 +557,9 @@ template("angle_static_library") {
 
     if (is_apple) {
       # If a "build with ARC" config is present, remove it.
-      if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+      if (filter_include(configs, [ "//chromium/build/config/compiler:enable_arc" ]) !=
           []) {
-        configs -= [ "//build/config/compiler:enable_arc" ]
+        configs -= [ "//chromium/build/config/compiler:enable_arc" ]
       }
     }
   }
@@ -582,9 +582,9 @@ if (angle_standalone || build_with_chromium ||
 
       if (is_apple) {
         # If a "build with ARC" config is present, remove it.
-        if (filter_include(configs, [ "//build/config/compiler:enable_arc" ]) !=
+        if (filter_include(configs, [ "//chromium/build/config/compiler:enable_arc" ]) !=
             []) {
-          configs -= [ "//build/config/compiler:enable_arc" ]
+          configs -= [ "//chromium/build/config/compiler:enable_arc" ]
         }
       }
 
@@ -649,12 +649,12 @@ if (angle_standalone || build_with_chromium ||
 
       if ((is_linux || is_chromeos) && !is_component_build) {
         # Set rpath to find shared libs in a non-component build.
-        configs += [ "//build/config/gcc:rpath_for_built_shared_libraries" ]
+        configs += [ "//chromium/build/config/gcc:rpath_for_built_shared_libraries" ]
       }
 
       if (is_android) {
         public_configs += [ "$angle_root:build_id_config" ]
-        configs -= [ "//build/config/android:hide_all_but_jni" ]
+        configs -= [ "//chromium/build/config/android:hide_all_but_jni" ]
         use_default_launcher = false
         generate_final_jni = false
         if (angle_standalone_benchmark) {
@@ -678,7 +678,7 @@ if (angle_standalone || build_with_chromium ||
       }
 
       if (angle_has_build && is_win) {
-        data_deps += [ "//build/win:runtime_libs" ]
+        data_deps += [ "//chromium/build/win:runtime_libs" ]
       }
     }
   }

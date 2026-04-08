@@ -63,6 +63,6 @@ source_set("test_common") {
     "$angle_root/third_party/OpenCL-ICD-Loader:opencl_icd_loader",
   ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs -= [ "//build/config/compiler:no_exceptions" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:no_exceptions" ]
 }

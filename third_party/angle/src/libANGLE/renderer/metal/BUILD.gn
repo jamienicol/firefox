@@ -8,7 +8,7 @@ import("../../../../gni/angle.gni")
 import("metal_backend.gni")
 
 if (metal_internal_shader_compilation_supported) {
-  import("//build/config/mac/mac_sdk.gni")
+  import("//chromium/build/config/mac/mac_sdk.gni")
 }
 
 assert(is_mac || is_ios)

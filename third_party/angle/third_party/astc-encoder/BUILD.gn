@@ -40,7 +40,7 @@ source_set("astcenc") {
 
   # To improve performance on debug builds, enable optimization for them.
   if (is_debug) {
-    configs += [ "//build/config/compiler:optimize" ]
+    configs += [ "//chromium/build/config/compiler:optimize" ]
   }
 
   if (is_clang) {

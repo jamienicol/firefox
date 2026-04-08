@@ -282,7 +282,7 @@ shared_library("clspv_core_shared") {
 
   if (is_android) {
     # Removing this config, otherwise clspv API will not be visable
-    configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
+    configs -= [ "//chromium/build/config/android:hide_all_but_jni_onload" ]
   }
 
   deps = [

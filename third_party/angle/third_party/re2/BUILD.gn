@@ -50,8 +50,8 @@ static_library("re2") {
     "src/util/utf.h",
   ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   public_configs = [ ":re2_config" ]
   public_deps = [ "//third_party/abseil-cpp:absl" ]
 }

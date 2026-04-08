@@ -48,12 +48,12 @@ template("angle_trace") {
     # Disable optimization in the trace perf tests to avoid optimizing huge files.
     if (!is_debug && !is_ubsan) {
       suppressed_configs += [
-        "//build/config/compiler:afdo",
-        "//build/config/compiler:afdo_optimize_size",
-        "//build/config/compiler:optimize_max",
-        "//build/config/compiler/pgo:default_pgo_flags",
+        "//chromium/build/config/compiler:afdo",
+        "//chromium/build/config/compiler:afdo_optimize_size",
+        "//chromium/build/config/compiler:optimize_max",
+        "//chromium/build/config/compiler/pgo:default_pgo_flags",
       ]
-      configs += [ "//build/config/compiler:no_optimize" ]
+      configs += [ "//chromium/build/config/compiler:no_optimize" ]
     }
 
     include_dirs = [ "." ]
