@@ -32,9 +32,9 @@ template("ocl_cts_source_set") {
       "$angle_root/third_party/OpenCL-ICD-Loader:opencl_icd_loader",
     ]
     suppressed_configs += [
-      "//build/config/compiler:chromium_code",
-      "//build/config/compiler:no_exceptions",
-      "//build/config/compiler:no_rtti",
+      "//chromium/build/config/compiler:chromium_code",
+      "//chromium/build/config/compiler:no_exceptions",
+      "//chromium/build/config/compiler:no_rtti",
       "$angle_root:extra_warnings",
       "$angle_root:constructor_and_destructor_warnings",
     ]

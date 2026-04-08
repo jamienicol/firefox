@@ -8,7 +8,7 @@ import("../../../../gni/angle.gni")
 import("gl_backend.gni")
 
 if (angle_use_gbm) {
-  import("//build/config/linux/pkg_config.gni")
+  import("//chromium/build/config/linux/pkg_config.gni")
 }
 
 assert(angle_enable_gl)
@@ -47,7 +47,7 @@ angle_source_set("angle_gl_backend") {
   ]
 
   if (angle_has_build && (is_linux || is_chromeos)) {
-    deps += [ "//build/config/linux/libdrm" ]
+    deps += [ "//chromium/build/config/linux/libdrm" ]
   }
 
   if (is_win) {

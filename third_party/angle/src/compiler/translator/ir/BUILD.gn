@@ -4,7 +4,7 @@
 
 import("../../../../gni/angle.gni")
 if (angle_has_build) {
-  import("//build/rust/rust_static_library.gni")
+  import("//chromium/build/rust/rust_static_library.gni")
 }
 
 angle_translator_ir_sources = [

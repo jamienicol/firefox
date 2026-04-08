@@ -15,15 +15,15 @@ if (angle_enable_wgpu) {
   import("//build_overrides/tint.gni")
 }
 if (angle_has_build) {
-  import("//build/config/linux/pkg_config.gni")
-  import("//build/config/sanitizers/sanitizers.gni")
-  import("//build/config/ui.gni")
+  import("//chromium/build/config/linux/pkg_config.gni")
+  import("//chromium/build/config/sanitizers/sanitizers.gni")
+  import("//chromium/build/config/ui.gni")
   import("//testing/libfuzzer/fuzzer_test.gni")
 
   if (is_android) {
     # android/rules.gni can only be imported for Android targets
-    import("//build/config/android/config.gni")
-    import("//build/config/android/rules.gni")
+    import("//chromium/build/config/android/config.gni")
+    import("//chromium/build/config/android/rules.gni")
     import("android/angle_apk.gni")
   }
 } else {
@@ -573,7 +573,7 @@ template("angle_common_lib") {
 
     if (using_sanitizer && !build_with_chromium) {
       data_deps =
-          [ "//build/config/clang:llvm-symbolizer_data($host_toolchain)" ]
+          [ "//chromium/build/config/clang:llvm-symbolizer_data($host_toolchain)" ]
     }
 
     if (is_apple) {
@@ -1364,7 +1364,7 @@ config("shared_library_public_config") {
     if (build_with_chromium) {
       ldflags += [
         # Path for loading shared libraries for unbundled binaries.
-        # From //build/config/mac/BUILD.gn, this is only added for
+        # From //chromium/build/config/mac/BUILD.gn, this is only added for
         # component builds. However, since ANGLE always dynamically
         # links to libvulkan, it should be re-added for non-component
         # builds. (anglebug.com/42263076)
@@ -1873,7 +1873,7 @@ group("angle_static") {
 # toolchain will ensure write_file() is called only once.
 if (!build_with_chromium && angle_has_build &&
     current_toolchain == default_toolchain) {
-  import("//build/gn_logs.gni")
+  import("//chromium/build/gn_logs.gni")
 
   # Write debug logs to gn_logs.txt.
   _lines = [

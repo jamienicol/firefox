@@ -52,8 +52,8 @@ static_library("libpng") {
   if (is_win) {
     cflags = [ "/wd4028" ]
   }
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   public_configs = [ ":libpng_config" ]
   deps = [ "//third_party/zlib:zlib" ]
 }

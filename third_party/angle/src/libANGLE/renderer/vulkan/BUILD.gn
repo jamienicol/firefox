@@ -4,7 +4,7 @@
 #
 # This file houses the build configuration for the ANGLE Vulkan back-end.
 
-import("//build/config/dcheck_always_on.gni")
+import("//chromium/build/config/dcheck_always_on.gni")
 import("//build_overrides/swiftshader.gni")
 import("vulkan_backend.gni")
 

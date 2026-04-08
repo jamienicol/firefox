@@ -49,8 +49,8 @@ if (is_android) {
     ]
 
     deps = [
-      "//build/android:build_java",
-      "//build/android/gtest_apk:native_test_instrumentation_test_runner_java",
+      "//chromium/build/android:build_java",
+      "//chromium/build/android/gtest_apk:native_test_instrumentation_test_runner_java",
     ]
 
     if (angle_standalone_benchmark) {
@@ -365,9 +365,9 @@ if (is_win || is_linux || is_chromeos || is_android || is_fuchsia || is_apple) {
     if (is_fuchsia) {
       # TODO(crbug.com/1185811): Investigate removing the requirement for
       # job_policy_ambient_mark_vmo_exec.
-      test_runner_shard = "//build/config/fuchsia/test/elf_test_ambient_exec_runner.shard.test-cml"
+      test_runner_shard = "//chromium/build/config/fuchsia/test/elf_test_ambient_exec_runner.shard.test-cml"
       additional_manifest_fragments = [
-        "//build/config/fuchsia/test/present_view.shard.test-cml",
+        "//chromium/build/config/fuchsia/test/present_view.shard.test-cml",
         "//third_party/fuchsia-sdk/sdk/pkg/vulkan/client.shard.cml",
       ]
     }
@@ -1297,9 +1297,9 @@ if (build_angle_gles1_conform_tests) {
       }
 
       suppressed_configs += [
-        "//build/config/win:lean_and_mean",
-        "//build/config/win:nominmax",
-        "//build/config/win:unicode",
+        "//chromium/build/config/win:lean_and_mean",
+        "//chromium/build/config/win:nominmax",
+        "//chromium/build/config/win:unicode",
       ]
     }
   }
@@ -1406,18 +1406,18 @@ if (build_angle_deqp_tests && !is_fuchsia) {
   }
 
   deqp_undefine_configs = [
-    "//build/config/compiler:chromium_code",
-    "//build/config/compiler:no_exceptions",
-    "//build/config/compiler:no_rtti",
+    "//chromium/build/config/compiler:chromium_code",
+    "//chromium/build/config/compiler:no_exceptions",
+    "//chromium/build/config/compiler:no_rtti",
     "${angle_root}:constructor_and_destructor_warnings",
     "${angle_root}:extra_warnings",
   ]
 
   if (is_win) {
     deqp_undefine_configs += [
-      "//build/config/win:lean_and_mean",
-      "//build/config/win:nominmax",
-      "//build/config/win:unicode",
+      "//chromium/build/config/win:lean_and_mean",
+      "//chromium/build/config/win:nominmax",
+      "//chromium/build/config/win:unicode",
     ]
   }
 
@@ -1459,8 +1459,8 @@ if (build_angle_deqp_tests && !is_fuchsia) {
     public_configs += [
       ":angle_deqp_support",
       ":angle_deqp_framework_decpp_config",
-      "//build/config/compiler:exceptions",
-      "//build/config/compiler:no_chromium_code",
+      "//chromium/build/config/compiler:exceptions",
+      "//chromium/build/config/compiler:no_chromium_code",
     ]
     if (is_clang) {
       cflags_cc = [
@@ -1486,8 +1486,8 @@ if (build_angle_deqp_tests && !is_fuchsia) {
       ":angle_deqp_support",
       ":angle_deqp_framework_decpp_config",
       ":angle_deqp_framework_delibs_config",
-      "//build/config/compiler:exceptions",
-      "//build/config/compiler:no_chromium_code",
+      "//chromium/build/config/compiler:exceptions",
+      "//chromium/build/config/compiler:no_chromium_code",
     ]
 
     public_deps = [

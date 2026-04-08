@@ -53,7 +53,7 @@
 #    ]
 #  }
 
-import("//build/compiled_action.gni")
+import("//chromium/build/compiled_action.gni")
 
 template("flatbuffer") {
   assert(defined(invoker.sources), "Need sources for flatbuffers_library")

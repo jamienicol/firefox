@@ -38,11 +38,11 @@ source_set("flatbuffers") {
   ]
 
   if (is_win) {
-    data_deps = [ "//build/win:runtime_libs" ]
+    data_deps = [ "//chromium/build/win:runtime_libs" ]
   }
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
 
   public_configs = [ ":flatbuffers_config" ]
 }
@@ -127,8 +127,8 @@ source_set("compiler_files") {
     "src/src/reflection.cpp",
     "src/src/util.cpp",
   ]
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   visibility = [ ":*" ]
   deps = [ ":flatbuffers" ]
 }
@@ -189,8 +189,8 @@ source_set("flatbuffers_test_files") {
     "src/src/util.cpp",
   ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   deps = [ ":flatbuffers" ]
 }
 
@@ -252,13 +252,13 @@ test("flatbuffers_unittests") {
     "FLATBUFFERS_TEST_PATH_PREFIX=" +
         rebase_path("//third_party/flatbuffers/src/", root_build_dir),
   ]
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   libs = [ "log" ]
 }
 
 if (is_android) {
-  import("//build/config/android/rules.gni")
+  import("//chromium/build/config/android/rules.gni")
 
   android_library("flatbuffers_java") {
     chromium_code = false

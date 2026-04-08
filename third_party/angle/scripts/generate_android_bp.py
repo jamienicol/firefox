@@ -240,7 +240,7 @@ def gn_sources_to_blueprint_sources(sources):
 
 
 target_blockist = [
-    '//build/config:shared_library_deps',
+    '//chromium/build/config:shared_library_deps',
     '//third_party/zlib:zlib',
     '//third_party/zlib/google:compression_utils_portable',
 
@@ -251,12 +251,12 @@ target_blockist = [
     '//third_party/googletest:gmock',
 
     # Do not add chromium rust dependencies, we will use Android rust dependencies instead
-    '//build/rust:cxx_cppdeps',
-    '//build/rust:cxx_rustdeps',
-    '//build/rust/allocator:allocator',
-    '//build/rust/std:std',
-    '//build/rust/gni_impl:rustc_print_cfg',
-    '//third_party/rust/cxxbridge_cmd/v1:cxxbridge(//build/toolchain/linux:clang_x64_for_rust_host_build_tools)',
+    '//chromium/build/rust:cxx_cppdeps',
+    '//chromium/build/rust:cxx_rustdeps',
+    '//chromium/build/rust/allocator:allocator',
+    '//chromium/build/rust/std:std',
+    '//chromium/build/rust/gni_impl:rustc_print_cfg',
+    '//third_party/rust/cxxbridge_cmd/v1:cxxbridge(//chromium/build/toolchain/linux:clang_x64_for_rust_host_build_tools)',
 ]
 
 third_party_target_allowlist = [
