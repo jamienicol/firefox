@@ -29,7 +29,7 @@ uint64_t IdentifierHashFunc(const char* name, size_t len) {
 static ShCompileOptions ChooseValidatorCompileOptions(
     const ShBuiltInResources& resources, const mozilla::gl::GLContext* gl) {
   ShCompileOptions options = {};
-  options.variables = true;
+  // options.variables = true;
   options.enforcePackingRestrictions = true;
   options.objectCode = true;
   options.initGLPosition = true;
@@ -50,7 +50,7 @@ static ShCompileOptions ChooseValidatorCompileOptions(
       // Work around that Mac drivers handle struct scopes incorrectly.
       options.regenerateStructNames = true;
       options.initOutputVariables = true;
-      options.initGLPointSize = true;
+      // options.initGLPointSize = true;
 
       if (gl->Vendor() == gl::GLVendor::Intel) {
         // Work around that Intel drivers on Mac OSX handle for-loop
@@ -188,27 +188,27 @@ std::unique_ptr<webgl::ShaderValidator> WebGLContext::CreateShaderValidator(
 
   // -
 
-  resources.MaxVariableSizeInBytes = [&]() -> size_t {
-    const auto kibytes = StaticPrefs::webgl_glsl_max_var_size_in_kibytes();
-    if (kibytes >= 0) {
-      return static_cast<size_t>(kibytes) * 1024;
-    }
+  // resources.MaxVariableSizeInBytes = [&]() -> size_t {
+  //   const auto kibytes = StaticPrefs::webgl_glsl_max_var_size_in_kibytes();
+  //   if (kibytes >= 0) {
+  //     return static_cast<size_t>(kibytes) * 1024;
+  //   }
 
-    return resources.MaxVariableSizeInBytes;
-  }();
+  //   return resources.MaxVariableSizeInBytes;
+  // }();
 
-  resources.MaxPrivateVariableSizeInBytes = [&]() -> size_t {
-    const auto bytes = StaticPrefs::webgl_glsl_max_private_var_size_in_bytes();
-    if (bytes >= 0) {
-      return static_cast<size_t>(bytes);
-    }
+  // resources.MaxPrivateVariableSizeInBytes = [&]() -> size_t {
+  //   const auto bytes = StaticPrefs::webgl_glsl_max_private_var_size_in_bytes();
+  //   if (bytes >= 0) {
+  //     return static_cast<size_t>(bytes);
+  //   }
 
-    if (kIsMacOS) {
-      return 128 * 1024;  // 8k vec4s
-    }
+  //   if (kIsMacOS) {
+  //     return 128 * 1024;  // 8k vec4s
+  //   }
 
-    return resources.MaxPrivateVariableSizeInBytes;
-  }();
+  //   return resources.MaxPrivateVariableSizeInBytes;
+  // }();
 
   // -
 
