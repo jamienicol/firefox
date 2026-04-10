@@ -448,7 +448,10 @@ def process_gn_config(
         context_attrs["USE_LIBS"] = []
         for dep in spec.get("deps", []):
             if dep.startswith("//:") and dep in targets:
-                context_attrs["USE_LIBS"] += [dep[3:] + "_gn"]
+                dep_name = dep[3:]
+                if dep_name.startswith("lib"):
+                    dep_name = dep_name[3:]
+                context_attrs["USE_LIBS"] += [dep_name + "_gn"]
 
         # Add some features to all contexts. Put here in case LOCAL_INCLUDES
         # order matters.
