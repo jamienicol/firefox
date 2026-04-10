@@ -2,8 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import("//build/config/compiler/compiler.gni")
-import("//build/config/dcheck_always_on.gni")
+import("//chromium/build/config/compiler/compiler.gni")
+import("//chromium/build/config/dcheck_always_on.gni")
 
 declare_args() {
   # Expose zlib's symbols, used by Node.js to provide zlib APIs for its native
@@ -16,7 +16,7 @@ if (build_with_chromium) {
 }
 
 if (current_cpu == "arm" || current_cpu == "arm64") {
-  import("//build/config/arm.gni")
+  import("//chromium/build/config/arm.gni")
 }
 
 config("zlib_config") {
@@ -32,7 +32,7 @@ config("zlib_internal_config") {
 
   if (!is_debug) {
     # Build code using -O3, see: crbug.com/1084371.
-    configs = [ "//build/config/compiler:optimize_speed" ]
+    configs = [ "//chromium/build/config/compiler:optimize_speed" ]
   }
   if (is_debug || dcheck_always_on || use_fuzzing_engine) {
     # Enable zlib's asserts in debug and fuzzer builds.
@@ -210,8 +210,8 @@ source_set("zlib_data_chunk_simd") {
 
   # Needed for MSVC, which is still supported by V8 and PDFium. zlib uses K&R C
   # style function declarations, which triggers warning C4131.
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   configs += [ ":zlib_warnings" ]
 
   public_configs = [ ":zlib_data_chunk_simd_config" ]
@@ -351,7 +351,7 @@ component("zlib") {
   }
 
   if (is_android) {
-    import("//build/config/android/config.gni")
+    import("//chromium/build/config/android/config.gni")
     if (defined(android_ndk_root) && android_ndk_root != "") {
       deps += [ "//third_party/cpu_features:ndk_compat" ]
     } else {
@@ -359,12 +359,12 @@ component("zlib") {
     }
   }
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
 
   if (is_posix && zlib_symbols_visible) {
-    configs -= [ "//build/config/gcc:symbol_visibility_hidden" ]
-    configs += [ "//build/config/gcc:symbol_visibility_default" ]
+    configs -= [ "//chromium/build/config/gcc:symbol_visibility_hidden" ]
+    configs += [ "//chromium/build/config/gcc:symbol_visibility_default" ]
   }
 
   public_configs = [ ":zlib_config" ]
@@ -422,8 +422,8 @@ static_library("minizip") {
 
   deps = [ ":zlib" ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
 
   public_configs = [ ":zlib_config" ]
 
@@ -438,14 +438,14 @@ executable("zlib_bench") {
 
   sources = [ "contrib/bench/zlib_bench.cc" ]
   if (!is_debug) {
-    configs -= [ "//build/config/compiler:default_optimization" ]
-    configs += [ "//build/config/compiler:optimize_speed" ]
+    configs -= [ "//chromium/build/config/compiler:default_optimization" ]
+    configs += [ "//chromium/build/config/compiler:optimize_speed" ]
   }
 
   deps = [ ":zlib" ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
 }
 
 executable("minigzip") {
@@ -453,14 +453,14 @@ executable("minigzip") {
 
   sources = [ "test/minigzip.c" ]
   if (!is_debug) {
-    configs -= [ "//build/config/compiler:default_optimization" ]
-    configs += [ "//build/config/compiler:optimize_speed" ]
+    configs -= [ "//chromium/build/config/compiler:default_optimization" ]
+    configs += [ "//chromium/build/config/compiler:optimize_speed" ]
   }
 
   deps = [ ":zlib" ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
 }
 
 executable("zpipe") {
@@ -468,14 +468,14 @@ executable("zpipe") {
 
   sources = [ "examples/zpipe.c" ]
   if (!is_debug) {
-    configs -= [ "//build/config/compiler:default_optimization" ]
-    configs += [ "//build/config/compiler:optimize_speed" ]
+    configs -= [ "//chromium/build/config/compiler:default_optimization" ]
+    configs += [ "//chromium/build/config/compiler:optimize_speed" ]
   }
 
   deps = [ ":zlib" ]
 
-  configs -= [ "//build/config/compiler:chromium_code" ]
-  configs += [ "//build/config/compiler:no_chromium_code" ]
+  configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+  configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
 }
 
 if (!is_win || target_os != "winuwp") {
@@ -489,14 +489,14 @@ if (!is_win || target_os != "winuwp") {
     }
 
     if (!is_debug) {
-      configs -= [ "//build/config/compiler:default_optimization" ]
-      configs += [ "//build/config/compiler:optimize_speed" ]
+      configs -= [ "//chromium/build/config/compiler:default_optimization" ]
+      configs += [ "//chromium/build/config/compiler:optimize_speed" ]
     }
 
     deps = [ ":minizip" ]
 
-    configs -= [ "//build/config/compiler:chromium_code" ]
-    configs += [ "//build/config/compiler:no_chromium_code" ]
+    configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+    configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   }
 
   executable("miniunz_bin") {
@@ -509,14 +509,14 @@ if (!is_win || target_os != "winuwp") {
     }
 
     if (!is_debug) {
-      configs -= [ "//build/config/compiler:default_optimization" ]
-      configs += [ "//build/config/compiler:optimize_speed" ]
+      configs -= [ "//chromium/build/config/compiler:default_optimization" ]
+      configs += [ "//chromium/build/config/compiler:optimize_speed" ]
     }
 
     deps = [ ":minizip" ]
 
-    configs -= [ "//build/config/compiler:chromium_code" ]
-    configs += [ "//build/config/compiler:no_chromium_code" ]
+    configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+    configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   }
 }
 
@@ -550,8 +550,8 @@ if (build_with_chromium) {
       "//testing/gtest",
     ]
 
-    configs -= [ "//build/config/compiler:chromium_code" ]
-    configs += [ "//build/config/compiler:no_chromium_code" ]
+    configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+    configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
 
     include_dirs = [
       "//third_party/googletest/src/googletest/include/gtest",

@@ -5,7 +5,7 @@
 import("//build_overrides/build.gni")
 
 if (build_with_chromium && is_ios) {
-  import("//build/config/ios/bundle_data_from_filelist.gni")
+  import("//chromium/build/config/ios/bundle_data_from_filelist.gni")
 }
 
 if (build_with_chromium) {
