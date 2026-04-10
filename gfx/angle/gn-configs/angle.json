@@ -1,9 +1,9 @@
 {
   "build_root_dir": "third_party",
   "target_dir": "angle",
-  "moz_build_flag": "build_mozilla_angle_translator",
+  "moz_build_flag": "build_mozilla_angle",
   "mozilla_add_override_dir": "",
-  "gn_target": "//:translator",
+  "gn_target": "//:libEGL",
   "gn_sandbox_variables": {
     "COMPILE_FLAGS": {
       "WARNINGS_AS_ERRORS": []
@@ -14,9 +14,9 @@
   },
   "non_unified_sources": [
     "third_party/angle/src/compiler/preprocessor/preprocessor_tab_autogen.cpp",
-    "third_party/angle/src/compiler/translator/glslang_tab_autogen.cpp",
-    "third_party/angle/src/compiler/translator/glslang_lex_autogen.cpp",
     "third_party/angle/src/compiler/translator/VariablePacker.cpp",
+    "third_party/angle/src/compiler/translator/glslang_lex_autogen.cpp",
+    "third_party/angle/src/compiler/translator/glslang_tab_autogen.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/RewriteStructSamplers.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/RewriteTexelFetchOffset.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/SeparateStructFromUniformDeclarations.cpp"
