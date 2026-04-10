@@ -215,6 +215,17 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
             return "//" + mozpath.relpath(str(candidate), str(build_root_dir))
         return d
 
+    def normalize_action_arg(d):
+        d = str(d)
+        if (
+            "/" not in d
+            and "\\" not in d
+            and not Path(d).is_absolute()
+            and not d.startswith(("!//", "//"))
+        ):
+            return d
+        return normalize_action_path(d)
+
     for target_fullname in all_deps:
         raw_spec = gn_result["targets"][target_fullname]
 
@@ -225,13 +236,16 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
             for spec_attr in (
                 "type",
                 "args",
+                "sources",
                 "inputs",
                 "response_file_contents",
                 "script",
                 "outputs",
             ):
                 spec[spec_attr] = raw_spec.get(spec_attr, [])
-                if spec_attr in ("inputs", "response_file_contents"):
+                if spec_attr == "args":
+                    spec[spec_attr] = [normalize_action_arg(d) for d in spec[spec_attr]]
+                if spec_attr in ("sources", "inputs", "response_file_contents"):
                     spec[spec_attr] = [normalize_action_path(d) for d in spec[spec_attr]]
                 if spec_attr == "outputs":
                     # Rebase outputs from an absolute path in the temp dir to a
@@ -431,7 +445,11 @@ def process_gn_config(
                 resolve_path(spec["script"]),
                 resolve_path(""),
             ] + spec.get("args", [])
-            action_inputs = spec.get("response_file_contents") or spec.get("inputs", [])
+            action_inputs = (
+                spec.get("sources", [])
+                + spec.get("inputs", [])
+                + spec.get("response_file_contents", [])
+            )
             context_attrs["GeneratedFile"] = {
                 "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                 "entry_point": "action",
@@ -445,22 +463,23 @@ def process_gn_config(
         extensions = set()
         use_defines_in_asflags = False
 
-        for f in [item.lstrip("//") for item in spec.get("sources", [])]:
-            ext = mozpath.splitext(f)[-1]
-            extensions.add(ext)
-            src = f"{project_relsrcdir}/{f}"
-            if ext in {".h", ".inc"}:
-                continue
-            elif ext == ".def":
-                context_attrs["SYMBOLS_FILE"] = src
-            elif ext != ".S" and src not in non_unified_sources:
-                unified_sources.append(f"/{src}")
-            else:
-                sources.append(f"/{src}")
-            # The Mozilla build system doesn't use DEFINES for building
-            # ASFILES.
-            if ext == ".s":
-                use_defines_in_asflags = True
+        if spec["type"] != "action":
+            for f in [item.lstrip("//") for item in spec.get("sources", [])]:
+                ext = mozpath.splitext(f)[-1]
+                extensions.add(ext)
+                src = f"{project_relsrcdir}/{f}"
+                if ext in {".h", ".inc"}:
+                    continue
+                elif ext == ".def":
+                    context_attrs["SYMBOLS_FILE"] = src
+                elif ext != ".S" and src not in non_unified_sources:
+                    unified_sources.append(f"/{src}")
+                else:
+                    sources.append(f"/{src}")
+                # The Mozilla build system doesn't use DEFINES for building
+                # ASFILES.
+                if ext == ".s":
+                    use_defines_in_asflags = True
 
         context_attrs["SOURCES"] = sources
         context_attrs["UNIFIED_SOURCES"] = unified_sources
@@ -976,9 +995,10 @@ def main():
                     "angle_enable_essl": True,
                     "angle_enable_glsl": True,
                     "angle_enable_hlsl": False,
-                    "angle_enable_msl": False, # target_os == "mac",
+                    "angle_enable_msl": target_os == "mac",
                     "angle_enable_vulkan": False,
-                    "angle_enable_metal": False, # target_os == "mac",
+                    "angle_enable_metal": target_os == "mac",
+                    "angle_enable_gl": False,
                     "angle_enable_null": False,
                     "angle_enable_wgpu": False,
                     "angle_enable_d3d9": False,

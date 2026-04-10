@@ -38,13 +38,44 @@ def action(fh, *raw_args):
     def resolve_input_path(p):
         if os.path.isabs(p) and os.path.exists(p):
             return Path(p)
+        if os.path.isabs(p):
+            abs_path = Path(p)
+            try:
+                rel_to_src = abs_path.relative_to(topsrcdir)
+            except ValueError:
+                rel_to_src = None
+            if rel_to_src and "gen" in rel_to_src.parts:
+                return objdir / rel_to_src
         if p.startswith("!/"):
             return objdir / p[2:]
         if p.startswith("/"):
             if "/gen/" in p:
                 return objdir / p.lstrip("/")
             return topsrcdir / p.lstrip("/")
+        if p == "gen" or p.startswith("gen/") or "/gen/" in p:
+            return objdir / p
         return topsrcdir / p
+
+    def resolve_arg_path(p, src_target_dir, obj_target_dir):
+        if os.path.isabs(p) and os.path.exists(p):
+            return str(Path(p))
+        if p == "!//gen":
+            return str(obj_target_dir / "gen")
+        if p.startswith("!//gen/"):
+            return str(obj_target_dir / "gen" / p[len("!//gen/") :])
+        if p.startswith("!/"):
+            return str(objdir / p[2:])
+        if p.startswith("//"):
+            return str(src_target_dir / p[2:])
+        if p.startswith("/"):
+            if "/gen/" in p:
+                return str(resolve_obj_path(p))
+            return str(topsrcdir / p.lstrip("/"))
+        if p.startswith("gen/"):
+            return str((obj_target_dir / p).resolve())
+        if p.startswith(("./", "../")) or "/" in p:
+            return str((src_target_dir / p).resolve())
+        return p
 
     try:
         script_index = max(i for i, arg in enumerate(raw_args) if arg.endswith(".py"))
@@ -54,6 +85,8 @@ def action(fh, *raw_args):
         args = raw_args[script_index + 2 :]
 
         abs_target_dir = str(resolve_obj_path(target_dir))
+        src_target_dir = resolve_src_path(target_dir)
+        obj_target_dir = resolve_obj_path(target_dir)
         abs_script = resolve_src_path(script)
         script = [str(abs_script)]
         if abs_script.suffix == ".py":
@@ -69,6 +102,12 @@ def action(fh, *raw_args):
                 response_file_name if arg == "{{response_file_name}}" else arg
                 for arg in args
             ]
+        args = [
+            resolve_arg_path(arg, src_target_dir, obj_target_dir)
+            if not arg.startswith("-")
+            else arg
+            for arg in args
+        ]
         subprocess.check_call(script + args, cwd=abs_target_dir)
     except Exception:
         relative = os.path.relpath(__file__, topsrcdir)

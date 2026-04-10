@@ -7,9 +7,11 @@
   "gn_sandbox_variables": {
     "COMPILE_FLAGS": {
       "WARNINGS_AS_ERRORS": []
-    }
+    },
+    "CXXFLAGS": ["-Wno-error=unguarded-availability-new"],
+    "CMMFLAGS": ["-Wno-error=unguarded-availability-new"]
   },
-  "mozilla_flags": [],
+  "mozilla_flags": ["-fobjc-arc"],
   "write_mozbuild_variables": {
   },
   "non_unified_sources": [
@@ -17,9 +19,17 @@
     "third_party/angle/src/compiler/translator/VariablePacker.cpp",
     "third_party/angle/src/compiler/translator/glslang_lex_autogen.cpp",
     "third_party/angle/src/compiler/translator/glslang_tab_autogen.cpp",
+    "third_party/angle/src/compiler/translator/msl/AstHelpers.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/RewriteStructSamplers.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/RewriteTexelFetchOffset.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/SeparateStructFromUniformDeclarations.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/msl/GuardFragDepthWrite.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/msl/HoistConstants.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/msl/IntroduceVertexIndexID.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/msl/RewriteCaseDeclarations.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/msl/RewriteOutArgs.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/msl/TransposeRowMajorMatrices.cpp",
     "third_party/angle/src/libANGLE/Context.cpp",
     "third_party/angle/src/libANGLE/Context_gles_1_0.cpp",
     "third_party/angle/src/libANGLE/Device.cpp",
@@ -35,6 +45,8 @@
     "third_party/angle/src/libGLESv2/entry_points_gles_3_1_autogen.cpp",
     "third_party/angle/src/libGLESv2/entry_points_gles_3_2_autogen.cpp",
     "third_party/angle/src/libGLESv2/entry_points_gles_ext_autogen.cpp",
+    "third_party/angle/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm",
+    "third_party/angle/src/libANGLE/renderer/metal/ProgramMtl.mm",
     "third_party/angle/third_party/zlib/adler32.c",
     "third_party/angle/third_party/zlib/compress.c",
     "third_party/angle/third_party/zlib/contrib/optimizations/inffast_chunk.c",
