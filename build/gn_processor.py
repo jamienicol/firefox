@@ -937,24 +937,43 @@ def main():
 
     vars_set = []
     for is_debug in (True, False):
-        for target_os in ("android", "linux", "mac", "openbsd", "win"):
+        for target_os in ("android", "linux", "mac", "win"):
             target_cpus = ["x64"]
-            if target_os in ("android", "linux", "mac", "win", "openbsd"):
+            if target_os in ("android", "linux", "mac", "win"):
                 target_cpus.append("arm64")
             if target_os in ("android", "linux"):
                 target_cpus.append("arm")
-            if target_os in ("android", "linux", "win"):
-                target_cpus.append("x86")
-            if target_os in ("linux", "openbsd"):
-                target_cpus.append("riscv64")
-            if target_os == "linux":
-                target_cpus.extend(["loong64", "ppc64", "mipsel", "mips64el"])
+            # if target_os in ("android", "linux", "win"):
+            #     target_cpus.append("x86")
+            # if target_os in ("linux", "openbsd"):
+            #     target_cpus.append("riscv64")
+            # if target_os == "linux":
+            #     target_cpus.extend(["loong64", "ppc64", "mipsel", "mips64el"])
             for target_cpu in target_cpus:
                 vars = {
                     "host_cpu": "x64",
                     "is_debug": is_debug,
                     "target_cpu": target_cpu,
                     "target_os": target_os,
+
+                    "angle_enable_essl": True,
+                    "angle_enable_glsl": True,
+                    "angle_enable_hlsl": False,
+                    "angle_enable_msl": False, # target_os == "mac",
+                    "angle_enable_vulkan": False,
+                    "angle_enable_metal": False, # target_os == "mac",
+                    "angle_enable_null": False,
+                    "angle_enable_wgpu": False,
+                    "angle_enable_d3d9": False,
+                    "angle_enable_d3d11": False,
+                    "angle_use_wayland": False,
+                    "angle_standalone": False,
+                    "angle_build_all": False,
+                    "angle_enable_abseil": False,
+                    "angle_build_vulkan_system_info": False,
+                    "angle_has_frame_capture": False,
+                    "use_custom_libcxx": False,
+                    "enable_rust": False,
                 }
                 if target_os == "linux":
                     for enable_x11 in (True, False):

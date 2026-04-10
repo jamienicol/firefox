@@ -71,7 +71,7 @@ if (angle_has_build) {
   import("//chromium/build/config/ozone.gni")  # import the ozone_platform_x11 variable
   import("//chromium/build/config/sanitizers/sanitizers.gni")
   import("//build_overrides/build.gni")
-  import("//testing/test.gni")
+  #import("//testing/test.gni")
   if (is_android) {
     import("//chromium/build/config/android/config.gni")
   }

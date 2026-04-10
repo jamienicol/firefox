@@ -18,7 +18,7 @@ if (angle_has_build) {
   import("//chromium/build/config/linux/pkg_config.gni")
   import("//chromium/build/config/sanitizers/sanitizers.gni")
   import("//chromium/build/config/ui.gni")
-  import("//testing/libfuzzer/fuzzer_test.gni")
+  #import("//testing/libfuzzer/fuzzer_test.gni")
 
   if (is_android) {
     # android/rules.gni can only be imported for Android targets
@@ -526,7 +526,7 @@ angle_source_set("xxhash") {
   }
 }
 
-if (angle_has_build) {
+if (false && angle_has_build) {
   fuzzer_test("xxhash_fuzzer") {
     sources = [ "src/common/third_party/xxhash/xxhash_fuzzer.cpp" ]
     deps = [ ":xxhash" ]
