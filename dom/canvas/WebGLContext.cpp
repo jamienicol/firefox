@@ -402,6 +402,11 @@ bool WebGLContext::CreateAndInitGL(
       if (useEGL)
         return fnCreate(&gl::GLContextProviderEGL::CreateHeadless, "useEGL");
 
+#ifdef XP_MACOSX
+      return fnCreate(&gl::GLContextProviderEGL::CreateHeadless,
+                      "tryNativeEGL");
+#endif
+
       const auto ret =
           fnCreate(&gl::GLContextProvider::CreateHeadless, "tryNativeGL");
       if (ret) return ret;
