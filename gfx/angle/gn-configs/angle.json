@@ -19,6 +19,22 @@
     "third_party/angle/src/compiler/translator/glslang_tab_autogen.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/RewriteStructSamplers.cpp",
     "third_party/angle/src/compiler/translator/tree_ops/RewriteTexelFetchOffset.cpp",
-    "third_party/angle/src/compiler/translator/tree_ops/SeparateStructFromUniformDeclarations.cpp"
+    "third_party/angle/src/compiler/translator/tree_ops/SeparateStructFromUniformDeclarations.cpp",
+    "third_party/angle/third_party/zlib/adler32.c",
+    "third_party/angle/third_party/zlib/compress.c",
+    "third_party/angle/third_party/zlib/contrib/optimizations/inffast_chunk.c",
+    "third_party/angle/third_party/zlib/contrib/optimizations/inflate.c",
+    "third_party/angle/third_party/zlib/crc32.c",
+    "third_party/angle/third_party/zlib/deflate.c",
+    "third_party/angle/third_party/zlib/gzclose.c",
+    "third_party/angle/third_party/zlib/gzlib.c",
+    "third_party/angle/third_party/zlib/gzread.c",
+    "third_party/angle/third_party/zlib/gzwrite.c",
+    "third_party/angle/third_party/zlib/infback.c",
+    "third_party/angle/third_party/zlib/inffast.c",
+    "third_party/angle/third_party/zlib/inftrees.c",
+    "third_party/angle/third_party/zlib/trees.c",
+    "third_party/angle/third_party/zlib/uncompr.c",
+    "third_party/angle/third_party/zlib/zutil.c"
   ]
 }
