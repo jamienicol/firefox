@@ -13,5 +13,12 @@
   "write_mozbuild_variables": {
   },
   "non_unified_sources": [
+    "third_party/angle/src/compiler/preprocessor/preprocessor_tab_autogen.cpp",
+    "third_party/angle/src/compiler/translator/glslang_tab_autogen.cpp",
+    "third_party/angle/src/compiler/translator/glslang_lex_autogen.cpp",
+    "third_party/angle/src/compiler/translator/VariablePacker.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/RewriteStructSamplers.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/RewriteTexelFetchOffset.cpp",
+    "third_party/angle/src/compiler/translator/tree_ops/SeparateStructFromUniformDeclarations.cpp"
   ]
 }
