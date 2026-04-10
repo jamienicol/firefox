@@ -1669,8 +1669,15 @@ static already_AddRefed<gl::GLContext> CreateGLContextANGLE(
 }
 #endif
 
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK)
+#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GTK) || defined(XP_DARWIN)
 static already_AddRefed<gl::GLContext> CreateGLContextEGL() {
+#ifdef XP_DARWIN
+  nsCString failureUnused;
+  return gl::GLContextProviderEGL::CreateHeadless(
+      {gl::CreateContextFlags::ALLOW_OFFLINE_RENDERER |
+       gl::CreateContextFlags::FORBID_SOFTWARE},
+      &failureUnused);
+#else
   // Create GLContext with dummy EGLSurface.
   bool forHardwareWebRender = true;
   // SW-WR uses CompositorOGL in native compositor.
@@ -1686,16 +1693,7 @@ static already_AddRefed<gl::GLContext> CreateGLContextEGL() {
     return nullptr;
   }
   return gl.forget();
-}
-#endif
-
-#ifdef XP_DARWIN
-static already_AddRefed<gl::GLContext> CreateGLContextCGL() {
-  nsCString failureUnused;
-  return gl::GLContextProvider::CreateHeadless(
-      {gl::CreateContextFlags::ALLOW_OFFLINE_RENDERER |
-       gl::CreateContextFlags::FORBID_SOFTWARE},
-      &failureUnused);
+  #endif
 }
 #endif
 
@@ -1713,7 +1711,7 @@ static already_AddRefed<gl::GLContext> CreateGLContext(nsACString& aError) {
     gl = CreateGLContextEGL();
   }
 #elif XP_DARWIN
-  gl = CreateGLContextCGL();
+  gl = CreateGLContextEGL();
 #endif
 
   wr::RenderThread::MaybeEnableGLDebugMessage(gl);

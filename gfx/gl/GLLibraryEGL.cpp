@@ -439,7 +439,31 @@ static std::shared_ptr<EglDisplay> GetAndInitDisplayForAccelANGLE(
 
 // -
 
-#if defined(XP_UNIX)
+#ifdef EGL_LIB
+#  undef EGL_LIB
+#endif
+#ifdef EGL_LIB2
+#  undef EGL_LIB2
+#endif
+#ifdef GLES2_LIB
+#  undef GLES2_LIB
+#endif
+#ifdef GLES2_LIB2
+#  undef GLES2_LIB2
+#endif
+#ifdef GL_LIB
+#  undef GL_LIB
+#endif
+#ifdef GL_LIB2
+#  undef GL_LIB2
+#endif
+
+#if defined(XP_MACOSX)
+#  define EGL_LIB "libEGL.dylib"
+#  define GLES2_LIB "libGLESv2.dylib"
+#elif defined(XP_UNIX)
+#  define EGL_LIB "libEGL.so"
+#  define EGL_LIB2 "libEGL.so.1"
 #  define GLES2_LIB "libGLESv2.so"
 #  define GLES2_LIB2 "libGLESv2.so.2"
 #  define GL_LIB "libGL.so"
@@ -504,19 +528,19 @@ bool GLLibraryEGL::Init(nsACString* const out_failureId) {
 
 #else  // !Windows
 
-  // On non-Windows (Android) we use system copies of libEGL. We look for
-  // the APITrace lib, libEGL.so, and libEGL.so.1 in that order.
+  // On non-Windows we use the platform-specific EGL/GLES libraries. We look
+  // for the APITrace lib first when available.
 
 #  if defined(ANDROID)
   if (!mEGLLibrary) mEGLLibrary = LoadApitraceLibrary();
 #  endif
 
   if (!mEGLLibrary) {
-    mEGLLibrary = PR_LoadLibrary("libEGL.so");
+    mEGLLibrary = PR_LoadLibrary(EGL_LIB);
   }
-#  if defined(XP_UNIX)
+#  ifdef EGL_LIB2
   if (!mEGLLibrary) {
-    mEGLLibrary = PR_LoadLibrary("libEGL.so.1");
+    mEGLLibrary = PR_LoadLibrary(EGL_LIB2);
   }
 #  endif
 
@@ -639,20 +663,20 @@ bool GLLibraryEGL::Init(nsACString* const out_failureId) {
   // Client exts are ready. (But not display exts!)
 
   if (mIsANGLE) {
-    MOZ_ASSERT(IsExtensionSupported(EGLLibExtension::ANGLE_platform_angle_d3d));
     const SymLoadStruct angleSymbols[] = {SYMBOL(GetPlatformDisplay),
                                           END_OF_SYMBOLS};
     if (!fnLoadSymbols(angleSymbols)) {
       gfxCriticalError() << "Failed to load ANGLE symbols!";
       return false;
     }
-    MOZ_ASSERT(IsExtensionSupported(EGLLibExtension::ANGLE_platform_angle_d3d));
-    const SymLoadStruct createDeviceSymbols[] = {
-        SYMBOL(CreateDeviceANGLE), SYMBOL(ReleaseDeviceANGLE), END_OF_SYMBOLS};
-    if (!fnLoadSymbols(createDeviceSymbols)) {
-      NS_ERROR(
-          "EGL supports ANGLE_device_creation without exposing its functions!");
-      MarkExtensionUnsupported(EGLLibExtension::ANGLE_device_creation);
+    if (IsExtensionSupported(EGLLibExtension::ANGLE_device_creation)) {
+      const SymLoadStruct createDeviceSymbols[] = {
+          SYMBOL(CreateDeviceANGLE), SYMBOL(ReleaseDeviceANGLE), END_OF_SYMBOLS};
+      if (!fnLoadSymbols(createDeviceSymbols)) {
+        NS_ERROR(
+            "EGL supports ANGLE_device_creation without exposing its functions!");
+        MarkExtensionUnsupported(EGLLibExtension::ANGLE_device_creation);
+      }
     }
   }
 

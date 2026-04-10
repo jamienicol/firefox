@@ -319,6 +319,28 @@ def process_gn_config(
         # in the tree (like "webrtc").
         return path.lstrip("//"), name + "_gn"
 
+    def moz_library_name(fullname):
+        path, name = fullname.split(":")
+        if name.startswith("lib"):
+            name = name[3:]
+
+        spec = targets.get(fullname)
+        if (
+            spec
+            and spec["type"] == "shared_library"
+            and path == "//"
+            and name
+            in (
+                "EGL",
+                "GLESv2",
+                "EGL_vulkan_secondaries",
+                "GLESv2_vulkan_secondaries",
+            )
+        ):
+            return name
+
+        return name + "_gn"
+
     def resolve_path(path):
         # GN will have resolved all these paths relative to the root of the
         # project indicated by "//".
@@ -390,11 +412,8 @@ def process_gn_config(
 
         # Remove leading 'lib' from the target_name if any, and use as
         # library name.
-        name = target_name
         if spec["type"] in ("static_library", "shared_library", "source_set", "action"):
-            if name.startswith("lib"):
-                name = name[3:]
-            context_attrs["LIBRARY_NAME"] = str(name)
+            context_attrs["LIBRARY_NAME"] = moz_library_name(target_fullname)
         else:
             raise Exception(
                 "The following GN target type is not currently "
@@ -542,9 +561,7 @@ def process_gn_config(
                 dep_name = dep.rsplit(":", 1)[1]
 
             if dep_name:
-                if dep_name.startswith("lib"):
-                    dep_name = dep_name[3:]
-                context_attrs["USE_LIBS"] += [dep_name + "_gn"]
+                context_attrs["USE_LIBS"] += [moz_library_name(dep)]
 
         # Add some features to all contexts. Put here in case LOCAL_INCLUDES
         # order matters.

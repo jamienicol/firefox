@@ -497,8 +497,16 @@ UniquePtr<RenderCompositor> RenderCompositorNativeOGL::Create(
     const RefPtr<widget::CompositorWidget>& aWidget, nsACString& aError) {
   RefPtr<gl::GLContext> gl = RenderThread::Get()->SingletonGL();
   if (!gl) {
+#ifdef XP_DARWIN
+    nsCString failureUnused;
+    gl = gl::GLContextProviderEGL::CreateHeadless(
+        {gl::CreateContextFlags::ALLOW_OFFLINE_RENDERER |
+         gl::CreateContextFlags::FORBID_SOFTWARE},
+        &failureUnused);
+#else
     gl = gl::GLContextProvider::CreateForCompositorWidget(
         aWidget, /* aHardwareWebRender */ true, /* aForceAccelerated */ true);
+#endif
     RenderThread::MaybeEnableGLDebugMessage(gl);
   }
   if (!gl || !gl->MakeCurrent()) {
