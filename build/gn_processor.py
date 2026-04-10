@@ -171,8 +171,9 @@ def find_deps(all_targets, target):
     return all_deps
 
 
-def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
+def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build_root_dir):
     gen_path = path / "gen"
+    build_root_dir = Path(build_root_dir).resolve()
     # Translates the raw output of gn into just what we'll need to generate a
     # mozbuild configuration.
     gn_out = {"targets": {}, "sandbox_vars": sandbox_vars}
@@ -203,6 +204,17 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
     gn_out["mozbuild_args"] = mozbuild_args
     all_deps = find_deps(gn_result["targets"], gn_target)
 
+    def normalize_action_path(d):
+        d = str(d)
+        candidate = Path(d)
+        if not candidate.is_absolute():
+            candidate = (path / d).resolve()
+        if candidate == gen_path or str(candidate).startswith(str(gen_path) + os.sep):
+            return "!//gen/" + mozpath.relpath(str(candidate), str(gen_path))
+        if str(candidate).startswith(str(build_root_dir) + os.sep):
+            return "//" + mozpath.relpath(str(candidate), str(build_root_dir))
+        return d
+
     for target_fullname in all_deps:
         raw_spec = gn_result["targets"][target_fullname]
 
@@ -213,10 +225,14 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
             for spec_attr in (
                 "type",
                 "args",
+                "inputs",
+                "response_file_contents",
                 "script",
                 "outputs",
             ):
                 spec[spec_attr] = raw_spec.get(spec_attr, [])
+                if spec_attr in ("inputs", "response_file_contents"):
+                    spec[spec_attr] = [normalize_action_path(d) for d in spec[spec_attr]]
                 if spec_attr == "outputs":
                     # Rebase outputs from an absolute path in the temp dir to a
                     # path relative to the target dir.
@@ -297,6 +313,10 @@ def process_gn_config(
     def resolve_path(path):
         # GN will have resolved all these paths relative to the root of the
         # project indicated by "//".
+        if path.startswith("!//gen/"):
+            return f"!/{project_relsrcdir}/gen/{path[len('!//gen/'):]}"
+        if path == "!//gen":
+            return f"!/{project_relsrcdir}/gen"
         if path.startswith("//"):
             path = path[2:]
         if not path.startswith("/"):
@@ -331,10 +351,12 @@ def process_gn_config(
                 resolve_path(spec["script"]),
                 resolve_path(""),
             ] + spec.get("args", [])
+            action_inputs = spec.get("response_file_contents") or spec.get("inputs", [])
             context_attrs["GeneratedFile"] = {
                 "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                 "entry_point": "action",
                 "outputs": [resolve_path(f) for f in spec["outputs"]],
+                "inputs": [resolve_path(f) for f in action_inputs],
                 "flags": flags,
             }
 
@@ -485,11 +507,15 @@ def find_common_attrs(config_attributes):
                         if input_value.count(i) == common_value.count(i)
                     ]
                 elif isinstance(input_value, dict):
-                    reference[k] = {
-                        key: value
-                        for key, value in common_value.items()
-                        if key in input_value and value == input_value[key]
-                    }
+                    if k == "GeneratedFile":
+                        if input_value != common_value:
+                            del reference[k]
+                    else:
+                        reference[k] = {
+                            key: value
+                            for key, value in common_value.items()
+                            if key in input_value and value == input_value[key]
+                        }
                 elif input_value != common_value:
                     del reference[k]
             elif k in reference:
@@ -513,11 +539,15 @@ def find_common_attrs(config_attributes):
                         if common_value.count(i) != input_value.count(i)
                     ]
                 elif isinstance(input_value, dict):
-                    input_attrs[k] = {
-                        key: value
-                        for key, value in input_value.items()
-                        if key not in common_value
-                    }
+                    if k == "GeneratedFile":
+                        if input_value == common_value:
+                            del input_attrs[k]
+                    else:
+                        input_attrs[k] = {
+                            key: value
+                            for key, value in input_value.items()
+                            if key not in common_value
+                        }
                 else:
                     del input_attrs[k]
 
@@ -778,6 +808,7 @@ def generate_gn_config(
                 sandbox_variables,
                 input_variables,
                 gn_target,
+                build_root_dir,
             )
             gn_config = process_gn_config(
                 gn_config,
