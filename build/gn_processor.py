@@ -241,6 +241,13 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
                     ]
             gn_out["targets"][target_fullname] = spec
 
+        if raw_spec["type"] == "group":
+            spec = {}
+            for spec_attr in ("type", "deps", "public_deps"):
+                spec[spec_attr] = raw_spec.get(spec_attr, [])
+            gn_out["targets"][target_fullname] = spec
+            continue
+
         # TODO: 'executable' will need to be handled here at some point as well.
         if raw_spec["type"] not in ("static_library", "shared_library", "source_set"):
             continue
@@ -257,6 +264,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
             "cflags_objc",
             "cflags_objcc",
             "deps",
+            "public_deps",
             "libs",
         ):
             spec[spec_attr] = raw_spec.get(spec_attr, [])
@@ -323,8 +331,24 @@ def process_gn_config(
             path = f"/{project_relsrcdir}/{path}"
         return path
 
+    def expand_library_deps(dep):
+        if dep not in targets:
+            return [dep]
+
+        dep_spec = targets[dep]
+        if dep_spec["type"] != "group":
+            return [dep]
+
+        expanded = []
+        for child_dep in dep_spec.get("deps", []) + dep_spec.get("public_deps", []):
+            expanded.extend(expand_library_deps(child_dep))
+        return expanded
+
     # Process all targets from the given gn project and its dependencies.
     for target_fullname, spec in targets.items():
+        if spec["type"] == "group":
+            continue
+
         target_path, target_name = target_info(target_fullname)
         context_attrs = {}
 
@@ -446,9 +470,20 @@ def process_gn_config(
                 context_attrs["OS_LIBS"] += [lib_name]
 
         context_attrs["USE_LIBS"] = []
-        for dep in spec.get("deps", []):
+        all_deps = []
+        for dep in spec.get("deps", []) + spec.get("public_deps", []):
+            all_deps.extend(expand_library_deps(dep))
+
+        for dep in all_deps:
+            dep_name = None
             if dep.startswith("//:") and dep in targets:
                 dep_name = dep[3:]
+            elif dep.startswith(":") and f"{target_path}:{dep[1:]}" in targets:
+                dep_name = dep[1:]
+            elif dep in targets and ":" in dep:
+                dep_name = dep.rsplit(":", 1)[1]
+
+            if dep_name:
                 if dep_name.startswith("lib"):
                     dep_name = dep_name[3:]
                 context_attrs["USE_LIBS"] += [dep_name + "_gn"]
