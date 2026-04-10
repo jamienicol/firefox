@@ -308,19 +308,19 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
 already_AddRefed<GLContext> GLContextEGLFactory::Create(
     EGLNativeWindowType aWindow, bool aHardwareWebRender) {
   bool preferGles;
-#if defined(MOZ_WIDGET_ANDROID)
+#if defined(MOZ_WIDGET_ANDROID) || defined(XP_MACOSX)
   preferGles = true;
 #else
   preferGles = StaticPrefs::gfx_egl_prefer_gles_enabled_AtStartup();
-#endif  // defined(MOZ_WIDGET_ANDROID)
+#endif  // defined(MOZ_WIDGET_ANDROID) || defined(XP_MACOSX)
 
   RefPtr<GLContext> glContext =
       CreateImpl(aWindow, aHardwareWebRender, preferGles);
-#if !defined(MOZ_WIDGET_ANDROID)
+#if !defined(MOZ_WIDGET_ANDROID) && !defined(XP_MACOSX)
   if (!glContext) {
     glContext = CreateImpl(aWindow, aHardwareWebRender, !preferGles);
   }
-#endif  // !defined(MOZ_WIDGET_ANDROID)
+#endif  // !defined(MOZ_WIDGET_ANDROID) && !defined(XP_MACOSX)
   return glContext.forget();
 }
 
@@ -1188,17 +1188,17 @@ RefPtr<GLContextEGL> GLContextEGL::CreateWithoutSurface(
   };
 
   bool preferGles;
-#if defined(MOZ_WIDGET_ANDROID)
+#if defined(MOZ_WIDGET_ANDROID) || defined(XP_MACOSX)
   preferGles = true;
 #else
   preferGles = StaticPrefs::gfx_egl_prefer_gles_enabled_AtStartup();
-#endif  // defined(MOZ_WIDGET_ANDROID)
+#endif  // defined(MOZ_WIDGET_ANDROID) || defined(XP_MACOSX)
   RefPtr<GLContextEGL> gl = WithUseGles(preferGles);
-#if !defined(MOZ_WIDGET_ANDROID)
+#if !defined(MOZ_WIDGET_ANDROID) && !defined(XP_MACOSX)
   if (!gl) {
     gl = WithUseGles(!preferGles);
   }
-#endif  // !defined(MOZ_WIDGET_ANDROID)
+#endif  // !defined(MOZ_WIDGET_ANDROID) && !defined(XP_MACOSX)
   return gl;
 }
 

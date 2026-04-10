@@ -18,6 +18,7 @@
 
 #ifdef XP_MACOSX
 #  include "GLContextCGL.h"
+#  include "GLContextEGL.h"
 #else
 #  include "GLContextEAGL.h"
 #  include <OpenGLES/EAGLIOSurface.h>
@@ -36,6 +37,7 @@ using gfx::IntSize;
 using gl::GLContext;
 #ifdef XP_MACOSX
 using gl::GLContextCGL;
+using gl::GLContextEGL;
 #else
 using gl::GLContextEAGL;
 #endif
@@ -47,6 +49,46 @@ static constexpr GLenum kTextureRectTarget = LOCAL_GL_TEXTURE_RECTANGLE_ARB;
 #else
 static constexpr GLenum kTextureRectTarget = LOCAL_GL_TEXTURE_2D;
 #endif
+
+static constexpr EGLenum kEGLIOSurfaceANGLE = 0x3454;
+static constexpr EGLint kEGLIOSurfacePlaneANGLE = 0x345A;
+static constexpr EGLint kEGLTextureRectangleANGLE = 0x345B;
+static constexpr EGLint kEGLTextureTypeANGLE = 0x345C;
+static constexpr EGLint kEGLTextureInternalFormatANGLE = 0x345D;
+static constexpr EGLint kEGLBindToTextureTargetANGLE = 0x348D;
+
+static GLenum TextureTargetForContext(GLContext* aGL) {
+#ifdef XP_MACOSX
+  if (aGL->GetContextType() == gl::GLContextType::EGL) {
+    return LOCAL_GL_TEXTURE_2D;
+  }
+#endif
+  return kTextureRectTarget;
+}
+
+SurfacePoolCA::LockedPool::GLResourcesForSurface::GLResourcesForSurface(
+    GLContext* aGLContext, UniquePtr<gl::MozFramebuffer>&& aFramebuffer,
+    uintptr_t aEGLSurface, GLenum aTextureTarget)
+    : mGLContext(aGLContext),
+      mFramebuffer(std::move(aFramebuffer)),
+      mEGLSurface(aEGLSurface),
+      mTextureTarget(aTextureTarget) {}
+
+SurfacePoolCA::LockedPool::GLResourcesForSurface::~GLResourcesForSurface() {
+#ifdef XP_MACOSX
+  if (mEGLSurface && mGLContext &&
+      mGLContext->GetContextType() == gl::GLContextType::EGL) {
+    auto* gle = GLContextEGL::Cast(mGLContext);
+    if (mFramebuffer && gle->MakeCurrent()) {
+      const gl::ScopedBindTexture bindTex(gle, mFramebuffer->ColorTex(),
+                                          mTextureTarget);
+      gle->mEgl->fReleaseTexImage((EGLSurface)mEGLSurface,
+                                  LOCAL_EGL_BACK_BUFFER);
+    }
+    GLContextEGL::DestroySurface(*gle->mEgl, (EGLSurface)mEGLSurface);
+  }
+#endif
+}
 
 /* static */ RefPtr<SurfacePool> SurfacePool::Create(size_t aPoolSizeLimit) {
   return new SurfacePoolCA(aPoolSizeLimit);
@@ -324,33 +366,99 @@ Maybe<GLuint> SurfacePoolCA::LockedPool::GetFramebufferForSurface(
       "Framebuffer creation", GRAPHICS_TileAllocation,
       nsPrintfCString("%dx%d", entry.mSize.width, entry.mSize.height));
 
-#ifdef XP_MACOSX
-  RefPtr<GLContextCGL> cgl = GLContextCGL::Cast(aGL);
-  MOZ_RELEASE_ASSERT(cgl, "Unexpected GLContext type");
-#else
-  RefPtr<GLContextEAGL> eagl = GLContextEAGL::Cast(aGL);
-  MOZ_RELEASE_ASSERT(eagl, "Unexpected GLContext type");
-#endif
-
   if (!aGL->MakeCurrent()) {
     // Context may have been destroyed.
     return {};
   }
 
+  GLenum textureTarget = TextureTargetForContext(aGL);
+  uintptr_t eglSurface = 0;
+#ifdef XP_MACOSX
+  if (aGL->GetContextType() == gl::GLContextType::EGL) {
+    auto* gle = GLContextEGL::Cast(aGL);
+    EGLint textureTargetEGL = 0;
+    if (!gle->mEgl->fGetConfigAttrib(gle->mSurfaceConfig,
+                                     kEGLBindToTextureTargetANGLE,
+                                     &textureTargetEGL)) {
+      gfxCriticalNote << "Failed to query EGL bind target for IOSurface import";
+      return {};
+    }
+    switch (textureTargetEGL) {
+      case LOCAL_EGL_TEXTURE_2D:
+        textureTarget = LOCAL_GL_TEXTURE_2D;
+        break;
+      case kEGLTextureRectangleANGLE:
+        textureTarget = LOCAL_GL_TEXTURE_RECTANGLE_ARB;
+        break;
+      default:
+        gfxCriticalNote << "Unsupported EGL texture target for IOSurface import: "
+                        << textureTargetEGL;
+        return {};
+    }
+  }
+#endif
+
   GLuint tex = aGL->CreateTexture();
   {
-    const gl::ScopedBindTexture bindTex(aGL, tex, kTextureRectTarget);
+    const gl::ScopedBindTexture bindTex(aGL, tex, textureTarget);
+    aGL->TexParams_SetClampNoMips(textureTarget);
 #ifdef XP_MACOSX
-    CGLTexImageIOSurface2D(cgl->GetCGLContext(), kTextureRectTarget,
-                           LOCAL_GL_RGBA, entry.mSize.width, entry.mSize.height,
-                           LOCAL_GL_BGRA, LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV,
-                           entry.mIOSurface.get(), 0);
+    if (aGL->GetContextType() == gl::GLContextType::CGL) {
+      auto* cgl = GLContextCGL::Cast(aGL);
+      MOZ_RELEASE_ASSERT(cgl, "Unexpected GLContext type");
+      CGLTexImageIOSurface2D(cgl->GetCGLContext(), textureTarget,
+                             LOCAL_GL_RGBA, entry.mSize.width, entry.mSize.height,
+                             LOCAL_GL_BGRA, LOCAL_GL_UNSIGNED_INT_8_8_8_8_REV,
+                             entry.mIOSurface.get(), 0);
+    } else {
+      auto* gle = GLContextEGL::Cast(aGL);
+      EGLint textureTargetEGL = textureTarget == LOCAL_GL_TEXTURE_2D
+                                    ? LOCAL_EGL_TEXTURE_2D
+                                    : kEGLTextureRectangleANGLE;
+      const EGLint attrs[] = {
+          LOCAL_EGL_WIDTH,
+          entry.mSize.width,
+          LOCAL_EGL_HEIGHT,
+          entry.mSize.height,
+          kEGLIOSurfacePlaneANGLE,
+          0,
+          LOCAL_EGL_TEXTURE_TARGET,
+          textureTargetEGL,
+          LOCAL_EGL_TEXTURE_FORMAT,
+          LOCAL_EGL_TEXTURE_RGBA,
+          kEGLTextureInternalFormatANGLE,
+          LOCAL_GL_BGRA_EXT,
+          kEGLTextureTypeANGLE,
+          LOCAL_GL_UNSIGNED_BYTE,
+          LOCAL_EGL_NONE,
+      };
+      EGLSurface surface = gle->mEgl->fCreatePbufferFromClientBuffer(
+          kEGLIOSurfaceANGLE,
+          reinterpret_cast<EGLClientBuffer>(entry.mIOSurface.get()),
+          gle->mSurfaceConfig, attrs);
+      if (!surface) {
+        gfxCriticalNote << "Failed to create EGL IOSurface pbuffer: "
+                        << gfx::hexa(gle->mEgl->mLib->fGetError());
+        aGL->DeleteTexture(tex);
+        return {};
+      }
+      if (!gle->mEgl->fBindTexImage(surface, LOCAL_EGL_BACK_BUFFER)) {
+        gfxCriticalNote << "Failed to bind EGL IOSurface pbuffer: "
+                        << gfx::hexa(gle->mEgl->mLib->fGetError());
+        GLContextEGL::DestroySurface(*gle->mEgl, surface);
+        aGL->DeleteTexture(tex);
+        return {};
+      }
+      eglSurface = reinterpret_cast<uintptr_t>(surface);
+    }
 #elif TARGET_OS_SIMULATOR
     // texImageIOSurface is unavailable in simulator.
     MOZ_CRASH("unimplemented");
 #else
+    auto* eagl = GLContextEAGL::Cast(aGL);
+    MOZ_RELEASE_ASSERT(eagl, "Unexpected GLContext type");
     [eagl->GetEAGLContext() texImageIOSurface:entry.mIOSurface.get()
-                                       target:kTextureRectTarget
+                                       target:textureTarget
                                internalFormat:LOCAL_GL_RGBA
                                         width:entry.mSize.width
                                        height:entry.mSize.height
@@ -361,14 +469,24 @@ Maybe<GLuint> SurfacePoolCA::LockedPool::GetFramebufferForSurface(
   }
 
   auto fb =
-      CreateFramebufferForTexture(aGL, entry.mSize, tex, aNeedsDepthBuffer);
+      CreateFramebufferForTexture(aGL, entry.mSize, tex, aNeedsDepthBuffer,
+                                  textureTarget);
   if (!fb) {
     // Framebuffer completeness check may have failed.
+#ifdef XP_MACOSX
+    if (eglSurface) {
+      auto* gle = GLContextEGL::Cast(aGL);
+      gle->mEgl->fReleaseTexImage((EGLSurface)eglSurface, LOCAL_EGL_BACK_BUFFER);
+      GLContextEGL::DestroySurface(*gle->mEgl, (EGLSurface)eglSurface);
+    }
+#endif
+    aGL->DeleteTexture(tex);
     return {};
   }
 
   GLuint fbo = fb->mFB;
-  entry.mGLResources = Some(GLResourcesForSurface{aGL, std::move(fb)});
+  entry.mGLResources =
+      Some(GLResourcesForSurface(aGL, std::move(fb), eglSurface, textureTarget));
   return Some(fbo);
 }
 
@@ -391,13 +509,14 @@ UniquePtr<gl::MozFramebuffer>
 SurfacePoolCA::LockedPool::CreateFramebufferForTexture(GLContext* aGL,
                                                        const IntSize& aSize,
                                                        GLuint aTexture,
-                                                       bool aNeedsDepthBuffer) {
+                                                       bool aNeedsDepthBuffer,
+                                                       GLenum aTextureTarget) {
   if (aNeedsDepthBuffer) {
     // Try to find an existing depth buffer of aSize in aGL and create a
     // framebuffer that shares it.
     if (auto buffer = GetDepthBufferForSharing(aGL, aSize)) {
       return gl::MozFramebuffer::CreateForBackingWithSharedDepthAndStencil(
-          aSize, 0, kTextureRectTarget, aTexture, buffer);
+          aSize, 0, aTextureTarget, aTexture, buffer);
     }
   }
 
@@ -405,7 +524,7 @@ SurfacePoolCA::LockedPool::CreateFramebufferForTexture(GLContext* aGL,
   // new depth buffer and store a weak pointer to the new depth buffer in
   // mDepthBuffers.
   UniquePtr<gl::MozFramebuffer> fb = gl::MozFramebuffer::CreateForBacking(
-      aGL, aSize, 0, aNeedsDepthBuffer, kTextureRectTarget, aTexture);
+      aGL, aSize, 0, aNeedsDepthBuffer, aTextureTarget, aTexture);
   if (fb && fb->GetDepthAndStencilBuffer()) {
     mDepthBuffers.AppendElement(
         DepthBufferEntry{aGL, aSize, fb->GetDepthAndStencilBuffer().get()});

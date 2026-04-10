@@ -21,6 +21,7 @@ namespace mozilla {
 
 namespace gl {
 class MozFramebuffer;
+class GLContext;
 }  // namespace gl
 
 namespace layers {
@@ -136,6 +137,19 @@ class SurfacePoolCA final : public SurfacePool {
     struct GLResourcesForSurface {
       RefPtr<gl::GLContext> mGLContext;            // non-null
       UniquePtr<gl::MozFramebuffer> mFramebuffer;  // non-null
+      uintptr_t mEGLSurface = 0;
+      GLenum mTextureTarget = 0;
+
+      GLResourcesForSurface(gl::GLContext* aGLContext,
+                            UniquePtr<gl::MozFramebuffer>&& aFramebuffer,
+                            uintptr_t aEGLSurface = 0,
+                            GLenum aTextureTarget = 0);
+      GLResourcesForSurface(GLResourcesForSurface&&) = default;
+      GLResourcesForSurface& operator=(GLResourcesForSurface&&) = default;
+      ~GLResourcesForSurface();
+
+      GLResourcesForSurface(const GLResourcesForSurface&) = delete;
+      GLResourcesForSurface& operator=(const GLResourcesForSurface&) = delete;
     };
 
     struct SurfacePoolEntry {
@@ -168,7 +182,7 @@ class SurfacePoolCA final : public SurfacePool {
         gl::GLContext* aGL, const gfx::IntSize& aSize);
     UniquePtr<gl::MozFramebuffer> CreateFramebufferForTexture(
         gl::GLContext* aGL, const gfx::IntSize& aSize, GLuint aTexture,
-        bool aNeedsDepthBuffer);
+        bool aNeedsDepthBuffer, GLenum aTextureTarget);
 
     // Every IOSurface that is managed by the pool is wrapped in a
     // SurfacePoolEntry object. Every entry is stored in one of three buckets at
