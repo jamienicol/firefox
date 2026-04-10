@@ -703,6 +703,9 @@ def write_mozbuild_files(
 
         for attrs in (
             (),
+            # FIXME: need to add MOZ_DEBUG here for angle.
+            # Should this use the same combinatins as in write_mozbuild()?
+            ("MOZ_DEBUG",),
             ("OS_TARGET",),
             ("OS_TARGET", "TARGET_CPU"),
             ("OS_TARGET", "TARGET_CPU", "MOZ_X11"),
