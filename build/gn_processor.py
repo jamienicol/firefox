@@ -265,6 +265,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
             "cflags_objcc",
             "deps",
             "public_deps",
+            "frameworks",
             "libs",
         ):
             spec[spec_attr] = raw_spec.get(spec_attr, [])
@@ -344,6 +345,41 @@ def process_gn_config(
             expanded.extend(expand_library_deps(child_dep))
         return expanded
 
+    def collect_link_settings(dep, seen=None):
+        if seen is None:
+            seen = set()
+        if dep in seen or dep not in targets:
+            return [], False
+
+        seen.add(dep)
+        dep_spec = targets[dep]
+
+        libs = []
+        needs_objc = any(
+            mozpath.splitext(source)[1] in (".m", ".mm")
+            for source in dep_spec.get("sources", [])
+        )
+
+        if dep_spec["type"] == "group":
+            child_deps = dep_spec.get("deps", []) + dep_spec.get("public_deps", [])
+        else:
+            child_deps = dep_spec.get("deps", []) + dep_spec.get("public_deps", [])
+            for framework in dep_spec.get("frameworks", []):
+                libs.append("-framework " + os.path.splitext(framework)[0])
+            for lib in dep_spec.get("libs", []):
+                lib_name = os.path.splitext(lib)[0]
+                if lib.endswith(".framework"):
+                    libs.append("-framework " + lib_name)
+                else:
+                    libs.append(lib_name)
+
+        for child_dep in child_deps:
+            child_libs, child_needs_objc = collect_link_settings(child_dep, seen)
+            libs.extend(child_libs)
+            needs_objc = needs_objc or child_needs_objc
+
+        return libs, needs_objc
+
     # Process all targets from the given gn project and its dependencies.
     for target_fullname, spec in targets.items():
         if spec["type"] == "group":
@@ -369,6 +405,7 @@ def process_gn_config(
 
         if spec["type"] == "shared_library":
             context_attrs["FORCE_SHARED_LIB"] = True
+            context_attrs["USE_LIBS"] = ["mozglue"]
 
         if spec["type"] == "action" and "script" in spec:
             flags = [
@@ -462,6 +499,8 @@ def process_gn_config(
                     context_attrs.setdefault(var, []).extend(f)
 
         context_attrs["OS_LIBS"] = []
+        for framework in spec.get("frameworks", []):
+            context_attrs["OS_LIBS"] += ["-framework " + os.path.splitext(framework)[0]]
         for lib in spec.get("libs", []):
             lib_name = os.path.splitext(lib)[0]
             if lib.endswith(".framework"):
@@ -469,7 +508,26 @@ def process_gn_config(
             else:
                 context_attrs["OS_LIBS"] += [lib_name]
 
-        context_attrs["USE_LIBS"] = []
+        if spec["type"] == "shared_library":
+            transitive_os_libs = []
+            needs_objc = False
+            for dep in spec.get("deps", []) + spec.get("public_deps", []):
+                dep_os_libs, dep_needs_objc = collect_link_settings(dep)
+                transitive_os_libs.extend(dep_os_libs)
+                needs_objc = needs_objc or dep_needs_objc
+
+            for lib in transitive_os_libs:
+                if lib not in context_attrs["OS_LIBS"]:
+                    context_attrs["OS_LIBS"] += [lib]
+
+            if (
+                gn_config["mozbuild_args"]["OS_TARGET"] == "Darwin"
+                and needs_objc
+                and "objc" not in context_attrs["OS_LIBS"]
+            ):
+                context_attrs["OS_LIBS"] += ["objc"]
+
+        context_attrs.setdefault("USE_LIBS", [])
         all_deps = []
         for dep in spec.get("deps", []) + spec.get("public_deps", []):
             all_deps.extend(expand_library_deps(dep))
