@@ -1,0 +1,24 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: Graphics
+
+origin:
+  name: vulkan-headers
+
+  description: Vulkan header files and API registry
+
+  url: https://github.com/KhronosGroup/Vulkan-Headers
+
+  release: b'74d8a6cb930c68ef617b202c3ff3c59d919e086b' (b'2026-03-06 00:03:23 +0000').
+  revision: b'74d8a6cb930c68ef617b202c3ff3c59d919e086b'
+
+  license: Apache-2.0
+
+vendoring:
+  url: https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Headers
+  tracking: commit
+  source-hosting: git
+  vendor-directory: third_party/angle/third_party/vulkan-headers/src
+  skip-vendoring-steps: ["update-moz-build"]

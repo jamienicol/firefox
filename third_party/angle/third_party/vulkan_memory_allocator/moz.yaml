@@ -1,0 +1,24 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: Graphics
+
+origin:
+  name: vulkan_memory_allocator
+
+  description: Easy to integrate Vulkan memory allocation library.
+
+  url: https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+
+  release: b'cb0597213b0fcb999caa9ed08c2f88dc45eb7d50' (b'2025-07-08 20:54:52 +0000').
+  revision: b'cb0597213b0fcb999caa9ed08c2f88dc45eb7d50'
+
+  license: Apache-2.0
+
+vendoring:
+  url: https://chromium.googlesource.com/external/github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
+  tracking: commit
+  source-hosting: git
+  vendor-directory: third_party/angle/third_party/vulkan_memory_allocator
+  skip-vendoring-steps: ["update-moz-build"]
