@@ -28,7 +28,8 @@
       "angle_use_wayland": false,
       "enable_rust": false,
       "is_component_build": false,
-      "use_custom_libcxx": false
+      "use_custom_libcxx": false,
+      "use_sysroot": false
     },
     "mac": {
       "angle_enable_metal": true,

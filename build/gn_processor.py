@@ -997,18 +997,18 @@ def main():
         return dict(config_gn_args)
 
     for is_debug in (True, False):
-        for target_os in ("android", "linux", "mac", "win"):
+        for target_os in ("android", "linux", "mac", "openbsd", "win"):
             target_cpus = ["x64"]
-            if target_os in ("android", "linux", "mac", "win"):
+            if target_os in ("android", "linux", "mac", "win", "openbsd"):
                 target_cpus.append("arm64")
             if target_os in ("android", "linux"):
                 target_cpus.append("arm")
-            # if target_os in ("android", "linux", "win"):
-            #     target_cpus.append("x86")
-            # if target_os in ("linux", "openbsd"):
-            #     target_cpus.append("riscv64")
-            # if target_os == "linux":
-            #     target_cpus.extend(["loong64", "ppc64", "mipsel", "mips64el"])
+            if target_os in ("android", "linux", "win"):
+                target_cpus.append("x86")
+            if target_os in ("linux", "openbsd"):
+                target_cpus.append("riscv64")
+            if target_os == "linux":
+                target_cpus.extend(["loong64", "ppc64", "mipsel", "mips64el"])
             for target_cpu in target_cpus:
                 vars = {
                     "host_cpu": "x64",
