@@ -989,6 +989,7 @@ def main():
                 vars = {
                     "host_cpu": "x64",
                     "is_debug": is_debug,
+                    "is_component_build": False,
                     "target_cpu": target_cpu,
                     "target_os": target_os,
 
