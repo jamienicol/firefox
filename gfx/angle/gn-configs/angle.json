@@ -4,6 +4,9 @@
   "moz_build_flag": "build_mozilla_angle",
   "mozilla_add_override_dir": "",
   "gn_target": "//:libEGL",
+  "use_libs_map": {
+    "//third_party/zlib:zlib": "zlib"
+  },
   "gn_args": {
     "*": {
       "angle_build_all": false,

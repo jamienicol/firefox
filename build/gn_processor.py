@@ -312,6 +312,7 @@ def process_gn_config(
     sandbox_vars,
     mozilla_flags,
     mozilla_add_override_dir,
+    use_libs_map,
 ):
     # Translates a json gn config into attributes that can be used to write out
     # moz.build files for this configuration.
@@ -570,7 +571,15 @@ def process_gn_config(
         for dep in spec.get("deps", []) + spec.get("public_deps", []):
             all_deps.extend(expand_library_deps(dep))
 
+        seen_use_libs = set()
         for dep in all_deps:
+            mapped_lib = use_libs_map.get(dep)
+            if mapped_lib:
+                if mapped_lib not in seen_use_libs:
+                    context_attrs["USE_LIBS"] += [mapped_lib]
+                    seen_use_libs.add(mapped_lib)
+                continue
+
             dep_name = None
             if dep.startswith("//:") and dep in targets:
                 dep_name = dep[3:]
@@ -580,7 +589,10 @@ def process_gn_config(
                 dep_name = dep.rsplit(":", 1)[1]
 
             if dep_name:
-                context_attrs["USE_LIBS"] += [moz_library_name(dep)]
+                lib = moz_library_name(dep)
+                if lib not in seen_use_libs:
+                    context_attrs["USE_LIBS"] += [lib]
+                    seen_use_libs.add(lib)
 
         # Add some features to all contexts. Put here in case LOCAL_INCLUDES
         # order matters.
@@ -884,6 +896,7 @@ def generate_gn_config(
     non_unified_sources,
     mozilla_flags,
     mozilla_add_override_dir,
+    use_libs_map,
 ):
     def str_for_arg(v):
         if v in (True, False):
@@ -953,6 +966,7 @@ def generate_gn_config(
                 gn_config["sandbox_vars"],
                 mozilla_flags,
                 mozilla_add_override_dir,
+                use_libs_map,
             )
             return gn_config
 
@@ -1030,6 +1044,7 @@ def main():
                 config["non_unified_sources"],
                 config["mozilla_flags"],
                 config["mozilla_add_override_dir"],
+                config.get("use_libs_map", {}),
             ): vars
             for vars in vars_set
         }
