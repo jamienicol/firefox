@@ -1,0 +1,24 @@
+schema: 1
+
+bugzilla:
+  product: Core
+  component: Graphics
+
+origin:
+  name: vulkan-utility-libraries
+
+  description: This repo was created to share code across various Vulkan repositories, solving long standing issues for Vulkan SDK developers and users.
+
+  url: https://github.com/KhronosGroup/Vulkan-Utility-Libraries
+
+  release: b'20fb10eb1ec08ccd5cacec32b7df1b0e99e48a0c' (b'2026-03-06 11:45:59 -0800').
+  revision: b'20fb10eb1ec08ccd5cacec32b7df1b0e99e48a0c'
+
+  license: Apache-2.0
+
+vendoring:
+  url: https://chromium.googlesource.com/external/github.com/KhronosGroup/Vulkan-Utility-Libraries
+  tracking: commit
+  source-hosting: git
+  vendor-directory: third_party/angle/third_party/vulkan-utility-libraries/src
+  skip-vendoring-steps: ["update-moz-build"]
