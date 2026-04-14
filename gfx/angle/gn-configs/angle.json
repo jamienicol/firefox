@@ -4,6 +4,34 @@
   "moz_build_flag": "build_mozilla_angle",
   "mozilla_add_override_dir": "",
   "gn_target": "//:libEGL",
+  "gn_args": {
+    "*": {
+      "angle_build_all": false,
+      "angle_build_vulkan_system_info": false,
+      "angle_enable_abseil": false,
+      "angle_enable_d3d9": false,
+      "angle_enable_d3d11": false,
+      "angle_enable_essl": true,
+      "angle_enable_gl": false,
+      "angle_enable_glsl": true,
+      "angle_enable_hlsl": false,
+      "angle_enable_metal": false,
+      "angle_enable_msl": false,
+      "angle_enable_null": false,
+      "angle_enable_vulkan": false,
+      "angle_enable_wgpu": false,
+      "angle_has_frame_capture": false,
+      "angle_standalone": false,
+      "angle_use_wayland": false,
+      "enable_rust": false,
+      "is_component_build": false,
+      "use_custom_libcxx": false
+    },
+    "mac": {
+      "angle_enable_metal": true,
+      "angle_enable_msl": true
+    }
+  },
   "gn_sandbox_variables": {
     "COMPILE_FLAGS": {
       "WARNINGS_AS_ERRORS": []

@@ -972,6 +972,16 @@ def main():
     topsrcdir = Path(__file__).parent.parent.resolve()
 
     vars_set = []
+    config_gn_args = config.get("gn_args", {})
+
+    def get_config_gn_args(target_os):
+        if any(k in config_gn_args for k in ("*", "android", "linux", "mac", "win")):
+            merged = {}
+            merged.update(config_gn_args.get("*", {}))
+            merged.update(config_gn_args.get(target_os, {}))
+            return merged
+        return dict(config_gn_args)
+
     for is_debug in (True, False):
         for target_os in ("android", "linux", "mac", "win"):
             target_cpus = ["x64"]
@@ -989,30 +999,10 @@ def main():
                 vars = {
                     "host_cpu": "x64",
                     "is_debug": is_debug,
-                    "is_component_build": False,
                     "target_cpu": target_cpu,
                     "target_os": target_os,
-
-                    "angle_enable_essl": True,
-                    "angle_enable_glsl": True,
-                    "angle_enable_hlsl": False,
-                    "angle_enable_msl": target_os == "mac",
-                    "angle_enable_vulkan": False,
-                    "angle_enable_metal": target_os == "mac",
-                    "angle_enable_gl": False,
-                    "angle_enable_null": False,
-                    "angle_enable_wgpu": False,
-                    "angle_enable_d3d9": False,
-                    "angle_enable_d3d11": False,
-                    "angle_use_wayland": False,
-                    "angle_standalone": False,
-                    "angle_build_all": False,
-                    "angle_enable_abseil": False,
-                    "angle_build_vulkan_system_info": False,
-                    "angle_has_frame_capture": False,
-                    "use_custom_libcxx": False,
-                    "enable_rust": False,
                 }
+                vars.update(get_config_gn_args(target_os))
                 if target_os == "linux":
                     for enable_x11 in (True, False):
                         vars["ozone_platform_x11"] = enable_x11
