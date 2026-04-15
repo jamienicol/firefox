@@ -59,20 +59,47 @@ def action(fh, *raw_args):
     def resolve_arg_path(p, src_target_dir, obj_target_dir):
         if os.path.isabs(p) and os.path.exists(p):
             return str(Path(p))
+        if os.path.isabs(p):
+            abs_path = Path(p)
+            try:
+                rel_to_src = abs_path.relative_to(topsrcdir)
+            except ValueError:
+                rel_to_src = None
+            if rel_to_src is not None:
+                rebased = (src_target_dir / rel_to_src).resolve()
+                if rebased.exists():
+                    return str(rebased)
         if p == "!//gen":
             return str(obj_target_dir / "gen")
         if p.startswith("!//gen/"):
-            return str(obj_target_dir / "gen" / p[len("!//gen/") :])
+            gen_relpath = p[len("!//gen/") :]
+            project_dirname = src_target_dir.name
+            if gen_relpath.startswith(project_dirname + "/"):
+                gen_relpath = gen_relpath[len(project_dirname) + 1 :]
+            return str(obj_target_dir / "gen" / gen_relpath)
         if p.startswith("!/"):
             return str(objdir / p[2:])
         if p.startswith("//"):
-            return str(src_target_dir / p[2:])
+            project_relative = (src_target_dir / p[2:]).resolve()
+            if project_relative.exists():
+                return str(project_relative)
+            return str(topsrcdir / p[2:])
         if p.startswith("/"):
             if "/gen/" in p:
                 return str(resolve_obj_path(p))
             return str(topsrcdir / p.lstrip("/"))
         if p.startswith("gen/"):
-            return str((obj_target_dir / p).resolve())
+            gen_relpath = p[len("gen/") :]
+            project_dirname = src_target_dir.name
+            if gen_relpath.startswith(project_dirname + "/"):
+                gen_relpath = gen_relpath[len(project_dirname) + 1 :]
+            return str((obj_target_dir / "gen" / gen_relpath).resolve())
+        if not os.path.isabs(p) and (p.startswith("../") or "/Volumes/" in p):
+            marker = "third_party/"
+            if marker in p:
+                candidate = (src_target_dir / p[p.rindex(marker) :]).resolve()
+                if candidate.exists():
+                    return str(candidate)
         if p.startswith(("./", "../")) or "/" in p:
             return str((src_target_dir / p).resolve())
         return p
@@ -103,9 +130,17 @@ def action(fh, *raw_args):
                 for arg in args
             ]
         args = [
-            resolve_arg_path(arg, src_target_dir, obj_target_dir)
-            if not arg.startswith("-")
-            else arg
+            (
+                arg.rsplit(",", 1)[0]
+                + ","
+                + resolve_arg_path(arg.rsplit(",", 1)[1], src_target_dir, obj_target_dir)
+            )
+            if arg.startswith("--extinst=") and "," in arg
+            else (
+                resolve_arg_path(arg, src_target_dir, obj_target_dir)
+                if not arg.startswith("-")
+                else arg
+            )
             for arg in args
         ]
         subprocess.check_call(script + args, cwd=abs_target_dir)

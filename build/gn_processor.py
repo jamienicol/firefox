@@ -296,7 +296,14 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
                 # Rebase outputs from an absolute path in the temp dir to a path
                 # relative to the target dir.
                 spec[spec_attr] = [
-                    d if gen_path != Path(d) else "!//gen" for d in spec[spec_attr]
+                    (
+                        "!//gen"
+                        if gen_path == Path(d)
+                        else normalize_action_path(d)
+                        if str(Path(d).resolve()).startswith(str(gen_path) + os.sep)
+                        else d
+                    )
+                    for d in spec[spec_attr]
                 ]
 
         gn_out["targets"][target_fullname] = spec
@@ -324,6 +331,7 @@ def process_gn_config(
     targets = gn_config["targets"]
 
     project_relsrcdir = mozpath.relpath(srcdir, topsrcdir)
+    project_dirname = Path(srcdir).name
 
     non_unified_sources = set([mozpath.normpath(s) for s in non_unified_sources])
 
@@ -360,12 +368,24 @@ def process_gn_config(
         # GN will have resolved all these paths relative to the root of the
         # project indicated by "//".
         if path.startswith("!//gen/"):
-            return f"!/{project_relsrcdir}/gen/{path[len('!//gen/'):]}"
+            gen_relpath = path[len("!//gen/") :]
+            if gen_relpath.startswith(f"{project_dirname}/"):
+                gen_relpath = gen_relpath[len(project_dirname) + 1 :]
+            return f"!/{project_relsrcdir}/gen/{gen_relpath}"
         if path == "!//gen":
             return f"!/{project_relsrcdir}/gen"
+        if path == "gen":
+            return f"!/{project_relsrcdir}/gen"
+        if path.startswith("gen/"):
+            gen_relpath = path[len("gen/") :]
+            if gen_relpath.startswith(f"{project_dirname}/"):
+                gen_relpath = gen_relpath[len(project_dirname) + 1 :]
+            return f"!/{project_relsrcdir}/gen/{gen_relpath}"
         if path.startswith("//"):
             path = path[2:]
         if not path.startswith("/"):
+            if path.startswith(f"{project_dirname}/"):
+                path = path[len(project_dirname) + 1 :]
             path = f"/{project_relsrcdir}/{path}"
         return path
 
@@ -469,7 +489,7 @@ def process_gn_config(
                 ext = mozpath.splitext(f)[-1]
                 extensions.add(ext)
                 src = f"{project_relsrcdir}/{f}"
-                if ext in {".h", ".inc"}:
+                if ext in {".h", ".inc", ".hpp"}:
                     continue
                 elif ext == ".def":
                     context_attrs["SYMBOLS_FILE"] = src
@@ -496,7 +516,7 @@ def process_gn_config(
         context_attrs["LOCAL_INCLUDES"] = []
         for include in spec.get("include_dirs", []):
             if include.startswith("!"):
-                include = "!" + resolve_path(include[1:])
+                include = resolve_path(include)
             else:
                 include = resolve_path(include)
                 # moz.build expects all LOCAL_INCLUDES to exist, so ensure they do.
@@ -947,8 +967,10 @@ def generate_gn_config(
         gn_config_file = resolved_tempdir / "project.json"
         with open(gn_config_file) as fh:
             raw_json = fh.read()
-            raw_json = raw_json.replace(f"{target_dir}/", "")
-            raw_json = raw_json.replace(f"{target_dir}:", ":")
+            raw_json = raw_json.replace(f'"//{target_dir}/', '"//')
+            raw_json = raw_json.replace(f'"{target_dir}/', '"')
+            raw_json = raw_json.replace(f'"//{target_dir}:', '"//:')
+            raw_json = raw_json.replace(f'"{target_dir}:', '":')
             gn_config = mozfile_json.loads(raw_json)
             gn_config = filter_gn_config(
                 resolved_tempdir,

@@ -31,6 +31,10 @@
       "use_custom_libcxx": false,
       "use_sysroot": false
     },
+    "android": {
+      "angle_build_vulkan_system_info": true,
+      "angle_enable_vulkan": true
+    },
     "mac": {
       "angle_enable_metal": true,
       "angle_enable_msl": true
@@ -83,6 +87,10 @@
     "third_party/angle/src/libGLESv2/entry_points_gles_ext_autogen.cpp",
     "third_party/angle/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm",
     "third_party/angle/src/libANGLE/renderer/metal/ProgramMtl.mm",
+    "third_party/angle/third_party/spirv-tools/src/source/spirv_fuzzer_options.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/spirv_reducer_options.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/val/validate_ray_query.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/val/validate_ray_tracing_reorder.cpp",
     "third_party/angle/third_party/zlib/adler32.c",
     "third_party/angle/third_party/zlib/compress.c",
     "third_party/angle/third_party/zlib/contrib/optimizations/inffast_chunk.c",
