@@ -8228,7 +8228,7 @@
 
 - name: gfx.webrender.program-binary-disk
   type: bool
-#if defined(XP_WIN) || defined(ANDROID)
+#if defined(XP_WIN) || defined(ANDROID) || defined(XP_MACOSX)
   value: true
 #else
   value: false
@@ -17625,7 +17625,7 @@
 #if defined(XP_WIN)
   value: 2
 #elif defined(XP_MACOSX)
-  value: 1
+  value: 0
 #else
   value: 0
 #endif
