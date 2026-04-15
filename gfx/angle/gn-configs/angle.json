@@ -34,6 +34,10 @@
     "mac": {
       "angle_enable_metal": true,
       "angle_enable_msl": true
+    },
+    "win": {
+      "angle_enable_d3d11": true,
+      "angle_enable_hlsl": true
     }
   },
   "gn_sandbox_variables": {
