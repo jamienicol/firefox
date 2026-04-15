@@ -17,7 +17,7 @@ import("//build_overrides/vulkan_validation_layers.gni")
 
 vulkan_undefine_configs = []
 if (is_win) {
-  vulkan_undefine_configs += [ "//build/config/win:unicode" ]
+  vulkan_undefine_configs += [ "//chromium/build/config/win:unicode" ]
 }
 
 config("generated_layers_config") {
@@ -48,7 +48,7 @@ config("vulkan_internal_config") {
 
   # Suppress warnings the vulkan code doesn't comply with.
   if (is_fuchsia) {
-    configs = [ "//build/config:Wno-unused-but-set-variable" ]
+    configs = [ "//chromium/build/config:Wno-unused-but-set-variable" ]
   }
   if (is_clang) {
     cflags += [ "-Wno-extra-semi" ]
@@ -589,8 +589,8 @@ source_set("vulkan_layer_utils") {
 
   configs -= vulkan_undefine_configs
   if (!is_fuchsia) {
-    configs -= [ "//build/config/compiler:chromium_code" ]
-    configs += [ "//build/config/compiler:no_chromium_code" ]
+    configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+    configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
   }
 }
 
@@ -629,16 +629,16 @@ foreach(layer_info, layers) {
     defines = []
     ldflags = []
     if (is_fuchsia) {
-      configs -= [ "//build/config:thread_safety_annotations" ]
+      configs -= [ "//chromium/build/config:thread_safety_annotations" ]
       ldflags += [ "-static-libstdc++" ]
-      configs += [ "//build/config:rtti" ]
+      configs += [ "//chromium/build/config:rtti" ]
       # Disable LTO to reduce build overhead.
-      configs += [ "//build/config/lto:no-lto" ]
+      configs += [ "//chromium/build/config/lto:no-lto" ]
     } else {
-      configs -= [ "//build/config/compiler:chromium_code" ]
-      configs += [ "//build/config/compiler:no_chromium_code" ]
-      configs -= [ "//build/config/compiler:no_rtti" ]
-      configs += [ "//build/config/compiler:rtti" ]
+      configs -= [ "//chromium/build/config/compiler:chromium_code" ]
+      configs += [ "//chromium/build/config/compiler:no_chromium_code" ]
+      configs -= [ "//chromium/build/config/compiler:no_rtti" ]
+      configs += [ "//chromium/build/config/compiler:rtti" ]
     }
     configs -= vulkan_undefine_configs
     configs += [ ":generated_layers_config" ]
@@ -663,7 +663,7 @@ foreach(layer_info, layers) {
         "log",
         "nativewindow",
       ]
-      configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
+      configs -= [ "//chromium/build/config/android:hide_all_but_jni_onload" ]
     }
     defines += layer_info[3]
   }
