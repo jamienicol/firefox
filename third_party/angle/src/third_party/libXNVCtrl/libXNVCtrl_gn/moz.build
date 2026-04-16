@@ -1,0 +1,86 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+  ### This moz.build was AUTOMATICALLY GENERATED from a GN config,  ###
+  ### DO NOT edit it by hand.                                       ###
+
+CMMFLAGS += [
+    "-Wno-error=unguarded-availability-new"
+]
+
+COMPILE_FLAGS["OS_INCLUDES"] = []
+AllowCompilerWarnings()
+
+CXXFLAGS += [
+    "-Wno-error=unguarded-availability-new"
+]
+
+DEFINES["USE_AURA"] = "1"
+DEFINES["USE_GLIB"] = "1"
+DEFINES["USE_OZONE"] = "1"
+DEFINES["USE_UDEV"] = True
+DEFINES["_FILE_OFFSET_BITS"] = "64"
+DEFINES["_LARGEFILE64_SOURCE"] = True
+DEFINES["_LARGEFILE_SOURCE"] = True
+DEFINES["__STDC_CONSTANT_MACROS"] = True
+DEFINES["__STDC_FORMAT_MACROS"] = True
+
+LOCAL_INCLUDES += [
+    "!/ipc/ipdl/_ipdlheaders",
+    "!/third_party/angle/gen",
+    "/ipc/chromium/src",
+    "/third_party/angle/",
+    "/tools/profiler/public"
+]
+
+OS_LIBS += [
+    "xcb"
+]
+
+UNIFIED_SOURCES += [
+    "/third_party/angle/src/third_party/libXNVCtrl/NVCtrl.c"
+]
+
+if not CONFIG["MOZ_DEBUG"]:
+
+    DEFINES["DYNAMIC_ANNOTATIONS_ENABLED"] = "0"
+    DEFINES["NDEBUG"] = True
+    DEFINES["NVALGRIND"] = True
+
+if CONFIG["MOZ_DEBUG"] == "1":
+
+    DEFINES["DYNAMIC_ANNOTATIONS_ENABLED"] = "1"
+    DEFINES["_DEBUG"] = True
+
+if CONFIG["TARGET_CPU"] == "aarch64":
+
+    DEFINES["_GNU_SOURCE"] = True
+    DEFINES["__ARM_NEON__"] = "1"
+
+if CONFIG["TARGET_CPU"] == "arm":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+if CONFIG["TARGET_CPU"] == "loongarch64":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+if CONFIG["TARGET_CPU"] == "mips32":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+if CONFIG["TARGET_CPU"] == "mips64":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+if CONFIG["TARGET_CPU"] == "x86":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+if CONFIG["TARGET_CPU"] == "x86_64":
+
+    DEFINES["_GNU_SOURCE"] = True
+
+Library("XNVCtrl_gn")
