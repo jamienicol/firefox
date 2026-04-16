@@ -33,7 +33,8 @@
     },
     "android": {
       "angle_build_vulkan_system_info": true,
-      "angle_enable_vulkan": true
+      "angle_enable_vulkan": true,
+      "vma_vulkan_headers_dir": "//angle/third_party/vulkan-headers/src"
     },
     "mac": {
       "angle_enable_metal": true,

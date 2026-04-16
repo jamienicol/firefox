@@ -6,8 +6,6 @@
 # and searching upward ends here).  See "gn help dotfile."
 # As a result this file will only affect stand-alone ANGLE builds,
 # not chromium builds.
-secondary_source = "//angle/"
-
 import("//chromium/build/dotfile_settings.gni")
 import("//angle/dotfile_settings.gni")
 

@@ -1274,7 +1274,7 @@ config("angle_compression_config") {
 group("angle_compression") {
   public_configs = [
     ":angle_compression_config",
-    "//third_party/zlib:zlib_config",
+    "//angle//third_party/zlib:zlib_config",
   ]
   public_deps =
       [ "$angle_zlib_compression_utils_dir:compression_utils_portable" ]
