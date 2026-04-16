@@ -171,7 +171,16 @@ def find_deps(all_targets, target):
     return all_deps
 
 
-def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build_root_dir):
+def filter_gn_config(
+    path,
+    gn_result,
+    sandbox_vars,
+    input_vars,
+    gn_target,
+    build_root_dir,
+    target_dir,
+    action_arg_patterns,
+):
     gen_path = path / "gen"
     build_root_dir = Path(build_root_dir).resolve()
     # Translates the raw output of gn into just what we'll need to generate a
@@ -202,13 +211,65 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
         mozbuild_args["MOZ_X11"] = "1" if input_vars["ozone_platform_x11"] else None
 
     gn_out["mozbuild_args"] = mozbuild_args
-    all_deps = find_deps(gn_result["targets"], gn_target)
+    def normalize_label(label):
+        if label.startswith(f"//{target_dir}/"):
+            return "//" + label[len(f"//{target_dir}/") :]
+        if label.startswith(f"//{target_dir}:"):
+            return "//:" + label[len(f"//{target_dir}:") :]
+        if label.startswith(f"{target_dir}/"):
+            return label[len(f"{target_dir}/") :]
+        if label.startswith(f"{target_dir}:"):
+            return ":" + label[len(f"{target_dir}:") :]
+        return label
+
+    def strip_project_prefix(path_value):
+        path_value = str(path_value)
+        if path_value.startswith(f"//{target_dir}/"):
+            return "//" + path_value[len(f"//{target_dir}/") :]
+        if path_value.startswith(f"{target_dir}/"):
+            return path_value[len(target_dir) + 1 :]
+        return path_value
+
+    normalized_targets = {}
+    for target_fullname, raw_spec in gn_result["targets"].items():
+        spec = raw_spec.copy()
+        for dep_attr in ("deps", "public_deps"):
+            if dep_attr in spec:
+                spec[dep_attr] = [normalize_label(dep) for dep in spec[dep_attr]]
+        normalized_targets[normalize_label(target_fullname)] = spec
+    gn_result["targets"] = normalized_targets
+
+    all_deps = find_deps(gn_result["targets"], normalize_label(gn_target))
+
+    def action_pattern_key(path_value):
+        path_value = str(path_value)
+        if path_value.startswith("!//gen/"):
+            path_value = path_value[len("!//gen/") :]
+        elif path_value.startswith("//"):
+            path_value = path_value[2:]
+        if path_value.startswith(f"{target_dir}/"):
+            path_value = path_value[len(target_dir) + 1 :]
+        return path_value
 
     def normalize_action_path(d):
         d = str(d)
         candidate = Path(d)
         if not candidate.is_absolute():
-            candidate = (path / d).resolve()
+            temp_candidate = (path / d).resolve()
+            source_candidate = (build_root_dir / d).resolve()
+            if (
+                temp_candidate == gen_path
+                or str(temp_candidate).startswith(str(gen_path) + os.sep)
+                or temp_candidate.exists()
+            ):
+                candidate = temp_candidate
+            elif (
+                source_candidate == build_root_dir
+                or str(source_candidate).startswith(str(build_root_dir) + os.sep)
+            ):
+                candidate = source_candidate
+            else:
+                candidate = temp_candidate
         if candidate == gen_path or str(candidate).startswith(str(gen_path) + os.sep):
             return "!//gen/" + mozpath.relpath(str(candidate), str(gen_path))
         if str(candidate).startswith(str(build_root_dir) + os.sep):
@@ -226,6 +287,58 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
             return d
         return normalize_action_path(d)
 
+    def normalize_action_args(script, args):
+        script_keys = {
+            action_pattern_key(script),
+            action_pattern_key(normalize_action_path(script)),
+        }
+        patterns = {}
+        for key in script_keys:
+            if key in action_arg_patterns:
+                patterns = action_arg_patterns[key]
+                break
+        path_flags = set(patterns.get("path_flags", []))
+        embedded_prefixes = patterns.get("embedded_path_prefixes", [])
+        positional_path_indices = set(patterns.get("positional_path_indices", []))
+
+        normalized = []
+        next_is_path = False
+        for index, arg in enumerate(args):
+            if next_is_path:
+                normalized.append(normalize_action_arg(arg))
+                next_is_path = False
+                continue
+
+            if index in positional_path_indices:
+                normalized.append(normalize_action_arg(arg))
+                continue
+
+            if arg in path_flags:
+                normalized.append(arg)
+                next_is_path = True
+                continue
+
+            matched_prefix = next(
+                (prefix for prefix in embedded_prefixes if arg.startswith(prefix)),
+                None,
+            )
+            if matched_prefix:
+                payload = arg[len(matched_prefix) :]
+                if "," in payload:
+                    prefix, path_value = payload.rsplit(",", 1)
+                    arg = (
+                        matched_prefix
+                        + prefix
+                        + ","
+                        + normalize_action_arg(path_value)
+                    )
+                else:
+                    arg = matched_prefix + normalize_action_arg(payload)
+
+            normalized.append(arg)
+
+        return normalized
+
     for target_fullname in all_deps:
         raw_spec = gn_result["targets"][target_fullname]
 
@@ -235,16 +348,20 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
             spec = {}
             for spec_attr in (
                 "type",
+                "script",
                 "args",
                 "sources",
                 "inputs",
                 "response_file_contents",
-                "script",
                 "outputs",
             ):
                 spec[spec_attr] = raw_spec.get(spec_attr, [])
+                if spec_attr == "script":
+                    spec[spec_attr] = normalize_action_path(spec[spec_attr])
                 if spec_attr == "args":
-                    spec[spec_attr] = [normalize_action_arg(d) for d in spec[spec_attr]]
+                    spec[spec_attr] = normalize_action_args(
+                        spec.get("script"), spec[spec_attr]
+                    )
                 if spec_attr in ("sources", "inputs", "response_file_contents"):
                     spec[spec_attr] = [normalize_action_path(d) for d in spec[spec_attr]]
                 if spec_attr == "outputs":
@@ -283,6 +400,8 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target, build
             "libs",
         ):
             spec[spec_attr] = raw_spec.get(spec_attr, [])
+            if spec_attr == "sources":
+                spec[spec_attr] = [strip_project_prefix(d) for d in spec[spec_attr]]
             if spec_attr == "defines":
                 spec[spec_attr] = [
                     d
@@ -315,11 +434,13 @@ def process_gn_config(
     gn_config,
     topsrcdir,
     srcdir,
+    target_dir,
     non_unified_sources,
     sandbox_vars,
     mozilla_flags,
     mozilla_add_override_dir,
     use_libs_map,
+    action_arg_patterns,
 ):
     # Translates a json gn config into attributes that can be used to write out
     # moz.build files for this configuration.
@@ -388,6 +509,73 @@ def process_gn_config(
                 path = path[len(project_dirname) + 1 :]
             path = f"/{project_relsrcdir}/{path}"
         return path
+
+    def action_pattern_key(path_value):
+        path_value = str(path_value)
+        if path_value.startswith("!/"):
+            obj_prefix = f"!/{project_relsrcdir}/gen/"
+            if path_value.startswith(obj_prefix):
+                path_value = path_value[len(obj_prefix) :]
+            elif path_value == f"!/{project_relsrcdir}/gen":
+                path_value = ""
+        elif path_value.startswith("/"):
+            src_prefix = f"/{project_relsrcdir}/"
+            if path_value.startswith(src_prefix):
+                path_value = path_value[len(src_prefix) :]
+        elif path_value.startswith("!//gen/"):
+            path_value = path_value[len("!//gen/") :]
+        elif path_value.startswith("//"):
+            path_value = path_value[2:]
+        if path_value.startswith(f"{target_dir}/"):
+            path_value = path_value[len(target_dir) + 1 :]
+        return path_value
+
+    def resolve_action_args(script, args):
+        script_keys = {
+            action_pattern_key(script),
+            action_pattern_key(resolve_path(script)),
+        }
+        patterns = {}
+        for key in script_keys:
+            if key in action_arg_patterns:
+                patterns = action_arg_patterns[key]
+                break
+        path_flags = set(patterns.get("path_flags", []))
+        embedded_prefixes = patterns.get("embedded_path_prefixes", [])
+        positional_path_indices = set(patterns.get("positional_path_indices", []))
+
+        resolved = []
+        next_is_path = False
+        for index, arg in enumerate(args):
+            if next_is_path:
+                resolved.append(resolve_path(arg))
+                next_is_path = False
+                continue
+
+            if index in positional_path_indices:
+                resolved.append(resolve_path(arg))
+                continue
+
+            if arg in path_flags:
+                resolved.append(arg)
+                next_is_path = True
+                continue
+
+            matched_prefix = next(
+                (prefix for prefix in embedded_prefixes if arg.startswith(prefix)),
+                None,
+            )
+            if matched_prefix:
+                payload = arg[len(matched_prefix) :]
+                if "," in payload:
+                    prefix, path_value = payload.rsplit(",", 1)
+                    arg = matched_prefix + prefix + "," + resolve_path(path_value)
+                else:
+                    arg = matched_prefix + resolve_path(payload)
+
+            resolved.append(arg)
+
+        return resolved
 
     def expand_library_deps(dep):
         if dep not in targets:
@@ -465,7 +653,7 @@ def process_gn_config(
             flags = [
                 resolve_path(spec["script"]),
                 resolve_path(""),
-            ] + spec.get("args", [])
+            ] + resolve_action_args(spec["script"], spec.get("args", []))
             action_inputs = (
                 spec.get("sources", [])
                 + spec.get("inputs", [])
@@ -917,6 +1105,7 @@ def generate_gn_config(
     mozilla_flags,
     mozilla_add_override_dir,
     use_libs_map,
+    action_arg_patterns,
 ):
     def str_for_arg(v):
         if v in (True, False):
@@ -966,12 +1155,7 @@ def generate_gn_config(
 
         gn_config_file = resolved_tempdir / "project.json"
         with open(gn_config_file) as fh:
-            raw_json = fh.read()
-            raw_json = raw_json.replace(f'"//{target_dir}/', '"//')
-            raw_json = raw_json.replace(f'"{target_dir}/', '"')
-            raw_json = raw_json.replace(f'"//{target_dir}:', '"//:')
-            raw_json = raw_json.replace(f'"{target_dir}:', '":')
-            gn_config = mozfile_json.loads(raw_json)
+            gn_config = mozfile_json.load(fh)
             gn_config = filter_gn_config(
                 resolved_tempdir,
                 gn_config,
@@ -979,16 +1163,20 @@ def generate_gn_config(
                 input_variables,
                 gn_target,
                 build_root_dir,
+                target_dir,
+                action_arg_patterns,
             )
             gn_config = process_gn_config(
                 gn_config,
                 topsrcdir,
                 srcdir,
+                target_dir,
                 non_unified_sources,
                 gn_config["sandbox_vars"],
                 mozilla_flags,
                 mozilla_add_override_dir,
                 use_libs_map,
+                action_arg_patterns,
             )
             return gn_config
 
@@ -1067,6 +1255,7 @@ def main():
                 config["mozilla_flags"],
                 config["mozilla_add_override_dir"],
                 config.get("use_libs_map", {}),
+                config.get("action_arg_patterns", {}),
             ): vars
             for vars in vars_set
         }

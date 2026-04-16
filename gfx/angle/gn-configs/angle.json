@@ -51,6 +51,34 @@
     "CXXFLAGS": ["-Wno-error=unguarded-availability-new"],
     "CMMFLAGS": ["-Wno-error=unguarded-availability-new"]
   },
+  "action_arg_patterns": {
+    "src/commit_id.py": {
+      "positional_path_indices": [1, 2]
+    },
+    "src/program_serialize_data_version.py": {
+      "positional_path_indices": [0]
+    },
+    "src/libANGLE/renderer/metal/shaders/embed_in_header.py": {
+      "path_flags": ["--source", "--header"]
+    },
+    "src/libANGLE/renderer/metal/shaders/metal_wrapper.py": {
+      "path_flags": ["-c", "-o"]
+    },
+    "third_party/spirv-tools/src/utils/generate_language_headers.py": {
+      "path_flags": ["--extinst-grammar", "--extinst-output-path"]
+    },
+    "third_party/spirv-tools/src/utils/generate_registry_tables.py": {
+      "path_flags": ["--xml", "--generator"]
+    },
+    "third_party/spirv-tools/src/utils/ggt.py": {
+      "path_flags": [
+        "--spirv-core-grammar",
+        "--core-tables-body-output",
+        "--core-tables-header-output"
+      ],
+      "embedded_path_prefixes": ["--extinst="]
+    }
+  },
   "mozilla_flags": ["-fobjc-arc"],
   "write_mozbuild_variables": {
   },
