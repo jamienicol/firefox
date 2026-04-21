@@ -6,6 +6,7 @@
   "use_gecko_shared_libraries": true,
   "gn_target": {
     "*": "//:translator",
+    "android": "//:libEGL",
     "mac": "//:libEGL",
     "win": "//:libEGL"
   },
@@ -33,6 +34,11 @@
       "use_custom_libcxx": false,
       "use_sysroot": false
     },
+    "android": {
+      "angle_build_vulkan_system_info": true,
+      "angle_enable_vulkan": true,
+      "vma_vulkan_headers_dir": "//angle/third_party/vulkan-headers/src"
+    },
     "mac": {
       "angle_enable_metal": true,
       "angle_enable_msl": true
@@ -43,14 +49,39 @@
     }
   },
   "gn_sandbox_variables": {
-    "COMPILE_FLAGS": {
-      "WARNINGS_AS_ERRORS": []
+    "default": {
+      "COMPILE_FLAGS": {
+        "WARNINGS_AS_ERRORS": []
+      },
+      "DEFINES": {
+        "ANGLE_PLATFORM_EXPORT": ""
+      }
     },
-    "DEFINES": {
-      "ANGLE_PLATFORM_EXPORT": ""
+    "per_target": {
+      "//third_party/vulkan-validation-layers/src:VkLayer_khronos_validation": {
+        "COMPILE_FLAGS": {
+          "VISIBILITY": []
+        }
+      }
     }
   },
-  "mozilla_flags": ["-Wno-unguarded-availability"],
+  "mozilla_flags": ["-Wno-unguarded-availability", "-frtti"],
+  "action_path_hints": {
+    "third_party/spirv-tools/src/utils/ggt.py": {
+      "next_arg_path": ["--spirv-core-grammar"],
+      "prefixed_arg_path": [
+        "--extinst=,",
+        "--extinst=SHDEBUG100_,",
+        "--extinst=CLDEBUG100_,"
+      ]
+    },
+    "third_party/spirv-tools/src/utils/generate_language_headers.py": {
+      "next_arg_path": ["--extinst-grammar"]
+    },
+    "third_party/spirv-tools/src/utils/generate_registry_tables.py": {
+      "next_arg_path": ["--xml"]
+    }
+  },
   "write_mozbuild_variables": {
     "INCLUDE_GECKO_ZLIB_HANDLING": [
       "third_party/angle/third_party/zlib/zlib_gn"
@@ -94,8 +125,37 @@
     "third_party/angle/src/libGLESv2/entry_points_gles_ext_autogen.cpp",
     "third_party/angle/third_party/spirv-tools/src/source/spirv_fuzzer_options.cpp",
     "third_party/angle/third_party/spirv-tools/src/source/spirv_reducer_options.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/aggressive_dead_code_elim_pass.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/basic_block.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/invocation_interlock_placement_pass.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/ir_context.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/local_access_chain_convert_pass.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/local_single_block_elim_pass.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/loop_unswitch_pass.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/mem_pass.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/private_to_local_pass.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/opt/reduce_load_size.cpp",
     "third_party/angle/third_party/spirv-tools/src/source/val/validate_ray_query.cpp",
     "third_party/angle/third_party/spirv-tools/src/source/val/validate_ray_tracing_reorder.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/best_practices/bp_cmd_buffer.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/best_practices/bp_instance_device.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/core_checks/cc_query.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/core_checks/cc_state_tracker.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/buffer_device_address_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/descriptor_class_general_buffer_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/descriptor_class_texel_buffer_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/descriptor_indexing_oob_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/log_error_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/mesh_shading_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/post_process_descriptor_indexing_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/ray_hit_object_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/ray_query_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/sanitizer_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/shared_memory_data_race_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/gpuav/spirv/vertex_attribute_fetch_oob_pass.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/vulkan/generated/dispatch_object.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/vulkan/generated/dispatch_vector.cpp",
+    "third_party/angle/third_party/vulkan-validation-layers/src/layers/vulkan/generated/object_tracker.cpp",
     "third_party/angle/third_party/zlib/adler32.c",
     "third_party/angle/third_party/zlib/compress.c",
     "third_party/angle/third_party/zlib/contrib/optimizations/inffast_chunk.c",
