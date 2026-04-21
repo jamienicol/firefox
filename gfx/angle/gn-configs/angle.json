@@ -6,6 +6,7 @@
   "use_gecko_shared_libraries": true,
   "gn_target": {
     "*": "//:translator",
+    "mac": "//:libEGL",
     "win": "//:libEGL"
   },
   "gn_args": {
@@ -32,6 +33,10 @@
       "use_custom_libcxx": false,
       "use_sysroot": false
     },
+    "mac": {
+      "angle_enable_metal": true,
+      "angle_enable_msl": true
+    },
     "win": {
       "angle_enable_d3d11": true,
       "angle_enable_hlsl": true
@@ -45,7 +50,7 @@
       "ANGLE_PLATFORM_EXPORT": ""
     }
   },
-  "mozilla_flags": [],
+  "mozilla_flags": ["-Wno-unguarded-availability"],
   "write_mozbuild_variables": {
     "INCLUDE_GECKO_ZLIB_HANDLING": [
       "third_party/angle/third_party/zlib/zlib_gn"
