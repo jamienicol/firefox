@@ -289,6 +289,7 @@ def filter_gn_config(
             "cflags_objcc",
             "deps",
             "libs",
+            "frameworks",
             "output_name",
         ):
             spec[spec_attr] = raw_spec.get(spec_attr, [])
@@ -371,6 +372,42 @@ def process_gn_config(
             if dep_type == "group":
                 for child in dep_spec.get("deps", []):
                     visit(child)
+
+        spec = targets[fullname]
+        for dep in spec.get("deps", []):
+            visit(dep)
+
+        return libs
+
+    def os_libs(spec):
+        libs = []
+        for lib in spec.get("libs", []) + spec.get("frameworks", []):
+            lib_name = os.path.splitext(lib)[0]
+            if lib.endswith(".framework"):
+                libs.append("-framework " + lib_name)
+            else:
+                libs.append(lib_name)
+        return libs
+
+    def find_os_libs(fullname):
+        libs = []
+        seen_targets = set()
+
+        def visit(dep):
+            if dep in seen_targets:
+                return
+            seen_targets.add(dep)
+
+            dep_spec = targets.get(dep)
+            if not dep_spec:
+                return
+
+            for lib in os_libs(dep_spec):
+                if lib not in libs:
+                    libs.append(lib)
+
+            for child in dep_spec.get("deps", []):
+                visit(child)
 
         spec = targets[fullname]
         for dep in spec.get("deps", []):
@@ -527,13 +564,10 @@ def process_gn_config(
         if "FINAL_LIBRARY" not in sandbox_vars:
             context_attrs["USE_LIBS"] = find_lib_deps(target_fullname)
 
-        context_attrs["OS_LIBS"] = []
-        for lib in spec.get("libs", []):
-            lib_name = os.path.splitext(lib)[0]
-            if lib.endswith(".framework"):
-                context_attrs["OS_LIBS"] += ["-framework " + lib_name]
-            else:
-                context_attrs["OS_LIBS"] += [lib_name]
+        context_attrs["OS_LIBS"] = os_libs(spec)
+        for lib in find_os_libs(target_fullname):
+            if lib not in context_attrs["OS_LIBS"]:
+                context_attrs["OS_LIBS"].append(lib)
 
         # Add some features to all contexts. Put here in case LOCAL_INCLUDES
         # order matters.
