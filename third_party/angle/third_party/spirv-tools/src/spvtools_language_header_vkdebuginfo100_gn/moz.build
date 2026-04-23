@@ -13,6 +13,7 @@ DEFINES["ANGLE_PLATFORM_EXPORT"] = ""
 
 GeneratedFile(
     "/third_party/angle/gen/third_party/spirv-tools/src/NonSemanticShaderDebugInfo100.h",
+    deps=['/third_party/angle/third_party/spirv-headers/src/include/spirv/unified1/extinst.nonsemantic.shader.debuginfo.100.grammar.json'],
     entry_point="action",
     flags=[
         "/third_party/angle/third_party/spirv-tools/src/utils/generate_language_headers.py",

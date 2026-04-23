@@ -512,6 +512,10 @@ bool GLLibraryEGL::Init(nsACString* const out_failureId) {
 #  endif
 
   if (!mEGLLibrary) {
+    mEGLLibrary = PR_LoadLibrary("libEGL_angle.so");
+  }
+
+  if (!mEGLLibrary) {
     mEGLLibrary = PR_LoadLibrary("libEGL.so");
   }
 #  if defined(XP_UNIX)
@@ -537,6 +541,10 @@ bool GLLibraryEGL::Init(nsACString* const out_failureId) {
     mGLLibrary = PR_LoadLibrary(GL_LIB2);
   }
 #  endif
+
+  if (!mGLLibrary) {
+    mGLLibrary = PR_LoadLibrary("libGLESv2_angle.so");
+  }
 
   if (!mGLLibrary) {
     mGLLibrary = PR_LoadLibrary(GLES2_LIB);

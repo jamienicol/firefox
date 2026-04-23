@@ -86,6 +86,13 @@
 ; GMP clearkey plugin
 @BINPATH@/@DLL_PREFIX@clearkey@DLL_SUFFIX@
 
+; ANGLE GLES-on-Vulkan rendering library
+@BINPATH@/@DLL_PREFIX@EGL_angle@DLL_SUFFIX@
+@BINPATH@/@DLL_PREFIX@GLESv2_angle@DLL_SUFFIX@
+#ifdef MOZ_DEBUG
+@BINPATH@/@DLL_PREFIX@VkLayer_khronos_validation_gn@DLL_SUFFIX@
+#endif
+
 [browser]
 ; [Base Browser Files]
 @BINPATH@/application.ini
