@@ -1805,6 +1805,7 @@ class TreeMetadataEmitter(LoggingMixin):
                     response_file_contents=response_file_contents,
                     localized=localized,
                     force=flags.force,
+                    required_before_compile=flags.required_before_compile,
                 )
 
     def _process_test_manifests(self, context):

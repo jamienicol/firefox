@@ -1201,6 +1201,7 @@ GeneratedFilesList = StrictOrderingOnAppendListWithFlagsFactory({
     "response_file_contents": list,
     "force": bool,
     "flags": list,
+    "required_before_compile": bool,
 })
 
 

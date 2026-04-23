@@ -415,6 +415,9 @@ def process_gn_config(
 
         return libs
 
+    def requires_before_compile_action(spec):
+        return any(output.endswith(".inc") for output in spec.get("outputs", []))
+
     def resolve_path(path):
         # GN will have resolved all these paths relative to the root of the
         # project indicated by "//".
@@ -481,6 +484,12 @@ def process_gn_config(
                 context_attrs["GeneratedFile"]["response_file_contents"] = (
                     response_file_contents
                 )
+            if requires_before_compile_action(spec):
+                context_attrs["GeneratedFile"]["required_before_compile"] = True
+            if spec.get("action_order_only_inputs"):
+                context_attrs["GeneratedFile"]["inputs"] = spec[
+                    "action_order_only_inputs"
+                ]
 
         sources = []
         unified_sources = []

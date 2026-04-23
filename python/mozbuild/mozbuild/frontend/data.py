@@ -1359,6 +1359,7 @@ class GeneratedFile(ContextDerived):
         response_file_contents=(),
         localized=False,
         force=False,
+        required_before_compile=False,
         required_during_compile=None,
     ):
         ContextDerived.__init__(self, context)
@@ -1409,7 +1410,10 @@ class GeneratedFile(ContextDerived):
         self.required_before_compile = [
             f
             for f in self.outputs
-            if f.endswith(suffixes) or "stl_wrappers/" in f or "xpidl.stub" in f
+            if required_before_compile
+            or f.endswith(suffixes)
+            or "stl_wrappers/" in f
+            or "xpidl.stub" in f
         ]
 
         if required_during_compile is None:
