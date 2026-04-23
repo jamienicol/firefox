@@ -54,6 +54,7 @@ from .data import (
     MozSrcFiles,
     ObjdirFiles,
     ObjdirPreprocessedFiles,
+    PathArgument,
     PerSourceFlag,
     Program,
     RustLibrary,
@@ -1794,6 +1795,25 @@ class TreeMetadataEmitter(LoggingMixin):
                             context,
                         )
 
+                generated_flags = []
+                for flag in flags.flags:
+                    if isinstance(flag, dict):
+                        path = Path(context, flag["path"])
+                        if isinstance(path, SourcePath) and not os.path.exists(
+                            path.full_path
+                        ):
+                            raise SandboxValidationError(
+                                "Flag path for generating %s does not exist: %s"
+                                % (f, path.full_path),
+                                context,
+                            )
+                        if "prefix" in flag:
+                            generated_flags.append(PathArgument(flag["prefix"], path))
+                        else:
+                            generated_flags.append(path)
+                    else:
+                        generated_flags.append(flag)
+
                 yield GeneratedFile(
                     context,
                     script,
@@ -1801,7 +1821,7 @@ class TreeMetadataEmitter(LoggingMixin):
                     outputs,
                     inputs,
                     deps,
-                    flags.flags,
+                    generated_flags,
                     response_file_contents=response_file_contents,
                     localized=localized,
                     force=flags.force,

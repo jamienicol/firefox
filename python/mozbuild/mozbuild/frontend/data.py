@@ -135,6 +135,14 @@ class ConfigFileSubstitution(BaseConfigSubstitution):
     """Describes a config file that will be generated using substitutions."""
 
 
+class PathArgument:
+    __slots__ = ("prefix", "path")
+
+    def __init__(self, prefix, path):
+        self.prefix = prefix
+        self.path = path
+
+
 class VariablePassthru(ContextDerived):
     """A dict of variables to pass through to backend.mk unaltered.
 

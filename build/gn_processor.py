@@ -200,7 +200,7 @@ def filter_gn_config(
     gen_path = path / "gen"
     # Translates the raw output of gn into just what we'll need to generate a
     # mozbuild configuration.
-    gn_out = {"targets": {}, "sandbox_vars": sandbox_vars}
+    gn_out = {"targets": {}, "sandbox_vars": sandbox_vars, "gn_path": str(path)}
 
     def rebase_response_file_path(value):
         value = mozpath.normpath(mozpath.join(str(path), value))
@@ -322,6 +322,7 @@ def process_gn_config(
     sandbox_vars,
     mozilla_flags,
     mozilla_add_override_dir,
+    action_path_hints,
 ):
     # Translates a json gn config into attributes that can be used to write out
     # moz.build files for this configuration.
@@ -331,6 +332,7 @@ def process_gn_config(
     mozbuild_attrs = {"mozbuild_args": gn_config.get("mozbuild_args", None), "dirs": {}}
 
     targets = gn_config["targets"]
+    gn_path = gn_config["gn_path"]
 
     project_relsrcdir = mozpath.relpath(srcdir, topsrcdir)
 
@@ -427,6 +429,64 @@ def process_gn_config(
             path = f"/{project_relsrcdir}/{path}"
         return path
 
+    def resolve_action_path(path):
+        normalized = mozpath.normpath(
+            path if os.path.isabs(path) else mozpath.join(gn_path, path)
+        )
+        topsrcdir_str = str(topsrcdir)
+        srcdir_str = str(srcdir)
+        if not os.path.exists(normalized):
+            candidate = mozpath.join(
+                srcdir_str,
+                mozpath.relpath(normalized, mozpath.dirname(srcdir_str)),
+            )
+            if os.path.exists(candidate):
+                normalized = mozpath.normpath(candidate)
+        if normalized.startswith(topsrcdir_str):
+            return "/" + mozpath.relpath(normalized, topsrcdir_str)
+        return path
+
+    def resolve_action_args(script, args):
+        hints = action_path_hints.get(script)
+        if hints is None:
+            for key, value in action_path_hints.items():
+                if script.endswith(key) or key.endswith(script):
+                    hints = value
+                    break
+        if hints is None:
+            hints = {}
+        next_arg_path = set(hints.get("next_arg_path", []))
+        prefixed_arg_path = tuple(hints.get("prefixed_arg_path", []))
+        resolved_args = []
+        expect_path = False
+
+        for arg in args:
+            if expect_path:
+                resolved_args.append({"path": resolve_action_path(arg)})
+                expect_path = False
+                continue
+
+            prefix = next(
+                (
+                    candidate
+                    for candidate in prefixed_arg_path
+                    if arg.startswith(candidate)
+                ),
+                None,
+            )
+            if prefix is not None:
+                resolved_args.append({
+                    "prefix": prefix,
+                    "path": resolve_action_path(arg[len(prefix) :]),
+                })
+                continue
+
+            resolved_args.append(arg)
+            if arg in next_arg_path:
+                expect_path = True
+
+        return resolved_args
+
     # Process all targets from the given gn project and its dependencies.
     for target_fullname, spec in targets.items():
         target_path, target_name = target_info(target_fullname)
@@ -468,7 +528,8 @@ def process_gn_config(
             flags = [
                 resolve_path(spec["script"]),
                 resolve_path(""),
-            ] + spec.get("args", [])
+            ]
+            flags += resolve_action_args(spec["script"], spec.get("args", []))
             context_attrs["GeneratedFile"] = {
                 "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                 "entry_point": "action",
@@ -884,6 +945,7 @@ def generate_gn_config(
     non_unified_sources,
     mozilla_flags,
     mozilla_add_override_dir,
+    action_path_hints,
 ):
     def str_for_arg(v):
         if v in (True, False):
@@ -955,6 +1017,7 @@ def generate_gn_config(
                 gn_config["sandbox_vars"],
                 mozilla_flags,
                 mozilla_add_override_dir,
+                action_path_hints,
             )
             return gn_config
 
@@ -1026,6 +1089,7 @@ def main():
                 config["non_unified_sources"],
                 config["mozilla_flags"],
                 config["mozilla_add_override_dir"],
+                config.get("action_path_hints", {}),
             ): vars
             for vars in vars_set
         }

@@ -5,8 +5,8 @@
 import mozpack.path as mozpath
 from mozshellutil import quote as shell_quote
 
-from mozbuild.frontend.context import ObjDirPath
-from mozbuild.frontend.data import GeneratedFile
+from mozbuild.frontend.context import ObjDirPath, Path
+from mozbuild.frontend.data import GeneratedFile, PathArgument
 
 from .common import CommonBackend
 
@@ -152,7 +152,13 @@ class MakeBackend(CommonBackend):
                     deps=" " + " ".join(inputs + deps) if inputs or deps else "",
                     inputs=" " + " ".join(inputs) if inputs else "",
                     flags=(
-                        " " + " ".join(shell_quote(f) for f in flags) if flags else ""
+                        " "
+                        + " ".join(
+                            shell_quote(self._format_generated_file_flag(f, obj))
+                            for f in flags
+                        )
+                        if flags
+                        else ""
                     ),
                     backend=" " + extra_dependencies if extra_dependencies else "",
                     # Locale repacks repack multiple locales from a single configured objdir,
@@ -167,6 +173,13 @@ class MakeBackend(CommonBackend):
             )
 
         return ret
+
+    def _format_generated_file_flag(self, flag, obj):
+        if isinstance(flag, Path):
+            flag = self._format_generated_file_input_name(flag, obj)
+        elif isinstance(flag, PathArgument):
+            flag = flag.prefix + self._format_generated_file_input_name(flag.path, obj)
+        return str(flag).replace(",", "$(COMMA)")
 
     def _format_generated_file_input_name(self, path, obj):
         raise NotImplementedError("Subclass must implement")
