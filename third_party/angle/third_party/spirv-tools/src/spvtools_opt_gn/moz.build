@@ -1,0 +1,170 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+  ### This moz.build was AUTOMATICALLY GENERATED from a GN config,  ###
+  ### DO NOT edit it by hand.                                       ###
+
+COMPILE_FLAGS["OS_INCLUDES"] = []
+AllowCompilerWarnings()
+
+DEFINES["ANDROID"] = True
+DEFINES["ANDROID_NDK_VERSION_ROLL"] = "r27_1"
+DEFINES["ANGLE_PLATFORM_EXPORT"] = ""
+DEFINES["DYNAMIC_ANNOTATIONS_ENABLED"] = "1"
+DEFINES["HAVE_SYS_UIO_H"] = True
+DEFINES["_DEBUG"] = True
+DEFINES["_GNU_SOURCE"] = True
+DEFINES["__ANDROID_UNAVAILABLE_SYMBOLS_ARE_WEAK__"] = True
+DEFINES["__STDC_CONSTANT_MACROS"] = True
+DEFINES["__STDC_FORMAT_MACROS"] = True
+
+LOCAL_INCLUDES += [
+    "!/ipc/ipdl/_ipdlheaders",
+    "!/third_party/angle/gen",
+    "!/third_party/angle/gen/third_party/spirv-tools/src",
+    "/ipc/chromium/src",
+    "/third_party/angle/",
+    "/third_party/angle/third_party/spirv-headers/src/include/",
+    "/third_party/angle/third_party/spirv-tools/src/",
+    "/third_party/angle/third_party/spirv-tools/src/include/",
+    "/tools/profiler/public"
+]
+
+SOURCES += [
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/aggressive_dead_code_elim_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/basic_block.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/invocation_interlock_placement_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/ir_context.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/local_access_chain_convert_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/local_single_block_elim_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_unswitch_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/mem_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/private_to_local_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/reduce_load_size.cpp"
+]
+
+UNIFIED_SOURCES += [
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/amd_ext_to_khr.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/analyze_live_input_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/block_merge_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/block_merge_util.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/build_module.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/canonicalize_ids_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/ccp_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/cfg.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/cfg_cleanup_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/code_sink.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/combine_access_chains.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/compact_ids_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/composite.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/const_folding_rules.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/constants.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/control_dependence.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/convert_to_half_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/convert_to_sampled_image_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/copy_prop_arrays.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/dataflow.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/dead_branch_elim_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/dead_insert_elim_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/dead_variable_elimination.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/debug_info_manager.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/decoration_manager.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/def_use_manager.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/desc_sroa.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/desc_sroa_util.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/dominator_analysis.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/dominator_tree.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/eliminate_dead_constant_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/eliminate_dead_functions_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/eliminate_dead_functions_util.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/eliminate_dead_io_components_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/eliminate_dead_members_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/eliminate_dead_output_stores_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/feature_manager.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/fix_func_call_arguments.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/fix_storage_class.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/flatten_decoration_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/fold.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/fold_spec_constant_op_and_composite_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/folding_rules.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/freeze_spec_constant_value_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/function.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/graph.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/graphics_robust_access_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/if_conversion.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/inline_exhaustive_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/inline_opaque_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/inline_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/instruction.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/instruction_list.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/interface_var_sroa.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/interp_fixup_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/ir_loader.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/legalize_multidim_array_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/licm_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/liveness.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/local_redundancy_elimination.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/local_single_store_elim_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_dependence.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_dependence_helpers.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_descriptor.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_fission.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_fusion.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_fusion_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_peeling.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_unroller.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/loop_utils.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/merge_return_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/modify_maximal_reconvergence.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/module.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/opextinst_forward_ref_fixup_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/optimizer.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/pass_manager.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/propagator.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/redundancy_elimination.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/register_pressure.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/relax_float_ops_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/remove_dontinline_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/remove_duplicates_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/remove_unused_interface_variables_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/replace_desc_array_access_using_var_index.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/replace_invalid_opc.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/resolve_binding_conflicts_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/scalar_analysis.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/scalar_analysis_simplification.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/scalar_replacement_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/set_spec_constant_default_value_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/simplification_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/split_combined_image_sampler_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/spread_volatile_semantics.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/ssa_rewrite_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/strength_reduction_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/strip_debug_info_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/strip_nonsemantic_info_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/struct_cfg_analysis.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/struct_packing_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/switch_descriptorset_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/trim_capabilities_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/type_manager.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/types.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/unify_const_pass.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/upgrade_memory_model.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/value_number_table.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/vector_dce.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/workaround1209.cpp",
+    "/third_party/angle/third_party/spirv-tools/src/source/opt/wrap_opkill.cpp"
+]
+
+USE_LIBS += [
+    "spvtools_gn",
+    "spvtools_headers_gn"
+]
+
+if CONFIG["TARGET_CPU"] == "aarch64":
+
+    DEFINES["__ARM_NEON__"] = "1"
+
+Library("spvtools_opt_gn")

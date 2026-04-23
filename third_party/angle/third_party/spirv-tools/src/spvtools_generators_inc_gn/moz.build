@@ -1,0 +1,37 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+  ### This moz.build was AUTOMATICALLY GENERATED from a GN config,  ###
+  ### DO NOT edit it by hand.                                       ###
+
+COMPILE_FLAGS["OS_INCLUDES"] = []
+AllowCompilerWarnings()
+
+DEFINES["ANGLE_PLATFORM_EXPORT"] = ""
+
+GeneratedFile(
+    "/third_party/angle/gen/third_party/spirv-tools/src/generators.inc",
+    entry_point="action",
+    flags=[
+        "/third_party/angle/third_party/spirv-tools/src/utils/generate_registry_tables.py",
+        "/third_party/angle/",
+        "--xml",
+        {
+            "path": "/third_party/angle/third_party/spirv-headers/src/include/spirv/spir-v.xml"
+        },
+        "--generator",
+        "gen/third_party/spirv-tools/src/generators.inc"
+    ],
+    required_before_compile=True,
+    script="/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
+)
+
+LOCAL_INCLUDES += [
+    "!/ipc/ipdl/_ipdlheaders",
+    "/ipc/chromium/src",
+    "/tools/profiler/public"
+]
+
+Library("spvtools_generators_inc_gn")
