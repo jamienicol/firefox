@@ -306,7 +306,10 @@ def filter_gn_config(
                 # Rebase outputs from an absolute path in the temp dir to a path
                 # relative to the target dir.
                 spec[spec_attr] = [
-                    d if gen_path != Path(d) else "!//gen" for d in spec[spec_attr]
+                    "!" + mozpath.relpath(str(d), str(path))
+                    if str(d).startswith(str(gen_path))
+                    else d
+                    for d in spec[spec_attr]
                 ]
 
         gn_out["targets"][target_fullname] = spec
