@@ -296,6 +296,7 @@ system_headers = [
     "fusion/shm/shm_internal.h",
     "fusion/types.h",
     "fusion/vector.h",
+    "future",
     "gconf/gconf-client.h",
     "Gdiplus.h",
     "gdk/gdkdirectfb.h",
