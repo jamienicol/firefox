@@ -113,6 +113,10 @@ class MozbuildWriter:
                 ("COMPILE_FLAGS", '"WARNINGS_AS_ERRORS"', "[]"),
                 "AllowCompilerWarnings()",
             ),
+            (
+                ("COMPILE_FLAGS", '"VISIBILITY"', "[]"),
+                "NoVisibilityFlags()",
+            ),
         )
         if value:
             self.write("\n")
