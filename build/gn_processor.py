@@ -193,14 +193,20 @@ def filter_gn_config(
     path,
     topsrcdir,
     gn_result,
-    sandbox_vars,
+    default_sandbox_vars,
+    per_target_sandbox_vars,
     input_vars,
     gn_target,
 ):
     gen_path = path / "gen"
     # Translates the raw output of gn into just what we'll need to generate a
     # mozbuild configuration.
-    gn_out = {"targets": {}, "sandbox_vars": sandbox_vars, "gn_path": str(path)}
+    gn_out = {
+        "targets": {},
+        "default_sandbox_vars": default_sandbox_vars,
+        "per_target_sandbox_vars": per_target_sandbox_vars,
+        "gn_path": str(path),
+    }
 
     def rebase_response_file_path(value):
         value = mozpath.normpath(mozpath.join(str(path), value))
@@ -322,7 +328,8 @@ def process_gn_config(
     topsrcdir,
     srcdir,
     non_unified_sources,
-    sandbox_vars,
+    default_sandbox_vars,
+    per_target_sandbox_vars,
     mozilla_flags,
     mozilla_add_override_dir,
     action_path_hints,
@@ -490,10 +497,24 @@ def process_gn_config(
 
         return resolved_args
 
+    def update_attrs(base, overlay):
+        for key, value in overlay.items():
+            if key in base and isinstance(base[key], list):
+                base[key] = deepcopy(value) + base[key]
+            elif key in base and isinstance(base[key], dict):
+                base[key].update(value)
+            else:
+                base[key] = deepcopy(value)
+
     # Process all targets from the given gn project and its dependencies.
     for target_fullname, spec in targets.items():
         target_path, target_name = target_info(target_fullname)
         context_attrs = {}
+
+        # default_sandbox_vars is shared across targets, so copy it before
+        # applying any per-target overrides.
+        sandbox_vars = deepcopy(default_sandbox_vars)
+        update_attrs(sandbox_vars, per_target_sandbox_vars.get(target_fullname, {}))
 
         if spec["type"] in ("static_library", "shared_library", "source_set", "action"):
             # Remove leading 'lib' from the target_name if any, and use as
@@ -660,16 +681,10 @@ def process_gn_config(
 
         context_attrs["COMPILE_FLAGS"] = {"OS_INCLUDES": []}
 
-        for key, value in sandbox_vars.items():
-            if context_attrs.get(key) and isinstance(context_attrs[key], list):
-                # If we have a key from sandbox_vars that's also been
-                # populated here we use the value from sandbox_vars as our
-                # basis rather than overriding outright.
-                context_attrs[key] = value + context_attrs[key]
-            elif context_attrs.get(key) and isinstance(context_attrs[key], dict):
-                context_attrs[key].update(value)
-            else:
-                context_attrs[key] = value
+        # If we have a key from sandbox_vars that's also been populated here
+        # we use the value from sandbox_vars as our basis rather than
+        # overriding outright.
+        update_attrs(context_attrs, sandbox_vars)
 
         target_relsrcdir = mozpath.join(project_relsrcdir, target_path, target_name)
         mozbuild_attrs["dirs"][target_relsrcdir] = context_attrs
@@ -942,7 +957,8 @@ def generate_gn_config(
     target_dir,
     gn_binary,
     input_variables,
-    sandbox_variables,
+    default_sandbox_variables,
+    target_sandbox_variables,
     gn_target_config,
     moz_build_flag,
     non_unified_sources,
@@ -1008,7 +1024,8 @@ def generate_gn_config(
                 resolved_tempdir,
                 topsrcdir,
                 gn_config,
-                sandbox_variables,
+                default_sandbox_variables,
+                target_sandbox_variables,
                 input_variables,
                 gn_target,
             )
@@ -1017,7 +1034,8 @@ def generate_gn_config(
                 topsrcdir,
                 srcdir,
                 non_unified_sources,
-                gn_config["sandbox_vars"],
+                gn_config["default_sandbox_vars"],
+                gn_config["per_target_sandbox_vars"],
                 mozilla_flags,
                 mozilla_add_override_dir,
                 action_path_hints,
@@ -1036,6 +1054,14 @@ def main():
 
     with open(args.config) as fh:
         config = mozfile_json.load(fh)
+
+    sandbox_variables = config["gn_sandbox_variables"]
+    if "default" in sandbox_variables or "per_target" in sandbox_variables:
+        default_sandbox_variables = sandbox_variables.get("default", {})
+        target_sandbox_variables = sandbox_variables.get("per_target", {})
+    else:
+        default_sandbox_variables = sandbox_variables
+        target_sandbox_variables = {}
 
     topsrcdir = Path(__file__).parent.parent.resolve()
 
@@ -1086,7 +1112,8 @@ def main():
                 config["target_dir"],
                 gn_binary,
                 vars,
-                config["gn_sandbox_variables"],
+                default_sandbox_variables,
+                target_sandbox_variables,
                 config["gn_target"],
                 config["moz_build_flag"],
                 config["non_unified_sources"],
