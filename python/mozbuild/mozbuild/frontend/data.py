@@ -1339,6 +1339,7 @@ class GeneratedFile(ContextDerived):
         "inputs",
         "deps",
         "flags",
+        "response_file_contents",
         "required_before_export",
         "required_before_compile",
         "required_during_compile",
@@ -1355,6 +1356,7 @@ class GeneratedFile(ContextDerived):
         inputs,
         deps=(),
         flags=(),
+        response_file_contents=(),
         localized=False,
         force=False,
         required_during_compile=None,
@@ -1366,6 +1368,7 @@ class GeneratedFile(ContextDerived):
         self.inputs = inputs
         self.deps = deps
         self.flags = flags
+        self.response_file_contents = response_file_contents
         self.localized = localized
         self.force = force
 

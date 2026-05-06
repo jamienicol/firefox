@@ -1198,6 +1198,7 @@ GeneratedFilesList = StrictOrderingOnAppendListWithFlagsFactory({
     "script": str,
     "inputs": list,
     "deps": list,
+    "response_file_contents": list,
     "force": bool,
     "flags": list,
 })
@@ -1522,14 +1523,15 @@ VARIABLES = {
         Unless you have a reason not to, use the GeneratedFile template rather
         than referencing GENERATED_FILES directly. The GeneratedFile template
         has all the same arguments as the attributes listed below (``script``,
-        ``inputs``, ``deps``, ``flags``, ``force``), plus an additional
-        ``entry_point`` argument to specify a particular function to run in
-        the given script.
+        ``inputs``, ``deps``, ``response_file_contents``, ``flags``, ``force``),
+        plus an additional ``entry_point`` argument to specify a particular
+        function to run in the given script.
 
-        This variable contains a list of files for the build system to
-        generate at export time. The generation method may be declared
-        with optional ``script``, ``inputs``, ``deps``, ``flags``, and
-        ``force`` attributes on individual entries.
+        This variable contains a list of files for the build system to generate
+        at export time. The generation method may be declared with optional
+        ``script``, ``inputs``, ``deps``, ``response_file_contents``, ``flags``,
+        and ``force`` attributes on individual entries.
+
         If the optional ``script`` attribute is not present on an entry, it
         is assumed that rules for generating the file are present in
         the associated Makefile.in.
@@ -1570,6 +1572,10 @@ VARIABLES = {
 
         When the ``deps`` attribute is present, the given list of paths is
         treated as build dependencies without being passed as arguments.
+
+        When the ``response_file_contents`` attribute is present, the backend
+        writes the given moz.build-style paths to a response file and replaces
+        ``{{response_file_name}}`` in ``flags`` with that file's path.
 
         When the ``force`` attribute is present, the file is generated every
         build, regardless of whether it is stale.  This is special to the

@@ -1722,6 +1722,7 @@ class TreeMetadataEmitter(LoggingMixin):
                 outputs = f
                 inputs = []
                 deps = []
+                response_file_contents = []
                 if flags.script:
                     method = "main"
                     script = SourcePath(context, flags.script).full_path
@@ -1766,6 +1767,33 @@ class TreeMetadataEmitter(LoggingMixin):
                         )
                     deps.append(p)
 
+                for i in flags.response_file_contents:
+                    p = Path(context, i)
+                    if isinstance(p, SourcePath) and not os.path.exists(p.full_path):
+                        raise SandboxValidationError(
+                            "Response file input for generating %s does not exist: %s"
+                            % (f, p.full_path),
+                            context,
+                        )
+                    response_file_contents.append(p)
+
+                if response_file_contents:
+                    wrapper = os.path.join(
+                        os.path.dirname(os.path.dirname(__file__)),
+                        "action",
+                        "file_generate_wrapper.py",
+                    )
+                    if (
+                        os.path.normcase(os.path.normpath(script))
+                        != os.path.normcase(os.path.normpath(wrapper))
+                        or method != "action"
+                    ):
+                        raise SandboxValidationError(
+                            "response_file_contents for generating %s requires "
+                            "file_generate_wrapper.py:action" % f,
+                            context,
+                        )
+
                 yield GeneratedFile(
                     context,
                     script,
@@ -1774,6 +1802,7 @@ class TreeMetadataEmitter(LoggingMixin):
                     inputs,
                     deps,
                     flags.flags,
+                    response_file_contents=response_file_contents,
                     localized=localized,
                     force=flags.force,
                 )

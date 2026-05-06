@@ -5,9 +5,12 @@
 import mozpack.path as mozpath
 from mozshellutil import quote as shell_quote
 
+from mozbuild.frontend.context import ObjDirPath
 from mozbuild.frontend.data import GeneratedFile
 
 from .common import CommonBackend
+
+RESPONSE_FILE_NAME = "{{response_file_name}}"
 
 
 class MakeBackend(CommonBackend):
@@ -15,6 +18,19 @@ class MakeBackend(CommonBackend):
 
     def _init(self):
         CommonBackend._init(self)
+
+    def _make_generated_file_response_file(self, obj):
+        response_file_path = mozpath.join(
+            obj.objdir, f"{mozpath.basename(obj.outputs[0])}.rsp"
+        )
+        content = "\n".join(path.full_path for path in obj.response_file_contents)
+
+        with self._write_file(response_file_path) as fh:
+            fh.write(content)
+
+        return ObjDirPath(
+            obj._context, "!" + mozpath.relpath(response_file_path, obj.objdir)
+        )
 
     def _format_statements_for_generated_file(self, obj, tier, extra_dependencies=""):
         """Return the list of statements to write to the Makefile for this
@@ -74,6 +90,20 @@ class MakeBackend(CommonBackend):
         else:
             deps = []
 
+        flags = obj.flags
+        if obj.response_file_contents:
+            if RESPONSE_FILE_NAME not in obj.flags:
+                raise ValueError(
+                    f"response_file_contents requires {RESPONSE_FILE_NAME} in flags"
+                )
+
+            response_file = self._make_generated_file_response_file(obj)
+            flags = [
+                response_file.full_path if f == RESPONSE_FILE_NAME else f
+                for f in obj.flags
+            ]
+            deps.append(self._format_generated_file_input_name(response_file, obj))
+
         force = ""
         if obj.force:
             force = " FORCE"
@@ -122,9 +152,7 @@ class MakeBackend(CommonBackend):
                     deps=" " + " ".join(inputs + deps) if inputs or deps else "",
                     inputs=" " + " ".join(inputs) if inputs else "",
                     flags=(
-                        " " + " ".join(shell_quote(f) for f in obj.flags)
-                        if obj.flags
-                        else ""
+                        " " + " ".join(shell_quote(f) for f in flags) if flags else ""
                     ),
                     backend=" " + extra_dependencies if extra_dependencies else "",
                     # Locale repacks repack multiple locales from a single configured objdir,

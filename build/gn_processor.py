@@ -189,11 +189,26 @@ def find_deps(all_targets, target):
     return all_deps
 
 
-def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
+def filter_gn_config(
+    path,
+    topsrcdir,
+    gn_result,
+    sandbox_vars,
+    input_vars,
+    gn_target,
+):
     gen_path = path / "gen"
     # Translates the raw output of gn into just what we'll need to generate a
     # mozbuild configuration.
     gn_out = {"targets": {}, "sandbox_vars": sandbox_vars}
+
+    def rebase_response_file_path(value):
+        value = mozpath.normpath(mozpath.join(str(path), value))
+        if value.startswith(str(topsrcdir)):
+            return "/" + mozpath.relpath(value, str(topsrcdir))
+        if value.startswith(str(path)):
+            return "!/" + mozpath.relpath(value, str(path))
+        return "%" + value
 
     cpus = {
         "arm64": "aarch64",
@@ -232,6 +247,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                 "type",
                 "args",
                 "inputs",
+                "response_file_contents",
                 "script",
                 "outputs",
             ):
@@ -241,6 +257,10 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                     # path relative to the target dir.
                     spec[spec_attr] = [
                         mozpath.relpath(d, path) for d in spec[spec_attr]
+                    ]
+                if spec_attr == "response_file_contents":
+                    spec[spec_attr] = [
+                        rebase_response_file_path(d) for d in spec[spec_attr]
                     ]
             gn_out["targets"][target_fullname] = spec
             continue
@@ -419,6 +439,11 @@ def process_gn_config(
                 context_attrs["GeneratedFile"]["deps"] = [
                     resolve_path(f) for f in spec["inputs"]
                 ]
+            response_file_contents = spec.get("response_file_contents")
+            if response_file_contents:
+                context_attrs["GeneratedFile"]["response_file_contents"] = (
+                    response_file_contents
+                )
 
         sources = []
         unified_sources = []
@@ -549,6 +574,10 @@ def find_common_attrs(config_attributes):
     # Returns the intersection of the given configs and prunes the inputs
     # to no longer contain these common attributes.
 
+    # Some attrs should be treated as all-or-nothing instead of comparing and
+    # removing individual parts.
+    ATOMIC_ATTRS = {"GeneratedFile"}
+
     common_attrs = deepcopy(config_attributes[0])
 
     def make_intersection(reference, input_attrs):
@@ -560,7 +589,10 @@ def find_common_attrs(config_attributes):
             # `reference`.
             common_value = reference.get(k)
             if common_value:
-                if isinstance(input_value, list):
+                if k in ATOMIC_ATTRS:
+                    if input_value != common_value:
+                        del reference[k]
+                elif isinstance(input_value, list):
                     reference[k] = [
                         i
                         for i in common_value
@@ -588,7 +620,9 @@ def find_common_attrs(config_attributes):
         for k, input_value in list(input_attrs.items()):
             common_value = reference.get(k)
             if common_value:
-                if isinstance(input_value, list):
+                if k in ATOMIC_ATTRS:
+                    del input_attrs[k]
+                elif isinstance(input_value, list):
                     input_attrs[k] = [
                         i
                         for i in input_value
@@ -864,6 +898,7 @@ def generate_gn_config(
             gn_config = mozfile_json.loads(raw_json)
             gn_config = filter_gn_config(
                 resolved_tempdir,
+                topsrcdir,
                 gn_config,
                 sandbox_variables,
                 input_variables,
