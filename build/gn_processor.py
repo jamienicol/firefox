@@ -853,8 +853,9 @@ def generate_gn_config(
         gn_config_file = resolved_tempdir / "project.json"
         with open(gn_config_file) as fh:
             raw_json = fh.read()
-            raw_json = raw_json.replace(f"{target_dir}/", "")
-            raw_json = raw_json.replace(f"{target_dir}:", ":")
+            raw_json = raw_json.replace(f"//{target_dir}/", "//")
+            raw_json = raw_json.replace(f"//{target_dir}:", "//:")
+            raw_json = raw_json.replace(f"gen/{target_dir}", "gen")
             gn_config = mozfile_json.loads(raw_json)
             gn_config = filter_gn_config(
                 resolved_tempdir,
