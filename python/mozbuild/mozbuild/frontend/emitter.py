@@ -938,7 +938,7 @@ class TreeMetadataEmitter(LoggingMixin):
                         "generate_symbols_file",
                         lib.symbols_file,
                         [symbols_file],
-                        defines,
+                        flags=defines,
                         required_during_compile=[lib.symbols_file],
                     )
             if static_lib:
@@ -1721,6 +1721,7 @@ class TreeMetadataEmitter(LoggingMixin):
                 flags = gen[f]
                 outputs = f
                 inputs = []
+                deps = []
                 if flags.script:
                     method = "main"
                     script = SourcePath(context, flags.script).full_path
@@ -1755,12 +1756,23 @@ class TreeMetadataEmitter(LoggingMixin):
                         )
                     inputs.append(p)
 
+                for i in flags.deps:
+                    p = Path(context, i)
+                    if isinstance(p, SourcePath) and not os.path.exists(p.full_path):
+                        raise SandboxValidationError(
+                            "Dependency for generating %s does not exist: %s"
+                            % (f, p.full_path),
+                            context,
+                        )
+                    deps.append(p)
+
                 yield GeneratedFile(
                     context,
                     script,
                     method,
                     outputs,
                     inputs,
+                    deps,
                     flags.flags,
                     localized=localized,
                     force=flags.force,

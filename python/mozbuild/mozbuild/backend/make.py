@@ -69,6 +69,11 @@ class MakeBackend(CommonBackend):
         else:
             inputs = []
 
+        if obj.deps:
+            deps = [self._format_generated_file_input_name(f, obj) for f in obj.deps]
+        else:
+            deps = []
+
         force = ""
         if obj.force:
             force = " FORCE"
@@ -104,7 +109,7 @@ class MakeBackend(CommonBackend):
 
             ret.append(
                 (
-                    """{stub}: {script}{inputs}{backend}{force}
+                    """{stub}: {script}{deps}{backend}{force}
 \t$(REPORT_BUILD)
 \t$(call py_action,file_generate {output},{locale}{script} """  # wrap for E501
                     """{method} {output} {dep_file} {stub}{inputs}{flags})
@@ -114,6 +119,7 @@ class MakeBackend(CommonBackend):
                     stub=stub_file,
                     output=first_output,
                     dep_file=dep_file,
+                    deps=" " + " ".join(inputs + deps) if inputs or deps else "",
                     inputs=" " + " ".join(inputs) if inputs else "",
                     flags=(
                         " " + " ".join(shell_quote(f) for f in obj.flags)

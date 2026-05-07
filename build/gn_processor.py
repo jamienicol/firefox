@@ -231,6 +231,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
             for spec_attr in (
                 "type",
                 "args",
+                "inputs",
                 "script",
                 "outputs",
             ):
@@ -414,6 +415,10 @@ def process_gn_config(
                 "outputs": [resolve_path(f) for f in spec["outputs"]],
                 "flags": flags,
             }
+            if spec.get("inputs"):
+                context_attrs["GeneratedFile"]["deps"] = [
+                    resolve_path(f) for f in spec["inputs"]
+                ]
 
         sources = []
         unified_sources = []

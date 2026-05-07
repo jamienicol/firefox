@@ -553,7 +553,7 @@ class RecursiveMakeBackend(MakeBackend):
                     target = mozpath.join(obj.relobjdir, out)
                     assert target not in self._target_per_file
                     self._target_per_file[target] = (obj.relobjdir, tier)
-                for input in obj.inputs:
+                for input in chain(obj.inputs, obj.deps):
                     if isinstance(input, ObjDirPath):
                         self._post_process_dependencies.append((
                             obj.relobjdir,
