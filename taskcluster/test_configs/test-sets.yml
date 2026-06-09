@@ -567,10 +567,10 @@ android14-x86_64-tests:
     - mochitest-media
     - mochitest-plain
     - mochitest-plain-gpu
-    # - mochitest-webgl1-core # Harness issues?
-    # - mochitest-webgl1-ext
-    # - mochitest-webgl2-core # Emulator not creating ES3?
-    # - mochitest-webgl2-ext
+    - mochitest-webgl1-core
+    - mochitest-webgl1-ext
+    - mochitest-webgl2-core
+    - mochitest-webgl2-ext
     - reftest
     - test-verify
     - web-platform-tests
