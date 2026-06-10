@@ -44,6 +44,9 @@ skip-if = [
 ["test_conformance__extensions__ext-polygon-offset-clamp.html"]
 
 ["test_conformance__extensions__ext-sRGB.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__extensions__ext-shader-texture-lod.html"]
 
@@ -77,6 +80,9 @@ skip-if = [
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__extensions__oes-texture-float.html"]
 
@@ -92,6 +98,9 @@ skip-if = [
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__extensions__oes-texture-half-float.html"]
 
@@ -104,6 +113,9 @@ skip-if = [
 ["test_conformance__extensions__webgl-blend-func-extended.html"]
 
 ["test_conformance__extensions__webgl-compressed-texture-astc.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__extensions__webgl-compressed-texture-etc.html"]
 

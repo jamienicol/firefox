@@ -23,6 +23,9 @@ support-files = [
 ["test_conformance__rendering__bind-framebuffer-flush-bug.html"]
 
 ["test_conformance__rendering__blending.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__rendering__canvas-alpha-bug.html"]
 
@@ -34,6 +37,7 @@ support-files = [
 fail-if = [
   "os == 'linux' && os_version == '22.04' && arch == 'x86_64' && display == 'wayland'",
   "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_conformance__rendering__color-mask-preserved-during-implicit-clears.html"]
@@ -77,6 +81,7 @@ skip-if = [
 ["test_conformance__rendering__gl-scissor-test.html"]
 fail-if = [
   "display == 'wayland'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 skip-if = [
   "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11'",

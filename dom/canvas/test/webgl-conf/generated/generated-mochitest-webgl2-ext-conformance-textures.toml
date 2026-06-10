@@ -151,18 +151,39 @@ support-files = [
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-alpha-alpha-unsigned_byte.html"]
 
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-luminance-luminance-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-luminance_alpha-luminance_alpha-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-rgb-rgb-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-rgb-rgb-unsigned_short_5_6_5.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-rgba-rgba-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-rgba-rgba-unsigned_short_4_4_4_4.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__image_bitmap_from_video__tex-2d-rgba-rgba-unsigned_short_5_5_5_1.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__image_data__tex-2d-alpha-alpha-unsigned_byte.html"]
 
@@ -197,20 +218,44 @@ support-files = [
 ["test_2_conformance__textures__svg_image__tex-2d-rgba-rgba-unsigned_short_5_5_5_1.html"]
 
 ["test_2_conformance__textures__video__tex-2d-alpha-alpha-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__video__tex-2d-luminance-luminance-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__video__tex-2d-luminance_alpha-luminance_alpha-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__video__tex-2d-rgb-rgb-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__video__tex-2d-rgb-rgb-unsigned_short_5_6_5.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__video__tex-2d-rgba-rgba-unsigned_byte.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__video__tex-2d-rgba-rgba-unsigned_short_4_4_4_4.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__video__tex-2d-rgba-rgba-unsigned_short_5_5_5_1.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__webgl_canvas__tex-2d-alpha-alpha-unsigned_byte.html"]
 

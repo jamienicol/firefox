@@ -65,6 +65,9 @@ skip-if = [
 ]
 
 ["test_2_conformance__textures__misc__png-image-types.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__misc__tex-image-and-sub-image-2d-with-array-buffer-view.html"]
 
@@ -109,6 +112,9 @@ skip-if = [
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance__textures__misc__texture-cube-as-fbo-attachment.html"]
 
@@ -139,6 +145,9 @@ skip-if = [
 ["test_2_conformance__textures__misc__texture-srgb-upload.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'", # Bug 1796057
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_2_conformance__textures__misc__texture-sub-image-cube-maps.html"]

@@ -157,35 +157,56 @@ skip-if = [
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__image_bitmap_from_video__tex-2d-luminance_alpha-luminance_alpha-unsigned_byte.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_conformance__textures__image_bitmap_from_video__tex-2d-rgb-rgb-unsigned_byte.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__image_bitmap_from_video__tex-2d-rgb-rgb-unsigned_short_5_6_5.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_conformance__textures__image_bitmap_from_video__tex-2d-rgba-rgba-unsigned_byte.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__image_bitmap_from_video__tex-2d-rgba-rgba-unsigned_short_4_4_4_4.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__image_bitmap_from_video__tex-2d-rgba-rgba-unsigned_short_5_5_5_1.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_conformance__textures__image_data__tex-2d-alpha-alpha-unsigned_byte.html"]
@@ -224,15 +245,24 @@ skip-if = [
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__video__tex-2d-luminance-luminance-unsigned_byte.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__video__tex-2d-luminance_alpha-luminance_alpha-unsigned_byte.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_conformance__textures__video__tex-2d-rgb-rgb-unsigned_byte.html"]
@@ -240,10 +270,16 @@ skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__video__tex-2d-rgb-rgb-unsigned_short_5_6_5.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_conformance__textures__video__tex-2d-rgba-rgba-unsigned_byte.html"]
@@ -251,15 +287,24 @@ skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__video__tex-2d-rgba-rgba-unsigned_short_4_4_4_4.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_conformance__textures__video__tex-2d-rgba-rgba-unsigned_short_5_5_5_1.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_conformance__textures__webgl_canvas__tex-2d-alpha-alpha-unsigned_byte.html"]

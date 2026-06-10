@@ -30,12 +30,21 @@ fail-if = [
 ]
 
 ["ensure-exts/test_EXT_float_blend.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["ensure-exts/test_EXT_frag_depth.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["ensure-exts/test_EXT_sRGB.html"]
 
 ["ensure-exts/test_EXT_shader_texture_lod.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["ensure-exts/test_EXT_texture_compression_bptc.html"]
 fail-if = [
@@ -51,8 +60,14 @@ fail-if = [
 ]
 
 ["ensure-exts/test_EXT_texture_filter_anisotropic.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["ensure-exts/test_OES_draw_buffers_indexed.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["ensure-exts/test_OES_fbo_render_mipmap.html"]
 
@@ -65,6 +80,7 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["ensure-exts/test_WEBGL_color_buffer_float.html"]
@@ -123,10 +139,16 @@ fail-if = [
 ]
 
 ["ensure-exts/test_WEBGL_compressed_texture_s3tc.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["ensure-exts/test_WEBGL_depth_texture.html"]
 
 ["ensure-exts/test_WEBGL_draw_buffers.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["ensure-exts/test_WEBGL_provoking_vertex.html"]
 fail-if = [
@@ -184,6 +206,7 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_hidden_alpha.html"]
@@ -211,12 +234,18 @@ skip-if = [
 
 ["test_read_pixels_naive_impl_read_formats.html"]
 tags = "os_integration"
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_read_pixels_no_format.html"]
 
 ["test_renderer_strings.html"]
 skip-if = [
   "os == 'linux' && os_version == '22.04' && arch == 'x86_64' && display == 'wayland'",
+]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 tags = "os_integration"
 

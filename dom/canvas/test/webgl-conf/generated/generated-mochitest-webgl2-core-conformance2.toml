@@ -46,6 +46,7 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_2_conformance2__attribs__gl-vertex-attrib-i-render.html"]
@@ -110,6 +111,7 @@ skip-if = [
 fail-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
   "os == 'linux' && os_version == '22.04' && arch == 'x86_64' && display == 'wayland'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 tags = "os_integration"
 
@@ -152,11 +154,15 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_2_conformance2__extensions__nv-shader-noperspective-interpolation.html"]
 
 ["test_2_conformance2__extensions__oes-draw-buffers-indexed.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__extensions__oes-sample-variables.html"]
 
@@ -291,6 +297,9 @@ skip-if = [
 skip-if = [
   "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__query__occlusion-query.html"]
 skip-if = [
@@ -316,6 +325,9 @@ fail-if = [
 ["test_2_conformance2__reading__read-pixels-pack-parameters.html"]
 
 ["test_2_conformance2__renderbuffers__framebuffer-object-attachment.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__renderbuffers__framebuffer-test.html"]
 
@@ -393,9 +405,13 @@ skip-if = [
 fail-if = [
   "os == 'linux' && os_version == '22.04' && arch == 'x86_64' && display == 'wayland'",
   "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_2_conformance2__rendering__depth-stencil-feedback-loop.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__rendering__draw-buffers-dirty-state-bug.html"]
 
@@ -482,6 +498,9 @@ fail-if = [
 ["test_2_conformance2__rendering__rasterizer-discard-and-implicit-clear.html"]
 
 ["test_2_conformance2__rendering__read-draw-when-missing-image.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__rendering__rgb-format-support.html"]
 
@@ -496,8 +515,14 @@ skip-if = [
 ]
 
 ["test_2_conformance2__rendering__vertex-id-large-count.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__rendering__vertex-id.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__samplers__multi-context-sampler-test.html"]
 
@@ -544,6 +569,9 @@ skip-if = [
 ]
 
 ["test_2_conformance2__textures__misc__copy-texture-image-luma-format.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__textures__misc__copy-texture-image-same-texture.html"]
 skip-if = [
@@ -553,8 +581,14 @@ skip-if = [
   "os == 'win' && os_version == '11.26100'",
   "os == 'win' && os_version == '11.26200'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__textures__misc__copy-texture-image-webgl-specific.html"]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__textures__misc__copy-texture-image.html"]
 
@@ -569,6 +603,7 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64' && debug",
@@ -618,6 +653,9 @@ skip-if = [
   "os == 'win' && os_version == '11.26100'",
   "os == 'win' && os_version == '11.26200'",
 ]
+fail-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+]
 
 ["test_2_conformance2__textures__misc__tex-image-with-bad-args.html"]
 
@@ -637,6 +675,7 @@ fail-if = [
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "os == 'win' && os_version == '11.26100'",
   "os == 'win' && os_version == '11.26200'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_2_conformance2__textures__misc__tex-new-formats.html"]
@@ -678,6 +717,7 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_2_conformance2__textures__misc__texel-fetch-undefined.html"]
