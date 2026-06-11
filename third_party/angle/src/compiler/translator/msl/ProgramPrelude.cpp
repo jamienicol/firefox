@@ -64,7 +64,8 @@ class ProgramPrelude : public TIntermTraverser
                 break;
         }
 
-        mOut << "#pragma clang diagnostic ignored \"-Wunused-value\"\n";
+        mOut << "#pragma clang diagnostic ignored \"-Wunused-value\"\n"
+                "#pragma clang diagnostic ignored \"-Wunused-variable\"\n";
     }
 
   private:
