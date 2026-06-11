@@ -45,7 +45,12 @@ skip-if = [
 
 ["test_conformance__extensions__ext-sRGB.html"]
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  # FAIL should NOT be able to create type ext.SRGB8_ALPHA8_EXT
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
+]
+skip-if = [
+  # Assertion failure: texImage: Unexpected error <enum 0x0500> during upload.
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 
 ["test_conformance__extensions__ext-shader-texture-lod.html"]

@@ -120,7 +120,11 @@ skip-if = [
 
 ["test_conformance__more__functions__uniformfArrayLen1.html"]
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
+]
+skip-if = [
+  # Assertion failure: void mozilla::gl::GLContext::fUniform1fv(GLint, GLsizei, const GLfloat *): Generated unexpected GL_INVALID_OPERATION error
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 
 ["test_conformance__more__functions__uniformfBadArgs.html"]

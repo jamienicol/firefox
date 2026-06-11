@@ -147,6 +147,8 @@ skip-if = [
 ["test_2_conformance2__extensions__ext-texture-norm16.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'", #Bug 1658801
+  # Assertion failure: void mozilla::gl::GLContext::fGetInternalformativ(GLenum, GLenum, GLenum, GLsizei, GLint *): Generated unexpected GL_INVALID_ENUM error
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 fail-if = [
   "os == 'linux' && os_version == '22.04' && arch == 'x86_64' && display == 'wayland'",
@@ -154,14 +156,14 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
 ]
 
 ["test_2_conformance2__extensions__nv-shader-noperspective-interpolation.html"]
 
 ["test_2_conformance2__extensions__oes-draw-buffers-indexed.html"]
-fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+skip-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'", # Timeout
 ]
 
 ["test_2_conformance2__extensions__oes-sample-variables.html"]
@@ -586,8 +588,12 @@ fail-if = [
 ]
 
 ["test_2_conformance2__textures__misc__copy-texture-image-webgl-specific.html"]
+skip-if = [
+  # Assertion failure: Unexpected error from driver: DoCopyTexSubImage(0x806f, 1, 0,0,0, 0,0, 1,1) -> 0x0501
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
+]
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
 ]
 
 ["test_2_conformance2__textures__misc__copy-texture-image.html"]
@@ -669,13 +675,17 @@ skip-if = [
 ]
 
 ["test_2_conformance2__textures__misc__tex-mipmap-levels.html"]
+skip-if = [
+  # Assertion failure: texSubImage: Unexpected error <enum 0x0501> during upload. (dui: 8058/1908/1401)
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
+]
 fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "os == 'win' && os_version == '11.26100'",
   "os == 'win' && os_version == '11.26200'",
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
 ]
 
 ["test_2_conformance2__textures__misc__tex-new-formats.html"]
@@ -712,12 +722,12 @@ skip-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64' && debug",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64' && debug",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && debug", # Bug 2034604
+  "os == 'android' && os_version == '14' && arch == 'x86_64'", # Timeout
 ]
 fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 
 ["test_2_conformance2__textures__misc__texel-fetch-undefined.html"]

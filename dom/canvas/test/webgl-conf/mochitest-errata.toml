@@ -78,6 +78,8 @@ skip-if = [
 ["generated/test_2_conformance2__extensions__ext-texture-norm16.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'", #Bug 1658801
+  # Assertion failure: void mozilla::gl::GLContext::fGetInternalformativ(GLenum, GLenum, GLenum, GLsizei, GLint *): Generated unexpected GL_INVALID_ENUM error
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 fail-if = [
   "os == 'linux' && os_version == '22.04' && arch == 'x86_64' && display == 'wayland'",
@@ -85,7 +87,7 @@ fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
 ]
 ["generated/test_2_conformance2__extensions__ovr_multiview2.html"]
 # Windows failure: ANGLE bug: FAIL #extension GL_OVR_multiview must be forbidden.
@@ -1110,13 +1112,17 @@ skip-if = [
 ]
 
 ["generated/test_2_conformance2__textures__misc__tex-mipmap-levels.html"]
+skip-if = [
+  # Assertion failure: texSubImage: Unexpected error <enum 0x0501> during upload. (dui: 8058/1908/1401)
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
+]
 fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "os == 'win' && os_version == '11.26100'",
   "os == 'win' && os_version == '11.26200'",
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
 ]
 ["generated/test_2_conformance2__textures__misc__tex-srgb-mipmap.html"]
 fail-if = [
@@ -1144,12 +1150,12 @@ skip-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64' && debug",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64' && debug",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && debug", # Bug 2034604
+  "os == 'android' && os_version == '14' && arch == 'x86_64'", # Timeout
 ]
 fail-if = [
   "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
   "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
   "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
 ]
 ["generated/test_2_conformance2__textures__svg_image__tex-2d-rgb10_a2-rgba-unsigned_int_2_10_10_10_rev.html"]
 fail-if = [
@@ -1779,9 +1785,7 @@ skip-if = [
 ["generated/test_2_conformance__textures__misc__texture-srgb-upload.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'", # Bug 1796057
-]
-fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'", # Bug 1796057
 ]
 
 ["generated/test_2_conformance__textures__misc__texture-upload-size.html"]
@@ -2673,9 +2677,7 @@ skip-if = [
 ["generated/test_conformance__textures__misc__texture-srgb-upload.html"]
 skip-if = [
   "os == 'android' && os_version == '14' && arch == 'aarch64'", # Bug 1796057
-]
-fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64'", # Bug 1796057
 ]
 
 ["generated/test_conformance__textures__misc__texture-sub-image-cube-maps.html"]
@@ -2800,8 +2802,8 @@ skip-if = [
 # Android 14 x86_64 emulator failures
 
 ["generated/test_2_conformance2__extensions__oes-draw-buffers-indexed.html"]
-fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+skip-if = [
+  "os == 'android' && os_version == '14' && arch == 'x86_64'", # Timeout
 ]
 
 ["generated/test_2_conformance2__glsl3__valid-invariant.html"]
@@ -2840,8 +2842,12 @@ fail-if = [
 ]
 
 ["generated/test_2_conformance2__textures__misc__copy-texture-image-webgl-specific.html"]
+skip-if = [
+  # Assertion failure: Unexpected error from driver: DoCopyTexSubImage(0x806f, 1, 0,0,0, 0,0, 1,1) -> 0x0501
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
+]
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
 ]
 
 ["generated/test_2_conformance__extensions__ext-float-blend.html"]
@@ -2851,7 +2857,11 @@ fail-if = [
 
 ["generated/test_2_conformance__more__functions__uniformfArrayLen1.html"]
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
+]
+skip-if = [
+  # Assertion failure: void mozilla::gl::GLContext::fUniform1fv(GLint, GLsizei, const GLfloat *): Generated unexpected GL_INVALID_OPERATION error
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 
 ["generated/test_2_conformance__rendering__blending.html"]
@@ -2866,12 +2876,21 @@ fail-if = [
 
 ["generated/test_conformance__extensions__ext-sRGB.html"]
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  # FAIL should NOT be able to create type ext.SRGB8_ALPHA8_EXT
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
+]
+skip-if = [
+  # Assertion failure: texImage: Unexpected error <enum 0x0500> during upload.
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 
 ["generated/test_conformance__more__functions__uniformfArrayLen1.html"]
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
+]
+skip-if = [
+  # Assertion failure: void mozilla::gl::GLContext::fUniform1fv(GLint, GLsizei, const GLfloat *): Generated unexpected GL_INVALID_OPERATION error
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 
 ["generated/test_conformance__rendering__blending.html"]

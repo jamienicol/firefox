@@ -235,7 +235,11 @@ skip-if = [
 ["test_read_pixels_naive_impl_read_formats.html"]
 tags = "os_integration"
 fail-if = [
-  "os == 'android' && os_version == '14' && arch == 'x86_64'",
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && opt",
+]
+skip-if = [
+  # Assertion failure: void mozilla::gl::GLContext::raw_fReadPixels(GLint, GLint, GLsizei, GLsizei, GLenum, GLenum, GLvoid *): Generated unexpected GL_INVALID_ENUM error
+  "os == 'android' && os_version == '14' && arch == 'x86_64' && debug",
 ]
 
 ["test_read_pixels_no_format.html"]
