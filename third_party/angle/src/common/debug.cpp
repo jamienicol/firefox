@@ -298,6 +298,10 @@ void Trace(LogSeverity severity, const char *message)
             os_log_with_type(OS_LOG_DEFAULT, apple_log_type, "ANGLE: %s: %s\n",
                              LogSeverityName(severity), str.c_str());
         }
+        if (severity >= LOG_WARN)
+        {
+            fprintf(stderr, "ANGLE %s: %s\n", LogSeverityName(severity), str.c_str());
+        }
 #else
         // Note: we use fprintf because <iostream> includes static initializers.
         fprintf((severity >= LOG_WARN) ? stderr : stdout, "%s: %s\n", LogSeverityName(severity),

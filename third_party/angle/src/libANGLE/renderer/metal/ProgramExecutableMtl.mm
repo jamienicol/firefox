@@ -366,9 +366,12 @@ angle::Result CreateMslShaderLib(mtl::Context *context,
             disableFastMath, usesInvariance, &err);
         if (err || !translatedMslInfo->metalLibrary)
         {
+            const char *errorStr =
+                err ? err.get().localizedDescription.UTF8String : "unknown error";
+            ERR() << "Metal MSL compilation failed: " << errorStr << "\nTranslated source:\n"
+                  << *(translatedMslInfo->metalShaderSource);
             infoLog << "Internal error while linking shader. MSL compilation error:\n"
-                    << (err ? err.get().localizedDescription.UTF8String : "unknown error")
-                    << ".\nTranslated source:\n"
+                    << errorStr << ".\nTranslated source:\n"
                     << *(translatedMslInfo->metalShaderSource);
             ANGLE_MTL_CHECK(context, translatedMslInfo->metalLibrary, err);
         }

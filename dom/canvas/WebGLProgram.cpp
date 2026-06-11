@@ -1173,11 +1173,13 @@ void WebGLProgram::LinkAndUpdate() {
   mMostRecentLinkInfo = nullptr;
 
   gl::GLContext* gl = mContext->gl;
+  printf_stderr("jamiedbg glLinkProgram()\n");
   gl->fLinkProgram(mGLName);
 
   // Grab the program log.
   {
     GLuint logLenWithNull = 0;
+    printf_stderr("jamiedbg glGetProgramiv(GL_INFO_LOG_LENGTH)\n");
     gl->fGetProgramiv(mGLName, LOCAL_GL_INFO_LOG_LENGTH,
                       (GLint*)&logLenWithNull);
     if (logLenWithNull > 1) {
@@ -1190,6 +1192,7 @@ void WebGLProgram::LinkAndUpdate() {
   }
 
   GLint ok = 0;
+  printf_stderr("jamiedbg glGetProgramiv(GL_LINK_SATUS)\n");
   gl->fGetProgramiv(mGLName, LOCAL_GL_LINK_STATUS, &ok);
   if (!ok) return;
 

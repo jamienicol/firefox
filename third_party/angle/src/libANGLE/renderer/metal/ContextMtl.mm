@@ -1657,6 +1657,8 @@ void ContextMtl::handleError(GLenum glErrorCode,
                              const char *function,
                              unsigned int line)
 {
+    ERR() << "Metal handleError " << gl::FmtHex(glErrorCode) << " in " << function << ":" << line
+          << ": " << message;
     mErrors->handleError(glErrorCode, message, file, function, line);
 }
 

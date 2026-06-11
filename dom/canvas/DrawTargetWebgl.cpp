@@ -1952,10 +1952,12 @@ bool SharedContextWebgl::CreateShaders() {
         "  out_FragColor = clip * aa * u_color * float(all(inside.zw)) *\n"
         "                  mix(avg_color, avg_color.rrrr, u_swizzle);\n"
         "}\n";
+    printf_stderr("jamiedbg Creating mBlurShader\n");
     RefPtr<WebGLShader> vsId = mWebgl->CreateShader(LOCAL_GL_VERTEX_SHADER);
     mWebgl->ShaderSource(*vsId, vsSource);
     mWebgl->CompileShader(*vsId);
     if (!mWebgl->GetCompileResult(*vsId).success) {
+      printf_stderr("jamiedbg Failed to compile\n");
       return false;
     }
     RefPtr<WebGLShader> fsId = mWebgl->CreateShader(LOCAL_GL_FRAGMENT_SHADER);
