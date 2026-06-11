@@ -364,7 +364,12 @@ angle::Result CreateMslShaderLib(mtl::Context *context,
         translatedMslInfo->metalLibrary = libraryCache.getOrCompileShaderLibrary(
             context->getDisplay(), translatedMslInfo->metalShaderSource, substitutionMacros,
             disableFastMath, usesInvariance, &err);
-        if (err || !translatedMslInfo->metalLibrary)
+        if (err)
+        {
+            ERR() << "Metal MSL compilation warning: "
+                  << err.get().localizedDescription.UTF8String;
+        }
+        if (!translatedMslInfo->metalLibrary)
         {
             const char *errorStr =
                 err ? err.get().localizedDescription.UTF8String : "unknown error";
