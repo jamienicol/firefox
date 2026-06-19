@@ -6,3 +6,7 @@ color_targets(3) == rounded-corners-1.yaml rounded-corners-1-ref.yaml
 color_targets(1) == rounded-corners-5.yaml rounded-corners-5-ref.yaml
 == rounded-rgb-surface.yaml rounded-rgb-surface-ref.yaml
 == tile-occlusion.yaml tile-occlusion-ref.yaml
+== yuv-nv12.yaml yuv-nv12-ref.yaml
+== yuv-nv16.yaml yuv-nv16-ref.yaml
+== yuv-p010.yaml yuv-p010-ref.yaml
+== yuv-p210.yaml yuv-p210-ref.yaml

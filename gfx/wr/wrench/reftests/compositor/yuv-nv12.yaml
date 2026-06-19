@@ -1,0 +1,9 @@
+root:
+  items:
+    - type: yuv-image
+      external: true
+      format: nv12
+      src-y: barn-y.png
+      src-uv: barn-uv-420-8.png
+      bounds: [10, 10, 400, 298]
+      prefer-compositor-surface: true

@@ -1,0 +1,8 @@
+root:
+  items:
+    - type: yuv-image
+      external: true
+      format: p210
+      src-y: barn-y-10msb.png
+      src-uv: barn-uv-422-10msb.png
+      bounds: [10, 10, 400, 298]
