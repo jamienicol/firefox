@@ -223,12 +223,8 @@ impl TileCacheBuilder {
                 continue;
             }
 
-            let scroll_root = find_scroll_root(
-                cluster.spatial_node_index,
-                &mut self.prev_scroll_root_cache,
-                spatial_tree,
-                true,
-            );
+            // PROTOTYPE: always use the root reference frame as the scroll root.
+            let scroll_root = self.root_spatial_node_index;
 
             *scroll_root_occurrences.entry(scroll_root).or_insert(0) += 1;
         }
@@ -295,15 +291,9 @@ impl TileCacheBuilder {
             SliceKind::Default { ref mut secondary_slices } => {
                 assert_ne!(spatial_node_index, SpatialNodeIndex::UNKNOWN);
 
-                // Check if we want to create a new slice based on the current / next scroll root
-                let scroll_root = find_scroll_root(
-                    spatial_node_index,
-                    &mut self.prev_scroll_root_cache,
-                    spatial_tree,
-                    // Allow sticky frames as scroll roots, unless our quality settings prefer
-                    // subpixel AA over performance.
-                    !quality_settings.force_subpixel_aa_where_possible,
-                );
+                // PROTOTYPE: always use the root reference frame as the scroll root so
+                // that all content goes into a single picture cache slice.
+                let scroll_root = self.root_spatial_node_index;
 
                 let current_scroll_root = secondary_slices
                     .last()
