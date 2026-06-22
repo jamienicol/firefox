@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Backdrop Filter Perf Testcase</title>
+<style>
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #15202b;
+    color: #e7e9ea;
+  }
+
+  header {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 53px;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    background: rgba(21, 32, 43, 0.75);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    z-index: 100;
+  }
+
+  header h1 {
+    font-size: 20px;
+    font-weight: 700;
+    flex: 1;
+  }
+
+  #toggle {
+    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: transparent;
+    color: #e7e9ea;
+    cursor: pointer;
+  }
+
+  .no-backdrop header {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(21, 32, 43, 0.95);
+  }
+
+  .feed {
+    margin-top: 53px;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    border-left: 1px solid #2f3336;
+    border-right: 1px solid #2f3336;
+  }
+
+  .tweet {
+    padding: 12px 16px;
+    border-bottom: 1px solid #2f3336;
+    display: flex;
+    gap: 12px;
+  }
+
+  .avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .tweet-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .tweet-header {
+    display: flex;
+    gap: 6px;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+
+  .display-name {
+    font-weight: 700;
+    font-size: 15px;
+  }
+
+  .handle {
+    color: #8b98a5;
+    font-size: 15px;
+  }
+
+  .tweet-text {
+    font-size: 15px;
+    line-height: 1.5;
+    color: #e7e9ea;
+  }
+
+  .tweet-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    color: #8b98a5;
+    font-size: 13px;
+  }
+
+  .tweet-action {
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+
+  .no-backdrop .tweet-action {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(255, 255, 255, 0.08);
+  }
+</style>
+</head>
+<body>
+
+<header id="header">
+  <h1>Home</h1>
+  <button id="toggle">backdrop-filter: on</button>
+</header>
+
+<main class="feed" id="feed"></main>
+
+<script>
+  const names = [
+    ["Alice Martin", "@alice"],
+    ["Bob Chen", "@bobchen"],
+    ["Carol White", "@carolw"],
+    ["David Kim", "@dkim"],
+    ["Eva Torres", "@evat"],
+    ["Frank Lee", "@frankl"],
+    ["Grace Patel", "@gracep"],
+    ["Henry Müller", "@hmuller"],
+  ];
+
+  const texts = [
+    "Just pushed a fix for that annoying rendering bug. Took way longer than expected but it's finally done.",
+    "Hot take: most performance problems are actually just doing too much work per frame. Profile first, optimize second.",
+    "The new CSS backdrop-filter spec updates are interesting. Lots of edge cases around stacking contexts.",
+    "Spent the morning reviewing patches. Good stuff landing this week. Excited to see where this goes.",
+    "Anyone else notice how much smoother scrolling feels on sites that avoid compositing traps? Night and day difference.",
+    "Reminder that position: fixed + backdrop-filter is a very common pattern and we should make sure it's fast.",
+    "Working on a new testcase for scroll performance. Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+    "The tricky part about fixed headers with blur is that every scroll frame needs to re-composite the backdrop.",
+    "Just read an interesting paper on tile-based rendering optimizations. Some ideas might apply here.",
+    "Good morning! Coffee in hand, ready to look at some flame graphs. What could go wrong?",
+    "Fixed a regression introduced last week. The culprit was an unexpected invalidation in the display list builder.",
+    "Sometimes the best optimization is removing the feature entirely. But not today.",
+  ];
+
+  const colors = [
+    "#1d9bf0", "#ff6b6b", "#4ecdc4", "#45b7d1",
+    "#96ceb4", "#ffeaa7", "#dfe6e9", "#fd79a8",
+  ];
+
+  const header = document.getElementById("header");
+  const toggle = document.getElementById("toggle");
+  toggle.addEventListener("click", () => {
+    const on = document.body.classList.toggle("no-backdrop");
+    toggle.textContent = on ? "backdrop-filter: off" : "backdrop-filter: on";
+  });
+
+  const feed = document.getElementById("feed");
+
+  for (let i = 0; i < 80; i++) {
+    const [name, handle] = names[i % names.length];
+    const text = texts[i % texts.length];
+    const color = colors[i % colors.length];
+
+    const tweet = document.createElement("article");
+    tweet.className = "tweet";
+    tweet.innerHTML = `
+      <canvas class="avatar" width="40" height="40"></canvas>
+      <div class="tweet-body">
+        <div class="tweet-header">
+          <span class="display-name">${name}</span>
+          <span class="handle">${handle}</span>
+        </div>
+        <p class="tweet-text">${text}</p>
+        <div class="tweet-actions">
+          <span class="tweet-action">&#128172; ${Math.floor(Math.random() * 20)}</span>
+          <span class="tweet-action">&#128257; ${Math.floor(Math.random() * 50)}</span>
+          <span class="tweet-action">&#9825; ${Math.floor(Math.random() * 200)}</span>
+        </div>
+      </div>
+    `;
+
+    // Draw a simple colored circle avatar
+    const canvas = tweet.querySelector("canvas");
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(20, 20, 20, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "white";
+    ctx.font = "bold 16px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(name[0], 20, 20);
+
+    feed.appendChild(tweet);
+  }
+</script>
+
+</body>
+</html>
