@@ -402,7 +402,7 @@ pref("gfx.webrender.debug.texture-cache.clear-evicted", true);
 pref("gfx.webrender.debug.render-targets", false);
 pref("gfx.webrender.debug.gpu-cache", false);
 pref("gfx.webrender.debug.alpha-primitives", false);
-pref("gfx.webrender.debug.profiler", false);
+pref("gfx.webrender.debug.profiler", true);
 pref("gfx.webrender.debug.gpu-time-queries", false);
 pref("gfx.webrender.debug.gpu-sample-queries", false);
 pref("gfx.webrender.debug.disable-batching", false);
@@ -418,7 +418,7 @@ pref("gfx.webrender.debug.small-screen", false);
 pref("gfx.webrender.debug.obscure-images", false);
 pref("gfx.webrender.debug.glyph-flashing", false);
 pref("gfx.webrender.debug.capture-profiler", false);
-pref("gfx.webrender.debug.profiler-ui", "Default");
+pref("gfx.webrender.debug.profiler-ui", "Compact");
 pref("gfx.webrender.debug.window-visibility", false);
 pref("gfx.webrender.debug.external-composite-borders", false);
 
