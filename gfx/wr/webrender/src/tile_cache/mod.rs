@@ -2645,24 +2645,6 @@ impl TileCacheInstance {
                     // we don't skip it during the prepare pass
                     scratch.frame.required_sub_graphs.insert(pic_index);
 
-                    // If this is a sub-graph, register the bounds on any affected tiles
-                    // so we know how much to expand the content tile by.
-                    let sub_slice = &mut self.sub_slices[sub_slice_index];
-
-                    let mut surface_info = Vec::new();
-                    for (pic_index, surface_index) in surface_stack.iter().rev() {
-                        let pic = &pictures[pic_index.0];
-                        surface_info.push((pic.composite_mode.as_ref().unwrap().clone(), *surface_index));
-                    }
-
-                    for y in p0.y .. p1.y {
-                        for x in p0.x .. p1.x {
-                            let key = TileOffset::new(x, y);
-                            let tile = sub_slice.tiles.get_mut(&key).expect("bug: no tile");
-                            tile.cached_surface.sub_graphs.push((pic_coverage_rect, surface_info.clone()));
-                        }
-                    }
-
                     // For backdrop-filter, we need to check if any of the dirty rects
                     // in tiles that are affected by the filter primitive are dirty.
                     self.deferred_dirty_tests.push(DeferredDirtyTest {

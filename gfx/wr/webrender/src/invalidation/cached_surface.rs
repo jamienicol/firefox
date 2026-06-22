@@ -14,7 +14,7 @@ use crate::invalidation::compare::{PrimitiveComparer, PrimitiveDependency, Color
 use crate::invalidation::{InvalidationReason, PrimitiveCompareResult, quadtree::TileNode};
 use crate::invalidation::vert_buffer::{CornersCache, VertRange};
 use crate::intern::ItemUid;
-use crate::picture::{PictureCompositeMode, SurfaceIndex, clampf};
+use crate::picture::clampf;
 use crate::print_tree::PrintTreePrinter;
 use crate::resource_cache::ResourceCache;
 use crate::space::SpaceMapper;
@@ -32,7 +32,6 @@ pub struct CachedSurface {
     pub root: TileNode,
     pub background_color: Option<ColorF>,
     pub invalidation_reason: Option<InvalidationReason>,
-    pub sub_graphs: Vec<(PictureRect, Vec<(PictureCompositeMode, SurfaceIndex)>)>,
 }
 
 impl CachedSurface {
@@ -47,7 +46,6 @@ impl CachedSurface {
             root: TileNode::new_leaf(Vec::new()),
             background_color: None,
             invalidation_reason: None,
-            sub_graphs: Vec::new(),
         }
     }
 
@@ -73,7 +71,6 @@ impl CachedSurface {
             PicturePoint::new(-1.0e32, -1.0e32),
         );
         self.invalidation_reason  = None;
-        self.sub_graphs.clear();
 
         // If the tile isn't visible, early exit, skipping the normal set up to
         // validate dependencies. Instead, we will only compare the current tile

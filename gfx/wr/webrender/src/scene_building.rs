@@ -3614,6 +3614,8 @@ impl<'a> SceneBuilder<'a> {
         };
 
         let mut prim_list = source_prim_list.clone_for_backdrop(
+            &info.rect,
+            spatial_node_index,
             &mut self.prim_store.pictures,
             &mut self.prim_instances,
         );
