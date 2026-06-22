@@ -627,16 +627,16 @@ impl SurfaceBuilder {
                     unreachable!("bug: sub-graphs can only be simple surfaces");
                 }
                 CommandBufferBuilderKind::Simple { render_task_id: child_render_task_id, root_task_id: child_root_task_id, .. } => {
+                    let child_output_task_id = child_root_task_id.unwrap_or(child_render_task_id);
+                    let _old = self.sub_graph_output_map.insert(
+                        pic_index,
+                        child_output_task_id,
+                    );
+                    debug_assert!(_old.is_none());
+
                     // Get info about the resolve operation to copy from parent surface or tiles to the picture cache task
                     if let Some(resolve_task_id) = builder.resolve_source {
                         let mut src_task_ids = Vec::new();
-
-                        // Make the output of the sub-graph a dependency of the new replacement tile task
-                        let _old = self.sub_graph_output_map.insert(
-                            pic_index,
-                            child_root_task_id.unwrap_or(child_render_task_id),
-                        );
-                        debug_assert!(_old.is_none());
 
                         // Set up dependencies for the sub-graph. The basic concepts below are the same, but for
                         // tiled surfaces are a little more complex as there are multiple tasks to set up.
@@ -813,14 +813,14 @@ impl SurfaceBuilder {
                             for (_, descriptor) in tiles {
                                 rg_builder.add_dependency(
                                     descriptor.current_task_id,
-                                    child_root_task_id.unwrap_or(child_render_task_id),
+                                    child_output_task_id,
                                 );
                             }
                         }
                         CommandBufferBuilderKind::Simple { render_task_id: parent_task_id, .. } => {
                             rg_builder.add_dependency(
                                 parent_task_id,
-                                child_root_task_id.unwrap_or(child_render_task_id),
+                                child_output_task_id,
                             );
                         }
                         CommandBufferBuilderKind::Invalid => {

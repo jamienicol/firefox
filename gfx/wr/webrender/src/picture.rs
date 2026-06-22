@@ -315,6 +315,7 @@ bitflags! {
 /// Descriptor for a cluster of primitives. For now, this is quite basic but will be
 /// extended to handle more spatial clustering of primitives.
 #[cfg_attr(feature = "capture", derive(Serialize))]
+#[derive(Clone)]
 pub struct PrimitiveCluster {
     /// The positioning node for this cluster.
     pub spatial_node_index: SpatialNodeIndex,
@@ -378,6 +379,7 @@ impl PrimitiveCluster {
 /// are pictures, for a fast initial traversal of the picture
 /// tree without walking the instance list.
 #[cfg_attr(feature = "capture", derive(Serialize))]
+#[derive(Clone)]
 pub struct PrimitiveList {
     /// List of primitives grouped into clusters.
     pub clusters: Vec<PrimitiveCluster>,
@@ -412,6 +414,54 @@ impl PrimitiveList {
         self.image_surface_count += other.image_surface_count;
         self.yuv_image_surface_count += other.yuv_image_surface_count;
         self.needs_scissor_rect |= other.needs_scissor_rect;
+    }
+
+    pub fn clone_for_backdrop(
+        &self,
+        pictures: &mut Vec<PictureInstance>,
+        prim_instances: &mut Vec<PrimitiveInstance>,
+    ) -> Self {
+        let mut prim_list = PrimitiveList {
+            clusters: Vec::with_capacity(self.clusters.len()),
+            child_pictures: Vec::with_capacity(self.child_pictures.len()),
+            image_surface_count: self.image_surface_count,
+            yuv_image_surface_count: self.yuv_image_surface_count,
+            needs_scissor_rect: self.needs_scissor_rect,
+        };
+
+        for cluster in &self.clusters {
+            let first_instance_index = prim_instances.len();
+
+            for prim_instance_index in cluster.prim_range() {
+                let mut prim_instance = prim_instances[prim_instance_index].clone();
+
+                if let PrimitiveKind::Picture { ref mut pic_index, .. } = prim_instance.kind {
+                    if should_skip_backdrop_capture_picture(pictures, *pic_index) {
+                        continue;
+                    }
+
+                    *pic_index = clone_picture_for_backdrop(
+                        *pic_index,
+                        pictures,
+                        prim_instances,
+                    );
+                    prim_list.child_pictures.push(*pic_index);
+                }
+
+                prim_instances.push(prim_instance);
+            }
+
+            if first_instance_index != prim_instances.len() {
+                prim_list.clusters.push(PrimitiveCluster {
+                    spatial_node_index: cluster.spatial_node_index,
+                    unsnapped_bounding_rect: cluster.unsnapped_bounding_rect,
+                    prim_range: first_instance_index..prim_instances.len(),
+                    flags: cluster.flags,
+                });
+            }
+        }
+
+        prim_list
     }
 
     /// Add a primitive instance to the end of the list
@@ -508,6 +558,72 @@ impl PrimitiveList {
     pub fn is_empty(&self) -> bool {
         self.clusters.is_empty()
     }
+}
+
+fn should_skip_backdrop_capture_picture(
+    pictures: &[PictureInstance],
+    pic_index: PictureIndex,
+) -> bool {
+    let pic = &pictures[pic_index.0];
+
+    pic.flags.contains(PictureFlags::IS_SUB_GRAPH) &&
+        matches!(pic.composite_mode, Some(PictureCompositeMode::IntermediateSurface))
+}
+
+fn clone_picture_for_backdrop(
+    pic_index: PictureIndex,
+    pictures: &mut Vec<PictureInstance>,
+    prim_instances: &mut Vec<PrimitiveInstance>,
+) -> PictureIndex {
+    let (
+        is_backface_visible,
+        composite_mode,
+        context_3d,
+        spatial_node_index,
+        raster_space,
+        flags,
+        clip_root,
+        snapshot,
+        source_prim_list,
+    ) = {
+        let pic = &pictures[pic_index.0];
+        debug_assert!(pic.raster_config.is_none());
+
+        (
+            pic.is_backface_visible,
+            pic.composite_mode.clone(),
+            pic.context_3d.clone(),
+            pic.spatial_node_index,
+            pic.raster_space,
+            pic.flags,
+            pic.clip_root,
+            pic.snapshot,
+            pic.prim_list.clone(),
+        )
+    };
+
+    let prim_list = source_prim_list.clone_for_backdrop(
+        pictures,
+        prim_instances,
+    );
+
+    let pic_index = PictureIndex(pictures.len());
+    pictures.push(PictureInstance {
+        prim_list,
+        is_backface_visible,
+        composite_mode,
+        raster_config: None,
+        context_3d,
+        spatial_node_index,
+        prev_local_rect: LayoutRect::zero(),
+        segments_are_valid: false,
+        raster_space,
+        flags,
+        clip_root,
+        snapshot,
+    });
+
+    pic_index
 }
 
 bitflags! {
@@ -820,6 +936,11 @@ impl PictureInstance {
                 }
 
                 let can_use_shared_surface = !self.flags.contains(PictureFlags::IS_RESOLVE_TARGET);
+                let source_clear_color = if self.flags.contains(PictureFlags::IS_RESOLVE_TARGET) {
+                    Some(ColorF::TRANSPARENT)
+                } else {
+                    None
+                };
                 let (surface_descriptor, render_tasks) = prepare_composite_mode(
                     &raster_config.composite_mode,
                     surface_index,
@@ -827,6 +948,7 @@ impl PictureInstance {
                     &surface_rects,
                     &self.snapshot,
                     can_use_shared_surface,
+                    source_clear_color,
                     frame_context,
                     frame_state,
                     data_stores,

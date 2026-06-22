@@ -182,6 +182,15 @@ impl TileCacheBuilder {
         }
     }
 
+    pub fn current_slice_prim_list_for_backdrop(&mut self) -> PrimitiveList {
+        self.make_current_slice_atomic();
+
+        match self.primary_slices.last().unwrap().kind {
+            SliceKind::Atomic { ref prim_list } => prim_list.clone(),
+            SliceKind::Default { .. } => unreachable!("bug: backdrop root slice is not atomic"),
+        }
+    }
+
     /// Set a barrier that forces a new tile cache next time a prim is added.
     pub fn add_tile_cache_barrier(
         &mut self,

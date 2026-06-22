@@ -301,6 +301,7 @@ pub fn prepare_composite_mode(
     surface_rects: &SurfaceAllocInfo,
     snapshot: &Option<SnapshotInfo>,
     can_use_shared_surface: bool,
+    source_clear_color: Option<ColorF>,
     frame_context: &FrameBuildingContext,
     frame_state: &mut FrameBuildingState,
     data_stores: &mut DataStores,
@@ -339,7 +340,7 @@ pub fn prepare_composite_mode(
                 None
             } else {
                 Some(ColorF::TRANSPARENT)
-            };
+            }.or(source_clear_color);
 
             let cmd_buffer_index = frame_state.cmd_buffers.create_cmd_buffer();
             let adjusted_size = adjusted_size.to_i32();
@@ -414,7 +415,7 @@ pub fn prepare_composite_mode(
                         device_pixel_scale,
                         None,
                         None,
-                        None,
+                        source_clear_color,
                         cmd_buffer_index,
                         can_use_shared_surface,
                         None,
@@ -544,7 +545,7 @@ pub fn prepare_composite_mode(
                                 device_pixel_scale,
                                 None,
                                 None,
-                                None,
+                                source_clear_color,
                                 cmd_buffer_index,
                                 can_use_shared_surface,
                                 None,
@@ -583,7 +584,7 @@ pub fn prepare_composite_mode(
                                 device_pixel_scale,
                                 None,
                                 None,
-                                None,
+                                source_clear_color,
                                 cmd_buffer_index,
                                 can_use_shared_surface,
                                 None,
@@ -622,7 +623,7 @@ pub fn prepare_composite_mode(
                                 device_pixel_scale,
                                 None,
                                 None,
-                                None,
+                                source_clear_color,
                                 cmd_buffer_index,
                                 can_use_shared_surface,
                                 None,
@@ -662,7 +663,7 @@ pub fn prepare_composite_mode(
                                 device_pixel_scale,
                                 None,
                                 None,
-                                None,
+                                source_clear_color,
                                 cmd_buffer_index,
                                 can_use_shared_surface,
                                 None,
@@ -701,7 +702,7 @@ pub fn prepare_composite_mode(
                                 device_pixel_scale,
                                 None,
                                 None,
-                                None,
+                                source_clear_color,
                                 cmd_buffer_index,
                                 can_use_shared_surface,
                                 None,
@@ -743,7 +744,7 @@ pub fn prepare_composite_mode(
                         device_pixel_scale,
                         None,
                         None,
-                        None,
+                        source_clear_color,
                         cmd_buffer_index,
                         can_use_shared_surface,
                         None,

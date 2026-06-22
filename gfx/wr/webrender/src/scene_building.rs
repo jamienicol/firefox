@@ -3594,6 +3594,10 @@ impl<'a> SceneBuilder<'a> {
 
         self.make_current_slice_atomic_if_required();
 
+        let sc_index = self.sc_stack.iter().rposition(|sc| {
+            !sc.flags.contains(StackingContextFlags::WRAPS_BACKDROP_FILTER)
+        });
+
         // Ensure we create a clip-chain for the capture primitive that matches
         // the render primitive, otherwise one might get culled while the other
         // is considered visible.
@@ -3604,8 +3608,17 @@ impl<'a> SceneBuilder<'a> {
             &mut self.interners,
         );
 
-        // Create the backdrop prim - this is a placeholder which sets the size of resolve
-        // picture that reads from the backdrop root
+        let source_prim_list = match sc_index {
+            Some(sc_index) => self.sc_stack[sc_index].prim_list.clone(),
+            None => self.tile_cache_builder.current_slice_prim_list_for_backdrop(),
+        };
+
+        let mut prim_list = source_prim_list.clone_for_backdrop(
+            &mut self.prim_store.pictures,
+            &mut self.prim_instances,
+        );
+
+        // This no-op primitive sets the size of the captured backdrop picture.
         let backdrop_capture_instance = self.create_primitive(
             info,
             clip_leaf_id,
@@ -3613,9 +3626,6 @@ impl<'a> SceneBuilder<'a> {
             },
         );
 
-        // Create a prim_list for this backdrop prim and add to a picture chain builder, which
-        // is needed for the call to `wrap_prim_with_filters` below
-        let mut prim_list = PrimitiveList::empty();
         prim_list.add_prim(
             backdrop_capture_instance,
             info.rect,
@@ -3670,12 +3680,6 @@ impl<'a> SceneBuilder<'a> {
                 PrimitiveKind::Picture { pic_index, .. } => pic_index,
                 _ => panic!("bug: not a picture"),
             };
-
-            // Find which stacking context (or root tile cache) to add the
-            // backdrop-filter chain to
-            let sc_index = self.sc_stack.iter().rposition(|sc| {
-                !sc.flags.contains(StackingContextFlags::WRAPS_BACKDROP_FILTER)
-            });
 
             match sc_index {
                 Some(sc_index) => {

@@ -1759,10 +1759,6 @@ fn prepare_interned_prim_for_render(
             }
         }
         PrimitiveKind::BackdropCapture { .. } => {
-            // Register the owner picture of this backdrop primitive as the
-            // target for resolve of the sub-graph
-            frame_state.surface_builder.register_resolve_source();
-
             if frame_context.debug_flags.contains(DebugFlags::HIGHLIGHT_BACKDROP_FILTERS) {
                 if let Some(world_rect) = pic_state.map_pic_to_vis.map(&prim_info.clip_chain.pic_coverage_rect) {
                     scratch.push_debug_rect(

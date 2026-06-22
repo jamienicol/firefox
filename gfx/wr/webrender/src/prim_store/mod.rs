@@ -529,7 +529,7 @@ impl ClipData {
 // keys can reference it. Re-exported here to keep existing references working.
 pub use api::key_types::NinePatchDescriptor;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 pub enum PrimitiveKind {
     /// Direct reference to a Picture
@@ -612,7 +612,7 @@ impl PrimitiveInstanceIndex {
     pub const INVALID: PrimitiveInstanceIndex = PrimitiveInstanceIndex(!0);
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 pub struct PrimitiveInstance {
     /// Identifies the kind of primitive this
