@@ -8612,6 +8612,13 @@
 #endif
   mirror: once
 
+# Fuse non-overlapping backdrop filters on the same picture-cache tile so that
+# their chains run in parallel in the render-task graph rather than serialised.
+- name: gfx.webrender.parallel-backdrop-filters
+  type: bool
+  value: false
+  mirror: once
+
 # Disable wait of GPU execution completion
 - name: gfx.webrender.wait-gpu-finished.disabled
   type: bool

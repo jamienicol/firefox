@@ -20,7 +20,7 @@ use crate::composite::CompositorSurfaceKind;
 use crate::frame_builder::FrameBuilderConfig;
 use crate::picture::{PictureCompositeMode, ClusterFlags, SurfaceInfo};
 use crate::tile_cache::TileCacheInstance;
-use crate::picture::{PictureScratch, SurfaceIndex, RasterConfig};
+use crate::picture::{PictureScratch, SurfaceIndex, RasterConfig, Picture3DContext};
 use crate::tile_cache::SubSliceIndex;
 use crate::prim_store::{ClipTaskIndex, PictureIndex, PrimitiveKind, SegmentInstanceIndex};
 use crate::prim_store::{PrimitiveStore, PrimitiveInstance, PrimitiveInstanceIndex};
@@ -61,6 +61,11 @@ pub struct FrameVisibilityState<'a> {
     pub profile: &'a mut TransactionProfile,
     pub scratch: &'a mut ScratchBuffer,
     pub visited_pictures: &'a mut[bool],
+    /// Depth of nested 3D plane-split contexts currently being traversed. While
+    /// non-zero, draw order can differ from display order (the plane splitter
+    /// reorders by depth), so backdrop-filter phase fusion is unsafe and any
+    /// observed BackdropRender is forced serial. See tile_cache phase computation.
+    pub in_3d_context_count: u32,
 }
 
 impl<'a> FrameVisibilityState<'a> {
@@ -259,6 +264,19 @@ pub fn update_prim_visibility(
     }
     frame_state.visited_pictures[pic_index.0] = true;
     let pic = &store.pictures[pic_index.0];
+
+    // Track entry into a 3D plane-split context. This must bracket the whole
+    // subtree (including the recursive update_prim_visibility calls below) with
+    // no early return in between, so that every BackdropRender observed inside
+    // any Picture3DContext::In sees a non-zero count and is forced serial. Both
+    // the root (`root_data: Some`) and participant (`root_data: None`) variants
+    // count; participants are drained into the root's prim_list during scene
+    // building and are visited here, so matching all `In` variants is both
+    // correct and precise (groups with no real 3D effect become `Out`).
+    let is_3d = matches!(pic.context_3d, Picture3DContext::In { .. });
+    if is_3d {
+        frame_state.in_3d_context_count += 1;
+    }
 
     let (surface_index, pop_surface) = match pic.raster_config {
         Some(RasterConfig { surface_index, composite_mode: PictureCompositeMode::TileCache { .. }, .. }) => {
@@ -502,6 +520,7 @@ pub fn update_prim_visibility(
                         is_root_tile_cache,
                         frame_state.surfaces,
                         frame_state.profile,
+                        frame_state.in_3d_context_count > 0,
                     )
                 }
                 None => {
@@ -541,6 +560,10 @@ pub fn update_prim_visibility(
                 }
             }
         }
+    }
+
+    if is_3d {
+        frame_state.in_3d_context_count -= 1;
     }
 }
 

@@ -908,6 +908,7 @@ impl PictureInstance {
                 pic_index,
                 frame_state.rg_builder,
                 frame_state.cmd_buffers,
+                frame_context.fb_config.parallel_backdrop_filters,
             );
         }
 
@@ -1931,7 +1932,9 @@ fn prepare_tiled_picture_surface(
                     if use_tile_composite {
                         let mut local_content_rect = tile.cached_surface.local_dirty_rect;
 
-                        for (sub_graph_rect, surface_stack) in &tile.cached_surface.sub_graphs {
+                        for entry in &tile.cached_surface.sub_graphs {
+                            let sub_graph_rect = entry.coverage_rect;
+                            let surface_stack = &entry.surface_stack;
                             if let Some(dirty_sub_graph_rect) = sub_graph_rect.intersection(&tile.cached_surface.local_dirty_rect) {
                                 for (composite_mode, surface_index) in surface_stack {
                                     let surface = &frame_state.surfaces[surface_index.0];
@@ -2010,12 +2013,23 @@ fn prepare_tiled_picture_surface(
                             ),
                         );
 
+                        // Seed the per-tile filter -> phase assignment from the
+                        // sub-graphs computed during visibility, so pop_surface
+                        // can drive phase-aware fusion.
+                        let phase_map = tile.cached_surface.sub_graphs
+                            .iter()
+                            .map(|entry| (entry.pic_index, entry.phase))
+                            .collect();
+
                         surface_render_tasks.insert(
                             tile_key,
                             SurfaceTileDescriptor {
                                 current_task_id: render_task_id,
                                 composite_task_id: Some(composite_task_id),
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                phase_source_task: None,
+                                current_phase: None,
+                                phase_map,
                             },
                         );
                     } else {
@@ -2045,12 +2059,17 @@ fn prepare_tiled_picture_surface(
                             ),
                         );
 
+                        // This branch is only taken when the tile has no
+                        // sub-graphs, so there are no phase assignments to seed.
                         surface_render_tasks.insert(
                             tile_key,
                             SurfaceTileDescriptor {
                                 current_task_id: render_task_id,
                                 composite_task_id: None,
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                phase_source_task: None,
+                                current_phase: None,
+                                phase_map: Vec::new(),
                             },
                         );
                     }

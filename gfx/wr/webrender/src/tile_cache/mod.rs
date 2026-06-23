@@ -23,12 +23,12 @@ use crate::composite::{CompositeTileDescriptor, CompositeTile};
 use crate::gpu_types::ZBufferId;
 use crate::internal_types::{FastHashMap, FrameId, Filter};
 use crate::invalidation::{InvalidationReason, DirtyRegion, PrimitiveCompareResult};
-use crate::invalidation::cached_surface::{CachedSurface, TileUpdateDirtyContext, TileUpdateDirtyState, PrimitiveDependencyInfo};
+use crate::invalidation::cached_surface::{CachedSurface, TileUpdateDirtyContext, TileUpdateDirtyState, PrimitiveDependencyInfo, SubGraphEntry};
 use crate::invalidation::vert_buffer::{CornersCache, VertRange};
 use crate::invalidation::compare::{PrimitiveDependency, ImageDependency};
 use crate::invalidation::compare::PrimitiveComparisonKey;
 use crate::invalidation::compare::{OpacityBindingInfo, ColorBindingInfo};
-use crate::picture::{SurfaceTextureDescriptor, PictureCompositeMode, SurfaceIndex, clamp};
+use crate::picture::{SurfaceTextureDescriptor, PictureCompositeMode, SurfaceIndex, clamp, PictureFlags};
 use crate::picture::{get_relative_scale_offset, PictureInstance};
 use crate::picture::MAX_COMPOSITOR_SURFACES_SIZE;
 use crate::prim_store::{PrimitiveInstance, PrimitiveKind, PrimitiveScratchBuffer, PictureIndex};
@@ -94,6 +94,14 @@ pub const TILE_SIZE_SCROLLBAR_VERTICAL: DeviceIntSize = DeviceIntSize {
 /// Render tasks larger than this size are scaled down to fit, which may cause
 /// some blurriness.
 pub const MAX_SURFACE_SIZE: usize = 4096;
+
+/// Maximum number of backdrop filters that may be fused into a single phase on
+/// one tile. Bounds peak render-target memory: a phase of K filters keeps K
+/// resolve targets plus K filter chains live across the same passes, and
+/// unequal-length chains won't pack into a shared target, so allocation grows
+/// roughly linearly in K. Once a phase reaches this many members the next
+/// filter starts a fresh phase. See plan §11.
+pub const MAX_BACKDROP_PHASE_SIZE: usize = 16;
 
 /// Used to get unique tile IDs, even when the tile cache is
 /// destroyed between display lists / scenes.
@@ -2191,6 +2199,7 @@ impl TileCacheInstance {
         is_root_tile_cache: bool,
         surfaces: &mut [SurfaceInfo],
         profile: &mut TransactionProfile,
+        in_3d_context: bool,
     ) -> DrawState {
         use SurfacePromotionFailure::*;
 
@@ -2263,6 +2272,24 @@ impl TileCacheInstance {
         if p0.x == p1.x || p0.y == p1.y {
             return DrawState::Culled;
         }
+
+        // Captured before any per-tile mutable borrow of self.sub_slices, used to
+        // derive each tile's picture-space rect for tile-clipped phase rects.
+        let tile_size = self.tile_size;
+
+        // Whether this primitive paints into the tile's dynamic-content task and
+        // should therefore be accounted for in backdrop-filter phase interference
+        // (the R2 test). BackdropCapture/BackdropRender are handled separately, and
+        // a hoisted IntermediateSurface (IS_SUB_GRAPH) doesn't paint into the
+        // dynamic-content task. Prims inside a non-passthrough sub-surface
+        // (on_picture_surface == false) don't either.
+        let accumulate_for_phase = on_picture_surface && match prim_instance.kind {
+            PrimitiveKind::BackdropCapture { .. } | PrimitiveKind::BackdropRender { .. } => false,
+            PrimitiveKind::Picture { pic_index, .. } => {
+                !pictures[pic_index.0].flags.contains(PictureFlags::IS_SUB_GRAPH)
+            }
+            _ => true,
+        };
 
         // Build the list of resources that this primitive has dependencies on.
         let mut prim_info = PrimitiveDependencyInfo::new(prim_instance.uid(), pic_coverage_rect);
@@ -2650,8 +2677,8 @@ impl TileCacheInstance {
                     let sub_slice = &mut self.sub_slices[sub_slice_index];
 
                     let mut surface_info = Vec::new();
-                    for (pic_index, surface_index) in surface_stack.iter().rev() {
-                        let pic = &pictures[pic_index.0];
+                    for (stack_pic_index, surface_index) in surface_stack.iter().rev() {
+                        let pic = &pictures[stack_pic_index.0];
                         surface_info.push((pic.composite_mode.as_ref().unwrap().clone(), *surface_index));
                     }
 
@@ -2659,7 +2686,38 @@ impl TileCacheInstance {
                         for x in p0.x .. p1.x {
                             let key = TileOffset::new(x, y);
                             let tile = sub_slice.tiles.get_mut(&key).expect("bug: no tile");
-                            tile.cached_surface.sub_graphs.push((pic_coverage_rect, surface_info.clone()));
+
+                            // Clip the capture rect to this tile so that phasing is
+                            // per-tile-precise: two filters overlapping outside this
+                            // tile but disjoint within it can still fuse here. The
+                            // full (unclipped) rect is what we store for dirty-rect
+                            // expansion below.
+                            let tile_pic_rect = PictureRect::new(
+                                PicturePoint::new(
+                                    x as f32 * tile_size.width,
+                                    y as f32 * tile_size.height,
+                                ),
+                                PicturePoint::new(
+                                    (x + 1) as f32 * tile_size.width,
+                                    (y + 1) as f32 * tile_size.height,
+                                ),
+                            );
+                            let capture_rect = pic_coverage_rect
+                                .intersection(&tile_pic_rect)
+                                .unwrap_or_default();
+
+                            let phase = tile.cached_surface.phase_build.assign_backdrop_phase(
+                                capture_rect,
+                                in_3d_context,
+                                MAX_BACKDROP_PHASE_SIZE,
+                            );
+
+                            tile.cached_surface.sub_graphs.push(SubGraphEntry {
+                                coverage_rect: pic_coverage_rect,
+                                surface_stack: surface_info.clone(),
+                                pic_index,
+                                phase,
+                            });
                         }
                     }
 
@@ -2867,6 +2925,25 @@ impl TileCacheInstance {
                     &self.corners_cache,
                     prim_clamp_to_tile,
                 );
+
+                // Accumulate this prim's tile-clipped coverage for the backdrop
+                // filter phase R2 interference test (no-op until a filter has
+                // opened a phase on this tile).
+                if accumulate_for_phase {
+                    let tile_pic_rect = PictureRect::new(
+                        PicturePoint::new(
+                            x as f32 * tile_size.width,
+                            y as f32 * tile_size.height,
+                        ),
+                        PicturePoint::new(
+                            (x + 1) as f32 * tile_size.width,
+                            (y + 1) as f32 * tile_size.height,
+                        ),
+                    );
+                    if let Some(clipped) = pic_coverage_rect.intersection(&tile_pic_rect) {
+                        tile.cached_surface.phase_build.accumulate_prim(clipped);
+                    }
+                }
             }
         }
 

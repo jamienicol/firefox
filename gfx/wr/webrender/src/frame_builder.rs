@@ -72,6 +72,10 @@ pub struct FrameBuilderConfig {
     pub low_quality_pinch_zoom: bool,
     pub max_shared_surface_size: i32,
     pub enable_dithering: bool,
+    /// If true, non-overlapping backdrop filters on the same picture-cache tile
+    /// are grouped into fusion phases so their filter chains run in parallel in
+    /// the render-task graph, rather than being serialised one after another.
+    pub parallel_backdrop_filters: bool,
 }
 
 /// A set of default / global resources that are re-built each frame.
@@ -416,6 +420,7 @@ impl FrameBuilder {
                     profile,
                     scratch,
                     visited_pictures: &mut visited_pictures,
+                    in_3d_context_count: 0,
                 };
 
                 let world_culling_rect = WorldRect::max_rect();
@@ -445,6 +450,8 @@ impl FrameBuilder {
                     &mut visibility_state,
                     &mut None,
                 );
+                debug_assert_eq!(visibility_state.in_3d_context_count, 0,
+                    "bug: unbalanced 3D context increment in update_prim_visibility");
                 if scene.prim_store.pictures[pic_index.0].clip_root.is_some() {
                     visibility_state.clip_tree.pop_clip_root();
                 }
@@ -476,6 +483,7 @@ impl FrameBuilder {
                             profile,
                             scratch,
                             visited_pictures: &mut visited_pictures,
+                            in_3d_context_count: 0,
                         };
 
                         // If we have a tile cache for this picture, see if any of the
@@ -505,6 +513,8 @@ impl FrameBuilder {
                             &mut visibility_state,
                             &mut Some(tile_cache),
                         );
+                        debug_assert_eq!(visibility_state.in_3d_context_count, 0,
+                            "bug: unbalanced 3D context increment in update_prim_visibility");
 
                         // Build the dirty region(s) for this tile cache.
                         tile_cache.post_update(

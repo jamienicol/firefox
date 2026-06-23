@@ -15,12 +15,214 @@ use crate::invalidation::{InvalidationReason, PrimitiveCompareResult, quadtree::
 use crate::invalidation::vert_buffer::{CornersCache, VertRange};
 use crate::intern::ItemUid;
 use crate::picture::{PictureCompositeMode, SurfaceIndex, clampf};
+use crate::prim_store::PictureIndex;
 use crate::print_tree::PrintTreePrinter;
 use crate::resource_cache::ResourceCache;
 use crate::space::SpaceMapper;
 use crate::visibility::FrameVisibilityContext;
 use peek_poke::poke_into_vec;
 use std::mem;
+
+/// Identifier for a backdrop-filter fusion phase within a single tile. Wider
+/// than u8 because pathological grids can exceed 255 phases on a single tile.
+pub type PhaseId = u16;
+
+/// How a backdrop-filter sub-graph is assigned to a fusion phase on a given tile.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+pub enum PhaseAssignment {
+    /// Filter participates in normal phase fusion.
+    Phase(PhaseId),
+    /// Filter cannot fuse - must be serialised as its own phase. Sources: 3D
+    /// plane-split context, or phase-id overflow.
+    ForceSerial,
+}
+
+/// A backdrop-filter sub-graph that affects a given tile. Recorded during
+/// visibility and consumed during prepare to (a) expand the tile's dirty
+/// content rect and (b) drive phase-aware fusion in `SurfaceBuilder::pop_surface`.
+pub struct SubGraphEntry {
+    /// Coverage of the backdrop filter in tile-cache picture space (the full,
+    /// un-tile-clipped rect, used for dirty-rect expansion).
+    pub coverage_rect: PictureRect,
+    /// The surface stack between the filter sub-graph and the tile cache, used
+    /// to replay inflation when expanding the dynamic-content rect.
+    pub surface_stack: Vec<(PictureCompositeMode, SurfaceIndex)>,
+    /// The IntermediateSurface picture that establishes this sub-graph.
+    pub pic_index: PictureIndex,
+    /// Per-tile phase assignment computed during visibility.
+    pub phase: PhaseAssignment,
+}
+
+/// Per-tile state machine used during visibility to group non-overlapping
+/// backdrop filters into fusion phases. Reset by `pre_update` each frame.
+pub struct PhaseBuildState {
+    /// True once the first non-serial filter of the current phase has been seen.
+    pub in_phase: bool,
+    /// Phase id currently being accumulated into.
+    pub current_phase_id: PhaseId,
+    /// Capture rects of filters already in the current phase (tile-clipped,
+    /// kept disjoint; drives the R1 interference test).
+    pub current_phase_filter_rects: SmallVec<[PictureRect; 8]>,
+    /// Bounds of non-filter prims drawn since the phase started (tile-clipped,
+    /// disjoint after merge-on-insert; drives the R2 interference test).
+    pub current_phase_prim_rects: SmallVec<[PictureRect; 8]>,
+    /// Set once any filter on this tile was forced serial. Used by step-1
+    /// instrumentation assertions and for tile-level diagnostics.
+    pub saw_force_serial: bool,
+    /// Sticky latch: once the PhaseId space is exhausted on this tile, every
+    /// subsequent filter is forced serial regardless of overlap state.
+    pub force_serial_only: bool,
+}
+
+impl PhaseBuildState {
+    pub fn new() -> Self {
+        PhaseBuildState {
+            in_phase: false,
+            current_phase_id: 0,
+            current_phase_filter_rects: SmallVec::new(),
+            current_phase_prim_rects: SmallVec::new(),
+            saw_force_serial: false,
+            force_serial_only: false,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.in_phase = false;
+        self.current_phase_id = 0;
+        self.current_phase_filter_rects.clear();
+        self.current_phase_prim_rects.clear();
+        self.saw_force_serial = false;
+        self.force_serial_only = false;
+    }
+
+    fn try_bump_phase_id(&mut self) -> bool {
+        if self.current_phase_id == PhaseId::MAX {
+            return false;
+        }
+        self.current_phase_id += 1;
+        true
+    }
+
+    /// Make a ForceSerial filter a hard divider so later filters can't fuse
+    /// across it. Any subsequent filter starts a fresh phase; the phase id is
+    /// advanced so it is distinct from any used before the barrier. If the bump
+    /// overflows, latch `force_serial_only` so later filters can't silently
+    /// reuse Phase(MAX).
+    fn advance_phase_barrier(&mut self) {
+        self.saw_force_serial = true;
+        self.in_phase = false;
+        self.current_phase_filter_rects.clear();
+        self.current_phase_prim_rects.clear();
+        if !self.try_bump_phase_id() {
+            self.force_serial_only = true;
+        }
+    }
+
+    /// Assign a fusion phase to a backdrop filter whose tile-clipped capture rect
+    /// is `capture_rect`, advancing the per-tile phase state machine. Returns the
+    /// assignment to stamp onto the tile's SubGraphEntry.
+    pub fn assign_backdrop_phase(
+        &mut self,
+        capture_rect: PictureRect,
+        in_3d_context: bool,
+        max_phase_size: usize,
+    ) -> PhaseAssignment {
+        if self.force_serial_only || in_3d_context {
+            // Sticky overflow, or a 3D plane-split context (draw order may differ
+            // from display order). Fusion is unsafe; emit a barrier.
+            self.advance_phase_barrier();
+            return PhaseAssignment::ForceSerial;
+        }
+
+        // R1: capture overlaps another phase member's capture rect. R2: capture
+        // overlaps a non-filter prim drawn since the phase started. Either forces
+        // a new phase. The size cap also forces a new phase to bound peak memory.
+        let overlaps =
+            self.current_phase_filter_rects.iter().any(|r| r.intersects(&capture_rect))
+            || self.current_phase_prim_rects.iter().any(|r| r.intersects(&capture_rect));
+        let needs_new_phase = self.in_phase
+            && (overlaps || self.current_phase_filter_rects.len() >= max_phase_size);
+
+        if needs_new_phase && !self.try_bump_phase_id() {
+            // First overflow event on this tile: latch and barrier rather than
+            // silently reusing Phase(MAX).
+            self.force_serial_only = true;
+            self.advance_phase_barrier();
+            return PhaseAssignment::ForceSerial;
+        }
+
+        if needs_new_phase {
+            self.current_phase_filter_rects.clear();
+            self.current_phase_prim_rects.clear();
+        }
+        self.current_phase_filter_rects.push(capture_rect);
+        self.in_phase = true;
+        PhaseAssignment::Phase(self.current_phase_id)
+    }
+
+    /// Accumulate a non-filter primitive's tile-clipped coverage rect for the R2
+    /// interference test. No-op until the first filter of a phase is observed
+    /// (prims drawn before any filter are baked into `D_0` and irrelevant).
+    pub fn accumulate_prim(&mut self, rect: PictureRect) {
+        if !self.in_phase || rect.is_empty() {
+            return;
+        }
+        insert_with_merge(&mut self.current_phase_prim_rects, rect);
+    }
+}
+
+/// Maximum number of disjoint prim rects kept in a phase's R2 interference list
+/// before merging the closest pair. Merging only ever grows rects (unions), which
+/// makes R2 trigger more eagerly - conservative, never unsafe.
+const MAX_PHASE_PRIM_RECTS: usize = 16;
+
+/// Insert `rect` into a list kept disjoint by merging on intersection. A new rect
+/// that intersects existing entries is unioned with them (transitively). The list
+/// is bounded to `MAX_PHASE_PRIM_RECTS` by merging the closest pair on overflow.
+fn insert_with_merge(list: &mut SmallVec<[PictureRect; 8]>, rect: PictureRect) {
+    let mut merged = rect;
+
+    let mut i = 0;
+    while i < list.len() {
+        if list[i].intersects(&merged) {
+            merged = list[i].union(&merged);
+            list.swap_remove(i);
+            // A union may now intersect an earlier entry, so restart the scan.
+            i = 0;
+        } else {
+            i += 1;
+        }
+    }
+    list.push(merged);
+
+    while list.len() > MAX_PHASE_PRIM_RECTS {
+        merge_closest_pair(list);
+    }
+}
+
+/// Merge the pair of rects whose union has the smallest area, to keep the list
+/// bounded while minimising the over-coverage introduced.
+fn merge_closest_pair(list: &mut SmallVec<[PictureRect; 8]>) {
+    let mut best = (0usize, 1usize);
+    let mut best_area = f32::MAX;
+    for i in 0..list.len() {
+        for j in (i + 1)..list.len() {
+            let area = list[i].union(&list[j]).area();
+            if area < best_area {
+                best_area = area;
+                best = (i, j);
+            }
+        }
+    }
+    let (i, j) = best;
+    let union = list[i].union(&list[j]);
+    // Remove the higher index first so the lower index stays valid.
+    list.swap_remove(j);
+    list.swap_remove(i);
+    list.push(union);
+}
 
 pub struct CachedSurface {
     pub current_descriptor: CachedSurfaceDescriptor,
@@ -32,7 +234,9 @@ pub struct CachedSurface {
     pub root: TileNode,
     pub background_color: Option<ColorF>,
     pub invalidation_reason: Option<InvalidationReason>,
-    pub sub_graphs: Vec<(PictureRect, Vec<(PictureCompositeMode, SurfaceIndex)>)>,
+    pub sub_graphs: Vec<SubGraphEntry>,
+    /// Per-tile backdrop-filter phase computation state, rebuilt each frame.
+    pub phase_build: PhaseBuildState,
 }
 
 impl CachedSurface {
@@ -48,6 +252,7 @@ impl CachedSurface {
             background_color: None,
             invalidation_reason: None,
             sub_graphs: Vec::new(),
+            phase_build: PhaseBuildState::new(),
         }
     }
 
@@ -74,6 +279,7 @@ impl CachedSurface {
         );
         self.invalidation_reason  = None;
         self.sub_graphs.clear();
+        self.phase_build.reset();
 
         // If the tile isn't visible, early exit, skipping the normal set up to
         // validate dependencies. Instead, we will only compare the current tile

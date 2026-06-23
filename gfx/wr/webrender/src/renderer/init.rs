@@ -203,6 +203,9 @@ pub struct WebRenderOptions {
     /// make the result look quite close to the high-quality zoom, except for glyphs.
     pub low_quality_pinch_zoom: bool,
     pub max_shared_surface_size: i32,
+    /// If true, fuse non-overlapping backdrop filters on the same picture-cache
+    /// tile so their filter chains run in parallel rather than serialised.
+    pub parallel_backdrop_filters: bool,
     /// If true, open a debug socket to listen for remote debugger.
     /// Relies on `debugger` cargo feature being enabled.
     pub enable_debugger: bool,
@@ -278,6 +281,7 @@ impl Default for WebRenderOptions {
             reject_software_rasterizer: false,
             low_quality_pinch_zoom: false,
             max_shared_surface_size: 2048,
+            parallel_backdrop_filters: false,
             enable_debugger: true,
         }
     }
@@ -558,6 +562,7 @@ pub fn create_webrender_instance(
         low_quality_pinch_zoom: options.low_quality_pinch_zoom,
         max_shared_surface_size: options.max_shared_surface_size,
         enable_dithering: options.enable_dithering,
+        parallel_backdrop_filters: options.parallel_backdrop_filters,
     };
     info!("WR {:?}", config);
 

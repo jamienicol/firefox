@@ -1994,6 +1994,7 @@ pub extern "C" fn wr_window_new(
     picture_tile_height: i32,
     reject_software_rasterizer: bool,
     low_quality_pinch_zoom: bool,
+    parallel_backdrop_filters: bool,
     max_shared_surface_size: i32,
     enable_subpixel_aa: bool,
     use_layer_compositor: bool,
@@ -2161,6 +2162,7 @@ pub extern "C" fn wr_window_new(
         texture_cache_config,
         reject_software_rasterizer,
         low_quality_pinch_zoom,
+        parallel_backdrop_filters,
         max_shared_surface_size,
         enable_dithering,
         ..Default::default()

@@ -298,6 +298,7 @@ RefPtr<WebRenderAPI::CreatePromise> WebRenderAPI::Create(
                 panic_on_gl_error, picTileWidth, picTileHeight,
                 gfx::gfxVars::WebRenderRequiresHardwareDriver(),
                 StaticPrefs::gfx_webrender_low_quality_pinch_zoom_AtStartup(),
+                StaticPrefs::gfx_webrender_parallel_backdrop_filters_AtStartup(),
                 StaticPrefs::gfx_webrender_max_shared_surface_size_AtStartup(),
                 StaticPrefs::gfx_webrender_enable_subpixel_aa_AtStartup(),
                 compositor->ShouldUseLayerCompositor())) {

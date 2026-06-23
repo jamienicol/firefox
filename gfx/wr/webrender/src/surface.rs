@@ -10,6 +10,7 @@ use api::units::*;
 use crate::box_shadow::BLUR_SAMPLE_SCALE;
 use crate::command_buffer::{CommandBufferBuilderKind, CommandBufferList, CommandBufferBuilder, CommandBufferIndex};
 use crate::internal_types::{FastHashMap, Filter};
+use crate::invalidation::cached_surface::{PhaseId, PhaseAssignment};
 use crate::picture::PictureCompositeMode;
 use crate::tile_cache::{TileKey, SubSliceIndex, MAX_COMPOSITOR_SURFACES};
 use crate::prim_store::PictureIndex;
@@ -311,6 +312,19 @@ pub struct SurfaceTileDescriptor {
     pub composite_task_id: Option<RenderTaskId>,
     /// Dirty rect for this tile
     pub dirty_rect: PictureRect,
+    /// The dynamic-content task that the resolves of the current normal phase
+    /// read from (`D_P`). None before the first phase-fused filter pops on this
+    /// tile. Snapshotted when the first-of-phase filter pops (case 3a), reused
+    /// by subsequent same-phase filters (case 3b).
+    pub phase_source_task: Option<RenderTaskId>,
+    /// The phase id currently being fused on this tile, or None before the first
+    /// non-serial filter pops.
+    pub current_phase: Option<PhaseId>,
+    /// Per-tile filter -> phase assignment, populated from the tile's
+    /// `cached_surface.sub_graphs` when the descriptor is seeded. Only filters
+    /// that touch this tile are present; a flat Vec with linear lookup is cheaper
+    /// than a hash map for the handful of filters a tile carries.
+    pub phase_map: Vec<(PictureIndex, PhaseAssignment)>,
 }
 
 // Details of how a surface is rendered
@@ -617,6 +631,7 @@ impl SurfaceBuilder {
         pic_index: PictureIndex,
         rg_builder: &mut RenderTaskGraphBuilder,
         cmd_buffers: &mut CommandBufferList,
+        parallel_backdrop_filters: bool,
     ) {
         let builder = self.builder_stack.pop().unwrap();
 
@@ -651,73 +666,138 @@ impl SurfaceBuilder {
 
                                 // For each tile in parent surface
                                 for key in keys {
-                                    let descriptor = tiles.remove(&key).unwrap();
+                                    let mut descriptor = tiles.remove(&key).unwrap();
                                     let parent_task_id = descriptor.current_task_id;
+
+                                    // Classify the parent task location without holding
+                                    // a borrow across the dependency edits below.
+                                    let is_dynamic = match rg_builder.get_task(parent_task_id).location {
+                                        RenderTaskLocation::Unallocated { .. }
+                                        | RenderTaskLocation::Existing { .. } => true,
+                                        RenderTaskLocation::Static { .. } => false,
+                                        _ => panic!("bug: unexpected task location"),
+                                    };
+
+                                    if !is_dynamic {
+                                        // Static tiles were built without any sub-graph
+                                        // and aren't part of the dynamic-content pipeline;
+                                        // the current filter doesn't touch them. Re-insert
+                                        // unchanged - no src_task_ids push and no
+                                        // dependency added here (the belt-and-braces loop
+                                        // below still fires for them).
+                                        tiles.insert(key, descriptor);
+                                        continue;
+                                    }
+
+                                    // Look up this filter's phase assignment on this tile.
+                                    // When fusion is disabled, behave exactly like before
+                                    // (every tile is the `None`/full-splice case).
+                                    let assignment = if parallel_backdrop_filters {
+                                        descriptor.phase_map
+                                            .iter()
+                                            .find(|(p, _)| *p == pic_index)
+                                            .map(|(_, a)| *a)
+                                    } else {
+                                        None
+                                    };
+
+                                    // Whether this is a same-phase follower (case 3b): it
+                                    // reuses the existing D_{P+1} and resolves from the
+                                    // saved D_P. The phase_source_task guard is the
+                                    // defensive 3b->3a fallback - if a follower were ever
+                                    // seen before its phase's first-of-phase snapshot we
+                                    // splice afresh rather than fuse against stale state.
+                                    let is_phase_match = matches!(
+                                        assignment,
+                                        Some(PhaseAssignment::Phase(p)) if descriptor.current_phase == Some(p)
+                                    );
+                                    debug_assert!(
+                                        !is_phase_match || descriptor.phase_source_task.is_some(),
+                                        "bug: phase 3b reuse observed before 3a snapshot"
+                                    );
+                                    let is_fused_follower = is_phase_match
+                                        && descriptor.phase_source_task.is_some();
+
+                                    let resolve_src_task_id = if is_fused_follower {
+                                        descriptor.phase_source_task.unwrap()
+                                    } else {
+                                        parent_task_id
+                                    };
+
+                                    // Add the resolve src and matching dependency exactly
+                                    // once per non-Static tile.
+                                    src_task_ids.push(resolve_src_task_id);
+                                    rg_builder.add_dependency(
+                                        resolve_task_id,
+                                        resolve_src_task_id,
+                                    );
+
+                                    if is_fused_follower {
+                                        // No splice: reuse D_{P+1} (descriptor's current
+                                        // task). This is the whole optimisation - the
+                                        // chains of same-phase filters become siblings in
+                                        // the task graph rather than serialised.
+                                        tiles.insert(key, descriptor);
+                                        continue;
+                                    }
+
+                                    // Full splice: duplicate the parent task into a new
+                                    // task that writes to the same location.
                                     let parent_task = rg_builder.get_task_mut(parent_task_id);
-
-                                    match parent_task.location {
-                                        RenderTaskLocation::Unallocated { .. } | RenderTaskLocation::Existing { .. } => {
-                                            // Get info about the parent tile task location and params
-                                            let location = RenderTaskLocation::Existing {
-                                                parent_task_id,
-                                                size: parent_task.location.size(),
-                                            };
-
-                                            let pic_task = match parent_task.kind {
-                                                RenderTaskKind::Picture(ref mut pic_task) => {
-                                                    let cmd_buffer_index = cmd_buffers.create_cmd_buffer();
-                                                    let new_pic_task = pic_task.duplicate(cmd_buffer_index);
-
-                                                    // Add the resolve src to copy from tile -> picture input task
-                                                    src_task_ids.push(parent_task_id);
-
-                                                    new_pic_task
-                                                }
-                                                _ => panic!("bug: not a picture"),
-                                            };
-
-                                            // Make the existing tile an input dependency of the resolve target
-                                            rg_builder.add_dependency(
-                                                resolve_task_id,
-                                                parent_task_id,
-                                            );
-
-                                            // Create the new task to replace the tile task
-                                            let new_task_id = rg_builder.add().init(
-                                                RenderTask::new(
-                                                    location,          // draw to same place
-                                                    RenderTaskKind::Picture(pic_task),
-                                                ),
-                                            );
-
-                                            // Ensure that the parent task will get scheduled earlier during
-                                            // pass assignment since we are reusing the existing surface,
-                                            // even though it's not technically needed for rendering order.
-                                            rg_builder.add_dependency(
-                                                new_task_id,
-                                                parent_task_id,
-                                            );
-
-                                            // Update the surface builder with the now current target for future primitives
-                                            tiles.insert(
-                                                key,
-                                                SurfaceTileDescriptor {
-                                                    current_task_id: new_task_id,
-                                                    ..descriptor
-                                                },
-                                            );
+                                    let location = RenderTaskLocation::Existing {
+                                        parent_task_id,
+                                        size: parent_task.location.size(),
+                                    };
+                                    let pic_task = match parent_task.kind {
+                                        RenderTaskKind::Picture(ref mut pic_task) => {
+                                            let cmd_buffer_index = cmd_buffers.create_cmd_buffer();
+                                            pic_task.duplicate(cmd_buffer_index)
                                         }
-                                        RenderTaskLocation::Static { .. } => {
-                                            // Update the surface builder with the now current target for future primitives
-                                            tiles.insert(
-                                                key,
-                                                descriptor,
-                                            );
+                                        _ => panic!("bug: not a picture"),
+                                    };
+
+                                    // Create the new task to replace the tile task
+                                    let new_task_id = rg_builder.add().init(
+                                        RenderTask::new(
+                                            location,          // draw to same place
+                                            RenderTaskKind::Picture(pic_task),
+                                        ),
+                                    );
+
+                                    // Ensure that the parent task will get scheduled earlier during
+                                    // pass assignment since we are reusing the existing surface,
+                                    // even though it's not technically needed for rendering order.
+                                    rg_builder.add_dependency(
+                                        new_task_id,
+                                        parent_task_id,
+                                    );
+
+                                    // Update per-tile phase state for the splice cases.
+                                    match assignment {
+                                        Some(PhaseAssignment::Phase(p)) => {
+                                            // Case 3a (first-of-phase): snapshot the
+                                            // pre-phase task as D_P. current_task_id
+                                            // becomes D_{P+1} below.
+                                            descriptor.phase_source_task = Some(parent_task_id);
+                                            descriptor.current_phase = Some(p);
                                         }
-                                        _ => {
-                                            panic!("bug: unexpected task location");
+                                        Some(PhaseAssignment::ForceSerial) => {
+                                            // Case 2 (hard barrier): reset so a later
+                                            // Phase(p) re-snapshots a fresh D_P.
+                                            descriptor.current_phase = None;
+                                            descriptor.phase_source_task = None;
+                                        }
+                                        None => {
+                                            // Case 1: filter doesn't touch this tile (or
+                                            // fusion is disabled). Leave the phase state
+                                            // untouched so a later filter sees state as if
+                                            // this one hadn't existed.
                                         }
                                     }
+
+                                    // Update the surface builder with the now current target for future primitives
+                                    descriptor.current_task_id = new_task_id;
+                                    tiles.insert(key, descriptor);
                                 }
                             }
                             CommandBufferBuilderKind::Simple { render_task_id: ref mut parent_task_id, root_task_id: ref parent_root_task_id, .. } => {
