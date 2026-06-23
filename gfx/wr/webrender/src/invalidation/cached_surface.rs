@@ -249,6 +249,8 @@ pub struct CachedSurface {
     pub background_color: Option<ColorF>,
     pub invalidation_reason: Option<InvalidationReason>,
     pub sub_graphs: Vec<SubGraphEntry>,
+    pub prev_backdrop_input_hash: Option<u64>,
+    pub current_backdrop_input_hash: Option<u64>,
     /// Per-tile backdrop-filter phase computation state, rebuilt each frame.
     pub phase_build: PhaseBuildState,
 }
@@ -266,6 +268,8 @@ impl CachedSurface {
             background_color: None,
             invalidation_reason: None,
             sub_graphs: Vec::new(),
+            prev_backdrop_input_hash: None,
+            current_backdrop_input_hash: None,
             phase_build: PhaseBuildState::new(),
         }
     }
@@ -293,6 +297,7 @@ impl CachedSurface {
         );
         self.invalidation_reason  = None;
         self.sub_graphs.clear();
+        self.prev_backdrop_input_hash = self.current_backdrop_input_hash.take();
         self.phase_build.reset();
 
         // If the tile isn't visible, early exit, skipping the normal set up to

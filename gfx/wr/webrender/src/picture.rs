@@ -129,7 +129,9 @@ use crate::surface::{
 };
 pub use crate::surface::{SurfaceIndex, SurfaceInfo, SubpixelMode};
 pub use crate::surface::calculate_screen_uv;
+use rustc_hash::FxHasher;
 use smallvec::SmallVec;
+use std::hash::{Hash, Hasher};
 use std::{mem, u8, u32};
 use std::ops::Range;
 use crate::picture_textures::PictureCacheTextureHandle;
@@ -1785,6 +1787,57 @@ fn prepare_tiled_picture_surface(
             tile.cached_surface.local_dirty_rect = tile.cached_surface.local_dirty_rect
                 .intersection(&tile.cached_surface.current_descriptor.local_valid_rect)
                 .unwrap_or_else(|| { tile.cached_surface.is_valid = true; PictureRect::zero() });
+
+            if frame_context.fb_config.parallel_backdrop_filters {
+                if let Some(pic_to_device) = pic_to_device {
+                    let mut backdrop_input_hash = FxHasher::default();
+                    let mut backdrop_dirty_rect = PictureRect::zero();
+                    let mut backdrop_capture_rect = PictureRect::zero();
+                    let mut has_backdrop_input = false;
+
+                    for entry in &tile.cached_surface.sub_graphs {
+                        let capture_rect = entry.coverage_rect
+                            .intersection(&tile.cached_surface.local_rect)
+                            .unwrap_or_default();
+                        if capture_rect.is_empty() {
+                            continue;
+                        }
+
+                        has_backdrop_input = true;
+                        backdrop_capture_rect = backdrop_capture_rect.union(&capture_rect);
+                        entry.pic_index.hash(&mut backdrop_input_hash);
+
+                        let input_signature = frame_state
+                            .surface_builder
+                            .get_backdrop_input_signature(
+                                slice_id.index(),
+                                pic_to_device,
+                                capture_rect,
+                            );
+
+                        input_signature.hash.hash(&mut backdrop_input_hash);
+
+                        if input_signature.has_dirty_source {
+                            backdrop_dirty_rect = backdrop_dirty_rect.union(&capture_rect);
+                        }
+                    }
+
+                    if has_backdrop_input {
+                        let current_backdrop_input_hash = Some(backdrop_input_hash.finish());
+                        if tile.cached_surface.prev_backdrop_input_hash != current_backdrop_input_hash {
+                            backdrop_dirty_rect = backdrop_dirty_rect.union(&backdrop_capture_rect);
+                        }
+                        tile.cached_surface.current_backdrop_input_hash = current_backdrop_input_hash;
+
+                        if !backdrop_dirty_rect.is_empty() {
+                            tile.invalidate(
+                                Some(backdrop_dirty_rect),
+                                InvalidationReason::SurfaceContentChanged,
+                            );
+                        }
+                    }
+                }
+            }
 
             surface_local_dirty_rect = surface_local_dirty_rect.union(&tile.cached_surface.local_dirty_rect);
 

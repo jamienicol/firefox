@@ -2716,13 +2716,6 @@ impl TileCacheInstance {
                                 MAX_BACKDROP_PHASE_SIZE,
                             );
 
-                            if frame_context.config.parallel_backdrop_filters && !capture_rect.is_empty() {
-                                tile.invalidate(
-                                    Some(capture_rect),
-                                    InvalidationReason::SurfaceContentChanged,
-                                );
-                            }
-
                             tile.cached_surface.sub_graphs.push(SubGraphEntry {
                                 coverage_rect: pic_coverage_rect,
                                 surface_stack: surface_info.clone(),

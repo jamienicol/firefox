@@ -23,6 +23,8 @@ use crate::spatial_tree::{SpatialTree, SpatialNodeIndex};
 use crate::util::MaxRect;
 use crate::util::ScaleOffset;
 use crate::visibility::{DrawState, PrimitiveDrawHeader, FrameVisibilityContext};
+use rustc_hash::FxHasher;
+use std::hash::{Hash, Hasher};
 pub use crate::picture_composite_mode::get_surface_rects;
 
 
@@ -467,7 +469,7 @@ impl CommandBufferTargets {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum BackdropSourceKind {
     Texture(TextureSource),
     Color(ColorF),
@@ -480,6 +482,11 @@ pub struct BackdropSource {
     pub device_rect: DeviceRect,
     pub surface_rect: DeviceRect,
     pub producer_task_id: Option<RenderTaskId>,
+}
+
+pub struct BackdropInputSignature {
+    pub hash: u64,
+    pub has_dirty_source: bool,
 }
 
 // Main helper interface to build a graph of surfaces. In future patches this
@@ -509,6 +516,27 @@ impl SurfaceBuilder {
         self.backdrop_sources.push(source);
     }
 
+    fn hash_device_int_rect<H: Hasher>(rect: DeviceIntRect, state: &mut H) {
+        rect.min.x.hash(state);
+        rect.min.y.hash(state);
+        rect.max.x.hash(state);
+        rect.max.y.hash(state);
+    }
+
+    fn hash_picture_rect<H: Hasher>(rect: PictureRect, state: &mut H) {
+        rect.min.x.to_bits().hash(state);
+        rect.min.y.to_bits().hash(state);
+        rect.max.x.to_bits().hash(state);
+        rect.max.y.to_bits().hash(state);
+    }
+
+    fn hash_color<H: Hasher>(color: ColorF, state: &mut H) {
+        color.r.to_bits().hash(state);
+        color.g.to_bits().hash(state);
+        color.b.to_bits().hash(state);
+        color.a.to_bits().hash(state);
+    }
+
     fn map_device_rect_between(
         rect: DeviceRect,
         from: DeviceRect,
@@ -534,6 +562,75 @@ impl SurfaceBuilder {
             None
         } else {
             Some(mapped)
+        }
+    }
+
+    pub fn get_backdrop_input_signature(
+        &self,
+        current_slice_index: usize,
+        current_pic_to_device: ScaleOffset,
+        capture_rect: PictureRect,
+    ) -> BackdropInputSignature {
+        let capture_device_rect: DeviceRect = current_pic_to_device
+            .map_rect::<PicturePixel, DevicePixel>(&capture_rect);
+
+        let mut has_dirty_source = false;
+        let mut entry_hashes = Vec::new();
+        for source in &self.backdrop_sources {
+            if source.slice_index >= current_slice_index {
+                continue;
+            }
+
+            let Some(device_rect) = capture_device_rect.intersection(&source.device_rect) else {
+                continue;
+            };
+
+            let device_rect = device_rect.round().to_i32();
+            if device_rect.is_empty() {
+                continue;
+            }
+
+            let mut entry_hasher = FxHasher::default();
+            source.slice_index.hash(&mut entry_hasher);
+            Self::hash_device_int_rect(device_rect, &mut entry_hasher);
+
+            match source.kind {
+                BackdropSourceKind::Texture(texture_source) => {
+                    let Some(src_rect) = Self::map_device_rect_between(
+                        device_rect.to_f32(),
+                        source.device_rect,
+                        source.surface_rect,
+                    ) else {
+                        continue;
+                    };
+
+                    0u8.hash(&mut entry_hasher);
+                    texture_source.hash(&mut entry_hasher);
+                    Self::hash_device_int_rect(src_rect, &mut entry_hasher);
+                }
+                BackdropSourceKind::Color(color) => {
+                    1u8.hash(&mut entry_hasher);
+                    Self::hash_color(color, &mut entry_hasher);
+                }
+            }
+
+            has_dirty_source |= source.producer_task_id.is_some();
+            entry_hashes.push(entry_hasher.finish());
+        }
+
+        entry_hashes.sort_unstable();
+
+        let mut hasher = FxHasher::default();
+        current_slice_index.hash(&mut hasher);
+        Self::hash_picture_rect(capture_rect, &mut hasher);
+        entry_hashes.len().hash(&mut hasher);
+        for entry_hash in entry_hashes {
+            entry_hash.hash(&mut hasher);
+        }
+
+        BackdropInputSignature {
+            hash: hasher.finish(),
+            has_dirty_source,
         }
     }
 
