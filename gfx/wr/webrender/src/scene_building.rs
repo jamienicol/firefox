@@ -3587,12 +3587,15 @@ impl<'a> SceneBuilder<'a> {
         filters: Vec<Filter>,
         filter_datas: Vec<FilterData>,
     ) {
-        // We don't know the spatial node for a backdrop filter, as it's whatever is the
-        // backdrop root, but we can't know this if the root is a picture cache slice
-        // (which is the common case). It will get resolved later during `finalize_picture`.
-        let filter_spatial_node_index = SpatialNodeIndex::UNKNOWN;
-
-        self.make_current_slice_atomic_if_required();
+        let filter_spatial_node_index = if self.config.parallel_backdrop_filters {
+            spatial_node_index
+        } else {
+            // We don't know the spatial node for a backdrop filter, as it's whatever is the
+            // backdrop root, but we can't know this if the root is a picture cache slice
+            // (which is the common case). It will get resolved later during `finalize_picture`.
+            self.make_current_slice_atomic_if_required();
+            SpatialNodeIndex::UNKNOWN
+        };
 
         // Ensure we create a clip-chain for the capture primitive that matches
         // the render primitive, otherwise one might get culled while the other

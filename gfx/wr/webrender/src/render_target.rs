@@ -577,8 +577,24 @@ impl RenderTarget {
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 #[derive(Debug, PartialEq, Clone)]
+pub enum ResolveSource {
+    Texture {
+        source: TextureSource,
+        src_rect: DeviceIntRect,
+        dest_rect: DeviceIntRect,
+    },
+    Color {
+        color: ColorF,
+        dest_rect: DeviceIntRect,
+    },
+}
+
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Debug, PartialEq, Clone)]
 pub struct ResolveOp {
     pub src_task_ids: Vec<RenderTaskId>,
+    pub sources: Vec<ResolveSource>,
     pub dest_task_id: RenderTaskId,
 }
 

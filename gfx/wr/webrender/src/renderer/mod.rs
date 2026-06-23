@@ -79,12 +79,13 @@ use crate::picture::ResolvedSurfaceTexture;
 use crate::profiler::{self, RenderCommandLog, GpuProfileTag, TransactionProfile};
 use crate::profiler::{Profiler, add_event_marker, add_text_marker, thread_is_being_profiled};
 use crate::device::query::GpuProfiler;
-use crate::render_target::ResolveOp;
+use crate::render_target::{
+    BlitJob, PictureCacheTarget, PictureCacheTargetKind, RenderTarget, RenderTargetKind, ResolveOp,
+    ResolveSource,
+};
 use crate::render_task_graph::RenderTaskGraph;
 use crate::render_task::{RenderTask, RenderTaskKind, ReadbackTask};
 use crate::screen_capture::AsyncScreenshotGrabber;
-use crate::render_target::{RenderTarget, PictureCacheTarget, PictureCacheTargetKind};
-use crate::render_target::{RenderTargetKind, BlitJob};
 use crate::telemetry::Telemetry;
 use crate::tile_cache::PictureCacheDebugInfo;
 use crate::util::drain_filter;
@@ -2859,6 +2860,40 @@ impl Renderer {
                     dest * device_to_framebuffer,
                     TextureFilter::Linear,
                 );
+            }
+        }
+
+        let dest_task_rect = render_tasks[resolve_op.dest_task_id].get_target_rect();
+
+        for source in &resolve_op.sources {
+            match *source {
+                ResolveSource::Texture { source, src_rect, dest_rect } => {
+                    let dest_rect = dest_rect.translate(dest_task_rect.min.to_vector());
+                    let (texture, swizzle) = self.texture_resolver
+                        .resolve(&source)
+                        .expect("BUG: invalid source texture");
+
+                    if swizzle != Swizzle::default() {
+                        error!("Swizzle {:?} can't be handled by a resolve", swizzle);
+                    }
+
+                    self.device.blit_render_target(
+                        ReadTarget::from_texture(texture),
+                        src_rect.cast_unit(),
+                        draw_target,
+                        dest_rect.cast_unit(),
+                        TextureFilter::Linear,
+                    );
+                }
+                ResolveSource::Color { color, dest_rect } => {
+                    let dest_rect = dest_rect.translate(dest_task_rect.min.to_vector());
+                    let scissor_rect = draw_target.build_scissor_rect(Some(dest_rect));
+                    self.device.clear_target(
+                        Some(color.to_array()),
+                        None,
+                        Some(scissor_rect),
+                    );
+                }
             }
         }
     }

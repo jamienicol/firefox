@@ -174,6 +174,10 @@ impl SliceId {
     pub fn new(index: usize) -> Self {
         SliceId(index)
     }
+
+    pub fn index(&self) -> usize {
+        self.0
+    }
 }
 
 /// Information that is required to reuse or create a new tile cache. Created

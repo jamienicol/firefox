@@ -123,7 +123,10 @@ use crate::resource_cache::ResourceCache;
 use crate::space::{SpaceMapper, SpaceSnapper};
 use crate::scene::SceneProperties;
 use crate::spatial_tree::CoordinateSystemId;
-use crate::surface::{SurfaceDescriptor, SurfaceTileDescriptor, get_surface_rects};
+use crate::surface::{
+    get_surface_rects, BackdropSource, BackdropSourceKind, SurfaceDescriptor,
+    SurfaceTileDescriptor,
+};
 pub use crate::surface::{SurfaceIndex, SurfaceInfo, SubpixelMode};
 pub use crate::surface::calculate_screen_uv;
 use smallvec::SmallVec;
@@ -1627,6 +1630,8 @@ fn prepare_tiled_picture_surface(
     let device_pixel_scale = frame_state
         .surfaces[surface_index.0]
         .device_pixel_scale;
+    let pic_to_device = ScaleOffset::from_transform(&map_pic_to_world.get_transform())
+        .map(|mapper| mapper.then_scale(frame_context.global_device_pixel_scale.0));
     let mut at_least_one_tile_visible = false;
 
     // Get the overall world space rect of the picture cache. Used to clip
@@ -1791,6 +1796,8 @@ fn prepare_tiled_picture_surface(
                 .round_out()
                 .intersection(&device_rect)
                 .unwrap_or_else(DeviceRect::zero);
+
+            let mut backdrop_source_producer = None;
 
             if tile.cached_surface.is_valid {
                 if frame_context.fb_config.testing {
@@ -2012,6 +2019,7 @@ fn prepare_tiled_picture_surface(
                                 ),
                             ),
                         );
+                        backdrop_source_producer = Some(composite_task_id);
 
                         // Seed the per-tile filter -> phase assignment from the
                         // sub-graphs computed during visibility, so pop_surface
@@ -2027,6 +2035,8 @@ fn prepare_tiled_picture_surface(
                                 current_task_id: render_task_id,
                                 composite_task_id: Some(composite_task_id),
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                slice_index: slice_id.index(),
+                                pic_to_device,
                                 phase_source_task: None,
                                 current_phase: None,
                                 phase_map,
@@ -2058,6 +2068,7 @@ fn prepare_tiled_picture_surface(
                                 )
                             ),
                         );
+                        backdrop_source_producer = Some(render_task_id);
 
                         // This branch is only taken when the tile has no
                         // sub-graphs, so there are no phase assignments to seed.
@@ -2067,6 +2078,8 @@ fn prepare_tiled_picture_surface(
                                 current_task_id: render_task_id,
                                 composite_task_id: None,
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                slice_index: slice_id.index(),
+                                pic_to_device,
                                 phase_source_task: None,
                                 current_phase: None,
                                 phase_map: Vec::new(),
@@ -2105,6 +2118,26 @@ fn prepare_tiled_picture_surface(
                     )
                 }
             };
+
+            let backdrop_source_kind = match &surface {
+                CompositeTileSurface::Texture {
+                    surface: ResolvedSurfaceTexture::TextureCache { texture },
+                } => Some(BackdropSourceKind::Texture(*texture)),
+                CompositeTileSurface::Color { color } => Some(BackdropSourceKind::Color(*color)),
+                _ => None,
+            };
+
+            if let (Some(kind), Some(_pic_to_device)) = (backdrop_source_kind, pic_to_device) {
+                if !tile.device_valid_rect.is_empty() && !valid_rect.is_empty() {
+                    frame_state.surface_builder.register_backdrop_source(BackdropSource {
+                        slice_index: slice_id.index(),
+                        kind,
+                        device_rect: tile.device_valid_rect,
+                        surface_rect: valid_rect.to_f32(),
+                        producer_task_id: backdrop_source_producer,
+                    });
+                }
+            }
 
             if is_opaque {
                 sub_slice.opaque_tile_descriptors.push(descriptor);
