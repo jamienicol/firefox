@@ -522,6 +522,62 @@ impl RenderTaskGraphBuilder {
             }
         }
 
+        // [bf-phase] Per-pass kind histogram, to diagnose how render passes are
+        // coalescing. A small, fixed number of deep passes each holding many
+        // same-kind tasks is the fused ideal; many shallow passes means chains
+        // are still serialising.
+        {
+            use crate::internal_types::FastHashMap;
+            warn!("[bf-phase] render passes: {}", graph.passes.len());
+            for (i, pass) in graph.passes.iter().enumerate() {
+                let mut hist: FastHashMap<&'static str, u32> = FastHashMap::default();
+                for task_id in &pass.task_ids {
+                    let kind = graph.tasks[task_id.index as usize].kind.as_str();
+                    *hist.entry(kind).or_insert(0) += 1;
+                }
+                let mut entries: Vec<_> = hist.into_iter().collect();
+                entries.sort();
+                warn!("[bf-phase]   pass {} ({} tasks): {:?}", i, pass.task_ids.len(), entries);
+            }
+
+            // Per-task dependency dump, to find what serialises one tile's
+            // pipeline behind another's. `loc` flags Existing-aliased tasks (the
+            // dynamic-content duplicate chain); `children` are the tasks this one
+            // depends on, with their assigned pass.
+            for (index, task) in graph.tasks.iter().enumerate() {
+                if !task.kind.is_a_rendering_operation() {
+                    continue;
+                }
+                // Skip the internal blur/scaling chain links - the cross-tile
+                // serialisation we're hunting runs through the Picture/Prim/
+                // resolve/composite tasks.
+                if matches!(
+                    task.kind,
+                    RenderTaskKind::VerticalBlur(..)
+                        | RenderTaskKind::HorizontalBlur(..)
+                        | RenderTaskKind::Scaling(..)
+                ) {
+                    continue;
+                }
+                let loc = match task.location {
+                    RenderTaskLocation::Existing { parent_task_id, .. } =>
+                        format!("Existing(#{})", parent_task_id.index),
+                    RenderTaskLocation::Static { .. } => "Static".to_string(),
+                    RenderTaskLocation::Unallocated { .. } => "Unalloc".to_string(),
+                    RenderTaskLocation::Dynamic { .. } => "Dynamic".to_string(),
+                    _ => "other".to_string(),
+                };
+                let children: Vec<String> = task.children.iter().map(|c| {
+                    let ct = &graph.tasks[c.index as usize];
+                    format!("#{}:{}:p{}", c.index, ct.kind.as_str(), ct.render_on.0)
+                }).collect();
+                warn!(
+                    "[bf-phase] task #{} {} p{} loc={} <- {:?}",
+                    index, task.kind.as_str(), task.render_on.0, loc, children,
+                );
+            }
+        }
+
         // At this point, tasks are assigned to each dependency pass. Now we
         // can go through each pass and create sub-passes, assigning each task
         // to a target and destination rect.

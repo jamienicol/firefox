@@ -577,6 +577,46 @@ impl SurfaceBuilder {
         }
     }
 
+    // Add a backdrop-filter sub-graph output as a dependency of the surface task(s)
+    // that draw its BackdropRender quad. Unlike add_child_render_task, on a tiled
+    // surface with fusion enabled this only wires the output into the tiles the
+    // filter actually covers. Wiring it into every tile (as the generic method
+    // does) makes each tile's content task depend on every filter's output,
+    // producing a cross-tile dependency triangle that serialises all the tiles'
+    // pipelines into separate render passes.
+    pub fn add_backdrop_output_dependency(
+        &mut self,
+        child_task_id: RenderTaskId,
+        pic_index: PictureIndex,
+        parallel_backdrop_filters: bool,
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) {
+        let builder = self.builder_stack.last().unwrap();
+
+        match builder.kind {
+            CommandBufferBuilderKind::Tiled { ref tiles } => {
+                for (_, descriptor) in tiles {
+                    if parallel_backdrop_filters
+                        && !descriptor.phase_map.iter().any(|(p, _)| *p == pic_index)
+                    {
+                        continue;
+                    }
+                    rg_builder.add_dependency(
+                        descriptor.current_task_id,
+                        child_task_id,
+                    );
+                }
+            }
+            CommandBufferBuilderKind::Simple { render_task_id, .. } => {
+                rg_builder.add_dependency(
+                    render_task_id,
+                    child_task_id,
+                );
+            }
+            CommandBufferBuilderKind::Invalid { .. } => {}
+        }
+    }
+
     // Add a picture render task as a dependency of the parent surface. This is a
     // special case with extra complexity as the root of the surface may change
     // when inside a sub-graph. It's currently only needed for drop-shadow effects.
@@ -645,6 +685,7 @@ impl SurfaceBuilder {
                     // Get info about the resolve operation to copy from parent surface or tiles to the picture cache task
                     if let Some(resolve_task_id) = builder.resolve_source {
                         let mut src_task_ids = Vec::new();
+
 
                         // Make the output of the sub-graph a dependency of the new replacement tile task
                         let _old = self.sub_graph_output_map.insert(
@@ -906,6 +947,18 @@ impl SurfaceBuilder {
                         CommandBufferBuilderKind::Tiled { ref tiles } => {
                             // For a tiled render task, add as a dependency to every tile.
                             for (_, descriptor) in tiles {
+                                // With fusion on, only the tiles this filter actually
+                                // covers draw its output. Adding the dependency to a
+                                // non-covered tile's task is not just spurious: a later
+                                // filter that covers that tile may snapshot its task as
+                                // its phase source (case 3a), thereby inheriting a
+                                // dependency on this filter's chain output and serialising
+                                // the two chains across tiles. Skip non-covered tiles.
+                                if parallel_backdrop_filters
+                                    && !descriptor.phase_map.iter().any(|(p, _)| *p == pic_index)
+                                {
+                                    continue;
+                                }
                                 rg_builder.add_dependency(
                                     descriptor.current_task_id,
                                     child_root_task_id.unwrap_or(child_render_task_id),

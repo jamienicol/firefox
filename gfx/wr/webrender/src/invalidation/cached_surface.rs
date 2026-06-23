@@ -139,11 +139,25 @@ impl PhaseBuildState {
         // R1: capture overlaps another phase member's capture rect. R2: capture
         // overlaps a non-filter prim drawn since the phase started. Either forces
         // a new phase. The size cap also forces a new phase to bound peak memory.
-        let overlaps =
-            self.current_phase_filter_rects.iter().any(|r| r.intersects(&capture_rect))
-            || self.current_phase_prim_rects.iter().any(|r| r.intersects(&capture_rect));
+        let r1 = self.current_phase_filter_rects.iter().find(|r| r.intersects(&capture_rect)).copied();
+        let r2 = self.current_phase_prim_rects.iter().find(|r| r.intersects(&capture_rect)).copied();
+        let hit_cap = self.current_phase_filter_rects.len() >= max_phase_size;
         let needs_new_phase = self.in_phase
-            && (overlaps || self.current_phase_filter_rects.len() >= max_phase_size);
+            && (r1.is_some() || r2.is_some() || hit_cap);
+
+        if needs_new_phase {
+            warn!(
+                "[bf-phase] split capture={:?} reason={}",
+                capture_rect,
+                if r1.is_some() {
+                    format!("R1 filter-overlap {:?}", r1.unwrap())
+                } else if r2.is_some() {
+                    format!("R2 prim-overlap {:?}", r2.unwrap())
+                } else {
+                    format!("size-cap {}", max_phase_size)
+                },
+            );
+        }
 
         if needs_new_phase && !self.try_bump_phase_id() {
             // First overflow event on this tile: latch and barrier rather than

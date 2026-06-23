@@ -2016,7 +2016,7 @@ fn prepare_tiled_picture_surface(
                         // Seed the per-tile filter -> phase assignment from the
                         // sub-graphs computed during visibility, so pop_surface
                         // can drive phase-aware fusion.
-                        let phase_map = tile.cached_surface.sub_graphs
+                        let phase_map: Vec<_> = tile.cached_surface.sub_graphs
                             .iter()
                             .map(|entry| (entry.pic_index, entry.phase))
                             .collect();
