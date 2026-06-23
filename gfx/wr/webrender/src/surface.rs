@@ -701,6 +701,21 @@ impl SurfaceBuilder {
                                         None
                                     };
 
+                                    // With fusion on, an absent assignment means this
+                                    // filter's coverage doesn't intersect this tile (the
+                                    // per-tile sub_graphs/phase_map carry an entry for every
+                                    // covered tile). Today's code would still "fake splice"
+                                    // such tiles and push their task into this filter's
+                                    // ResolveOp - the blit later no-ops, but the dependency
+                                    // edge serialises this filter's chain against the other
+                                    // tiles' task chains, defeating the parallelism. Skip the
+                                    // tile entirely instead: no resolve src, no dependency, no
+                                    // splice.
+                                    if parallel_backdrop_filters && assignment.is_none() {
+                                        tiles.insert(key, descriptor);
+                                        continue;
+                                    }
+
                                     // Whether this is a same-phase follower (case 3b): it
                                     // reuses the existing D_{P+1} and resolves from the
                                     // saved D_P. The phase_source_task guard is the
