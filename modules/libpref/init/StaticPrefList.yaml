@@ -8616,7 +8616,7 @@
 # their chains run in parallel in the render-task graph rather than serialised.
 - name: gfx.webrender.parallel-backdrop-filters
   type: bool
-  value: false
+  value: true
   mirror: once
 
 # Disable wait of GPU execution completion
