@@ -229,20 +229,14 @@ impl RenderTaskCache {
         surface_builder: &mut SurfaceBuilder,
         f: &mut dyn FnMut(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF) -> RenderTaskId,
     ) -> RenderTaskId {
-        // If this render task cache is being drawn this frame, ensure we hook up the
-        // render task for it as a dependency of any render task that uses this as
-        // an input source.
-        let (task_id, rendered_this_frame) = match key {
-            None => (f(rg_builder, gpu_buffer_builder), true),
-            Some(key) => self.request_render_task_impl(
-                key,
-                is_opaque,
-                texture_cache,
-                gpu_buffer_builder,
-                rg_builder,
-                f
-            )
-        };
+        let (task_id, rendered_this_frame) = self.request_render_task_no_parent(
+            key,
+            texture_cache,
+            is_opaque,
+            gpu_buffer_builder,
+            rg_builder,
+            f,
+        );
 
         if rendered_this_frame {
             match parent {
@@ -267,6 +261,28 @@ impl RenderTaskCache {
         }
 
         task_id
+    }
+
+    pub fn request_render_task_no_parent(
+        &mut self,
+        key: Option<RenderTaskCacheKey>,
+        texture_cache: &mut TextureCache,
+        is_opaque: bool,
+        gpu_buffer_builder: &mut GpuBufferBuilderF,
+        rg_builder: &mut RenderTaskGraphBuilder,
+        f: &mut dyn FnMut(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF) -> RenderTaskId,
+    ) -> (RenderTaskId, bool) {
+        match key {
+            None => (f(rg_builder, gpu_buffer_builder), true),
+            Some(key) => self.request_render_task_impl(
+                key,
+                is_opaque,
+                texture_cache,
+                gpu_buffer_builder,
+                rg_builder,
+                f,
+            ),
+        }
     }
 
     /// Returns the render task id and a boolean indicating whether the

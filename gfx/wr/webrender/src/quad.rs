@@ -21,7 +21,7 @@ use crate::internal_types::TextureSource;
 use crate::pattern::{Pattern, PatternBuilder, PatternBuilderContext, PatternBuilderState, PatternKind, PatternShaderInput};
 use crate::prim_store::{NinePatchDescriptor, PrimitiveInstanceIndex, PrimitiveScratchBuffer};
 use crate::render_task::{RenderTask, RenderTaskAddress, RenderTaskKind};
-use crate::render_task_cache::{RenderTaskCacheKey, RenderTaskCacheKeyKind, RenderTaskParent};
+use crate::render_task_cache::{RenderTaskCacheKey, RenderTaskCacheKeyKind};
 use crate::render_task_graph::{RenderTaskGraph, RenderTaskGraphBuilder, RenderTaskId, SubTaskRange};
 use crate::renderer::{BlendMode, GpuBufferAddress, GpuBufferBuilder, GpuBufferBuilderF, GpuBufferDataI};
 use crate::segment::EdgeMask;
@@ -376,6 +376,7 @@ pub fn prepare_repeatable_quad(
                     &pattern_ctx,
                     interned_clips,
                     frame_state,
+                    targets,
                 ) else {
                     return;
                 };
@@ -571,6 +572,7 @@ pub fn prepare_border_nine_patch(
             &pattern_ctx,
             interned_clips,
             frame_state,
+            targets,
         ) else {
             return;
         };
@@ -706,7 +708,7 @@ fn prepare_quad_impl(
             if task_id != RenderTaskId::INVALID {
                 frame_state
                     .surface_builder
-                    .add_child_render_task(task_id, frame_state.rg_builder);
+                    .add_child_render_task_to_targets(task_id, targets, frame_state.rg_builder);
             }
         }
 
@@ -764,6 +766,7 @@ fn prepare_quad_impl(
                 ctx,
                 interned_clips,
                 frame_state,
+                targets,
             ) else {
                 return;
             };
@@ -838,6 +841,7 @@ fn prepare_indirect_pattern(
     ctx: &PatternBuilderContext,
     interned_clips: &DataStore<ClipIntern>,
     frame_state: &mut FrameBuildingState,
+    targets: &[CommandBufferIndex],
 ) -> Option<RenderTaskId> {
     let round_edges = !aa_flags;
     let quad = create_quad_primitive(
@@ -906,6 +910,7 @@ fn prepare_indirect_pattern(
         ctx.spatial_tree,
         interned_clips,
         frame_state,
+        targets,
     ))
 }
 
@@ -1053,6 +1058,7 @@ fn prepare_nine_patch(
                     ctx.spatial_tree,
                     interned_clips,
                     frame_state,
+                    targets,
                 );
                 scratch.frame.quad_indirect_segments.push(QuadSegment {
                     rect: segment_device_rect.to_f32().cast_unit(),
@@ -1296,6 +1302,7 @@ fn prepare_tiles(
                 ctx.spatial_tree,
                 interned_clips,
                 frame_state,
+                targets,
             );
 
             scratch.frame.quad_indirect_segments.push(QuadSegment {
@@ -1524,17 +1531,16 @@ fn add_render_task_with_mask(
     spatial_tree: &SpatialTree,
     interned_clips: &DataStore<ClipIntern>,
     frame_state: &mut FrameBuildingState,
+    targets: &[CommandBufferIndex],
 ) -> RenderTaskId {
     let transforms = &mut frame_state.transforms;
     let clip_store = &frame_state.clip_store;
     let is_opaque = pattern.is_opaque && clips_range.count == 0;
-    frame_state.resource_cache.request_render_task(
+    let (task_id, rendered_this_frame) = frame_state.resource_cache.request_render_task_no_parent(
         cache_key.cloned(),
         is_opaque,
-        RenderTaskParent::Surface,
         &mut frame_state.frame_gpu_data.f32,
         frame_state.rg_builder,
-        &mut frame_state.surface_builder,
         &mut|rg_builder, gpu_buffer| {
             let task_id = rg_builder.add().init(RenderTask::new_dynamic(
                 task_size,
@@ -1584,7 +1590,17 @@ fn add_render_task_with_mask(
 
             task_id
         }
-    )
+    );
+
+    if rendered_this_frame {
+        frame_state.surface_builder.add_child_render_task_to_targets(
+            task_id,
+            targets,
+            frame_state.rg_builder,
+        );
+    }
+
+    task_id
 }
 
 fn add_pattern_prim(
@@ -1631,6 +1647,14 @@ fn add_pattern_prim(
         ),
         targets,
     );
+
+    for task_id in pattern.texture_input.task_ids {
+        if task_id != RenderTaskId::INVALID {
+            frame_state
+                .surface_builder
+                .add_child_render_task_to_targets(task_id, targets, frame_state.rg_builder);
+        }
+    }
 }
 
 fn add_composite_prim(

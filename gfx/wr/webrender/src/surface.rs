@@ -617,6 +617,44 @@ impl SurfaceBuilder {
         }
     }
 
+    pub fn add_child_render_task_to_targets(
+        &mut self,
+        child_task_id: RenderTaskId,
+        targets: &[CommandBufferIndex],
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) {
+        let builder = self.builder_stack.last().unwrap();
+
+        match builder.kind {
+            CommandBufferBuilderKind::Tiled { ref tiles } => {
+                for (_, descriptor) in tiles {
+                    let draws_to_target = {
+                        let task = rg_builder.get_task(descriptor.current_task_id);
+                        match task.kind {
+                            RenderTaskKind::Picture(ref info) => targets
+                                .iter()
+                                .any(|target| target.0 == info.cmd_buffer_index.0),
+                            _ => unreachable!("bug: not a picture"),
+                        }
+                    };
+                    if draws_to_target {
+                        rg_builder.add_dependency(
+                            descriptor.current_task_id,
+                            child_task_id,
+                        );
+                    }
+                }
+            }
+            CommandBufferBuilderKind::Simple { render_task_id, .. } => {
+                rg_builder.add_dependency(
+                    render_task_id,
+                    child_task_id,
+                );
+            }
+            CommandBufferBuilderKind::Invalid { .. } => {}
+        }
+    }
+
     // Add a picture render task as a dependency of the parent surface. This is a
     // special case with extra complexity as the root of the surface may change
     // when inside a sub-graph. It's currently only needed for drop-shadow effects.
