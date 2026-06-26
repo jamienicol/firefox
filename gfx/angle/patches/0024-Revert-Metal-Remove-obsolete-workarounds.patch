@@ -1,0 +1,395 @@
+From 8390b4809a0ab9045c313a2149b7d6eb80c1e0af Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jnicol@mozilla.com>
+Date: Fri, 3 Jul 2026 09:29:42 +0100
+Subject: [PATCH] Revert "Metal: Remove obsolete workarounds"
+
+This reverts commit beae1b4a81c927399e8725b3edf861a8901334aa.
+---
+ include/GLSLANG/ShaderLang.h                  |  3 +
+ .../platform/autogen/FeaturesMtl_autogen.h    | 12 ++++
+ include/platform/mtl_features.json            | 15 +++++
+ src/compiler/translator/msl/AstHelpers.cpp    | 62 ++++++++++++++++++-
+ src/compiler/translator/msl/AstHelpers.h      |  6 +-
+ src/compiler/translator/msl/TranslatorMSL.cpp |  3 +-
+ .../tree_ops/msl/AddExplicitTypeCasts.cpp     | 22 ++++---
+ .../tree_ops/msl/AddExplicitTypeCasts.h       |  3 +-
+ src/libANGLE/renderer/metal/DisplayMtl.mm     |  5 ++
+ .../renderer/metal/ProgramExecutableMtl.mm    |  4 +-
+ src/libANGLE/renderer/metal/ProgramMtl.mm     |  3 +-
+ src/libANGLE/renderer/metal/ShaderMtl.mm      |  6 ++
+ src/tests/compiler_tests/MSLOutput_test.cpp   |  1 +
+ util/autogen/angle_features_autogen.cpp       |  2 +
+ util/autogen/angle_features_autogen.h         |  2 +
+ 15 files changed, 134 insertions(+), 15 deletions(-)
+
+diff --git a/include/GLSLANG/ShaderLang.h b/include/GLSLANG/ShaderLang.h
+index 351b5745ac..72b3c5e87c 100644
+--- a/include/GLSLANG/ShaderLang.h
++++ b/include/GLSLANG/ShaderLang.h
+@@ -417,6 +417,9 @@ struct ShCompileOptions
+     // Dithering is emulated by injecting code in the fragment shader
+     uint64_t emulateDithering : 1;
+ 
++    // Insert explicit casts for float/double/unsigned/signed int on macOS 10.15 with Intel driver
++    uint64_t addExplicitBoolCasts : 1;
++
+     // Add round() after applying dither.  This works around a Qualcomm quirk where values can get
+     // ceil()ed instead.
+     uint64_t roundOutputAfterDithering : 1;
+diff --git a/include/platform/autogen/FeaturesMtl_autogen.h b/include/platform/autogen/FeaturesMtl_autogen.h
+index 3efcc4506a..8eb17c0cb6 100644
+--- a/include/platform/autogen/FeaturesMtl_autogen.h
++++ b/include/platform/autogen/FeaturesMtl_autogen.h
+@@ -140,6 +140,18 @@ struct FeaturesMtl : FeatureSetBase
+         &members,
+     };
+ 
++    FeatureInfo intelExplicitBoolCastWorkaround = {
++        "intelExplicitBoolCastWorkaround",
++        FeatureCategory::MetalWorkarounds,
++        &members,
++    };
++
++    FeatureInfo intelDisableFastMath = {
++        "intelDisableFastMath",
++        FeatureCategory::MetalWorkarounds,
++        &members,
++    };
++
+     FeatureInfo allowRenderpassWithoutAttachment = {
+         "allowRenderpassWithoutAttachment",
+         FeatureCategory::MetalFeatures,
+diff --git a/include/platform/mtl_features.json b/include/platform/mtl_features.json
+index 386e3a8313..6765b3bc5e 100644
+--- a/include/platform/mtl_features.json
++++ b/include/platform/mtl_features.json
+@@ -150,6 +150,21 @@
+                 "Turn this on to allow transform feedback in Metal using a 2-pass VS for GLES3."
+             ]
+         },
++        {
++            "name": "intel_explicit_bool_cast_workaround",
++            "category": "Workarounds",
++            "description": [
++                "Insert explicit casts for float/double/unsigned/signed int on macOS 10.15 with Intel ",
++                "driver"
++            ]
++        },
++        {
++            "name": "intel_disable_fast_math",
++            "category": "Workarounds",
++            "description": [
++                "Disable fast math in atan and invariance cases when running below macOS 12.0"
++            ]
++        },
+         {
+             "name": "allow_renderpass_without_attachment",
+             "category": "Features",
+diff --git a/src/compiler/translator/msl/AstHelpers.cpp b/src/compiler/translator/msl/AstHelpers.cpp
+index a2ad182a1b..1c82f1bb7d 100644
+--- a/src/compiler/translator/msl/AstHelpers.cpp
++++ b/src/compiler/translator/msl/AstHelpers.cpp
+@@ -331,7 +331,9 @@ bool sh::HasArrayField(const TStructure &structure)
+     return false;
+ }
+ 
+-TIntermTyped &sh::CoerceSimple(TBasicType toBasicType, TIntermTyped &fromNode)
++TIntermTyped &sh::CoerceSimple(TBasicType toBasicType,
++                               TIntermTyped &fromNode,
++                               bool needsExplicitBoolCast)
+ {
+     const TType &fromType = fromNode.getType();
+ 
+@@ -343,6 +345,33 @@ TIntermTyped &sh::CoerceSimple(TBasicType toBasicType, TIntermTyped &fromNode)
+ 
+     if (toBasicType != fromBasicType)
+     {
++        if (toBasicType == TBasicType::EbtBool && fromNode.isVector() && needsExplicitBoolCast)
++        {
++            switch (fromBasicType)
++            {
++                case TBasicType::EbtFloat:
++                case TBasicType::EbtInt:
++                case TBasicType::EbtUInt:
++                {
++                    TIntermSequence *argsSequence = new TIntermSequence();
++                    for (uint8_t i = 0; i < fromType.getNominalSize(); i++)
++                    {
++                        TIntermTyped &fromTypeSwizzle     = SubVector(fromNode, i, i + 1);
++                        TIntermAggregate *boolConstructor = TIntermAggregate::CreateConstructor(
++                            *new TType(toBasicType, 1, 1), new TIntermSequence{&fromTypeSwizzle});
++                        argsSequence->push_back(boolConstructor);
++                    }
++                    return *TIntermAggregate::CreateConstructor(
++                        *new TType(toBasicType, fromType.getNominalSize(),
++                                   fromType.getSecondarySize()),
++                        argsSequence);
++                }
++
++                default:
++                    break;  // No explicit conversion needed
++            }
++        }
++
+         return *TIntermAggregate::CreateConstructor(
+             *new TType(toBasicType, fromType.getNominalSize(), fromType.getSecondarySize()),
+             new TIntermSequence{&fromNode});
+@@ -350,7 +379,9 @@ TIntermTyped &sh::CoerceSimple(TBasicType toBasicType, TIntermTyped &fromNode)
+     return fromNode;
+ }
+ 
+-TIntermTyped &sh::CoerceSimple(const TType &toType, TIntermTyped &fromNode)
++TIntermTyped &sh::CoerceSimple(const TType &toType,
++                               TIntermTyped &fromNode,
++                               bool needsExplicitBoolCast)
+ {
+     const TType &fromType = fromNode.getType();
+ 
+@@ -366,6 +397,33 @@ TIntermTyped &sh::CoerceSimple(const TType &toType, TIntermTyped &fromNode)
+ 
+     if (toBasicType != fromBasicType)
+     {
++        if (toBasicType == TBasicType::EbtBool && fromNode.isVector() && needsExplicitBoolCast)
++        {
++            switch (fromBasicType)
++            {
++                case TBasicType::EbtFloat:
++                case TBasicType::EbtInt:
++                case TBasicType::EbtUInt:
++                {
++                    TIntermSequence *argsSequence = new TIntermSequence();
++                    for (uint8_t i = 0; i < fromType.getNominalSize(); i++)
++                    {
++                        TIntermTyped &fromTypeSwizzle     = SubVector(fromNode, i, i + 1);
++                        TIntermAggregate *boolConstructor = TIntermAggregate::CreateConstructor(
++                            *new TType(toBasicType, 1, 1), new TIntermSequence{&fromTypeSwizzle});
++                        argsSequence->push_back(boolConstructor);
++                    }
++                    return *TIntermAggregate::CreateConstructor(
++                        *new TType(toBasicType, fromType.getNominalSize(),
++                                   fromType.getSecondarySize()),
++                        new TIntermSequence{*argsSequence});
++                }
++
++                default:
++                    break;  // No explicit conversion needed
++            }
++        }
++
+         return *TIntermAggregate::CreateConstructor(toType, new TIntermSequence{&fromNode});
+     }
+     return fromNode;
+diff --git a/src/compiler/translator/msl/AstHelpers.h b/src/compiler/translator/msl/AstHelpers.h
+index 905004fd12..05a86466f9 100644
+--- a/src/compiler/translator/msl/AstHelpers.h
++++ b/src/compiler/translator/msl/AstHelpers.h
+@@ -116,12 +116,14 @@ bool HasArrayField(const TStructure &structure);
+ // Coerces `fromNode` to `toType` by a constructor call of `toType` if their types differ.
+ // Vector and matrix dimensions are retained.
+ // Array types are not allowed.
+-TIntermTyped &CoerceSimple(TBasicType toBasicType, TIntermTyped &fromNode);
++TIntermTyped &CoerceSimple(TBasicType toBasicType,
++                           TIntermTyped &fromNode,
++                           bool needsExplicitBoolCast);
+ 
+ // Coerces `fromNode` to `toType` by a constructor call of `toType` if their types differ.
+ // Vector and matrix dimensions must coincide between to and from.
+ // Array types are not allowed.
+-TIntermTyped &CoerceSimple(const TType &toType, TIntermTyped &fromNode);
++TIntermTyped &CoerceSimple(const TType &toType, TIntermTyped &fromNode, bool needsExplicitBoolCast);
+ 
+ TIntermTyped &AsType(SymbolEnv &symbolEnv, const TType &toType, TIntermTyped &fromNode);
+ 
+diff --git a/src/compiler/translator/msl/TranslatorMSL.cpp b/src/compiler/translator/msl/TranslatorMSL.cpp
+index 29a1918175..d6e006a89c 100644
+--- a/src/compiler/translator/msl/TranslatorMSL.cpp
++++ b/src/compiler/translator/msl/TranslatorMSL.cpp
+@@ -1335,7 +1335,8 @@ bool TranslatorMSL::translateImpl(TInfoSinkBase &sink,
+         return false;
+     }
+ 
+-    if (!AddExplicitTypeCasts(*this, *root, symbolEnv))
++    const bool needsExplicitBoolCasts = compileOptions.addExplicitBoolCasts;
++    if (!AddExplicitTypeCasts(*this, *root, symbolEnv, needsExplicitBoolCasts))
+     {
+         return false;
+     }
+diff --git a/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.cpp b/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.cpp
+index 62782aef14..06845a14b4 100644
+--- a/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.cpp
++++ b/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.cpp
+@@ -16,10 +16,13 @@ namespace
+ class Rewriter : public TIntermRebuild
+ {
+     SymbolEnv &mSymbolEnv;
++    bool mNeedsExplicitBoolCasts = false;
+ 
+   public:
+-    Rewriter(TCompiler &compiler, SymbolEnv &symbolEnv)
+-        : TIntermRebuild(compiler, false, true), mSymbolEnv(symbolEnv)
++    Rewriter(TCompiler &compiler, SymbolEnv &symbolEnv, bool needsExplicitBoolCasts)
++        : TIntermRebuild(compiler, false, true),
++          mSymbolEnv(symbolEnv),
++          mNeedsExplicitBoolCasts(needsExplicitBoolCasts)
+     {}
+ 
+     PostResult visitAggregatePost(TIntermAggregate &callNode) override
+@@ -37,7 +40,7 @@ class Rewriter : public TIntermRebuild
+                     const TType argType = arg.getType();
+                     if (argType.isVector())
+                     {
+-                        return CoerceSimple(retType, SubVector(arg, 0, 1));
++                        return CoerceSimple(retType, SubVector(arg, 0, 1), mNeedsExplicitBoolCasts);
+                     }
+                 }
+             }
+@@ -50,13 +53,15 @@ class Rewriter : public TIntermRebuild
+                     const TType argType = arg.getType();
+                     if (argType.isVector())
+                     {
+-                        return CoerceSimple(retType, SubVector(arg, 0, retType.getNominalSize()));
++                        return CoerceSimple(retType, SubVector(arg, 0, retType.getNominalSize()),
++                                            mNeedsExplicitBoolCasts);
+                     }
+                 }
+                 for (size_t i = 0; i < argCount; ++i)
+                 {
+                     TIntermTyped &arg = GetArg(callNode, i);
+-                    SetArg(callNode, i, CoerceSimple(retType.getBasicType(), arg));
++                    SetArg(callNode, i,
++                           CoerceSimple(retType.getBasicType(), arg, mNeedsExplicitBoolCasts));
+                 }
+             }
+             else if (retType.isMatrix())
+@@ -85,9 +90,12 @@ class Rewriter : public TIntermRebuild
+ 
+ }  // anonymous namespace
+ 
+-bool sh::AddExplicitTypeCasts(TCompiler &compiler, TIntermBlock &root, SymbolEnv &symbolEnv)
++bool sh::AddExplicitTypeCasts(TCompiler &compiler,
++                              TIntermBlock &root,
++                              SymbolEnv &symbolEnv,
++                              bool needsExplicitBoolCasts)
+ {
+-    Rewriter rewriter(compiler, symbolEnv);
++    Rewriter rewriter(compiler, symbolEnv, needsExplicitBoolCasts);
+     if (!rewriter.rebuildRoot(root))
+     {
+         return false;
+diff --git a/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.h b/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.h
+index b9151d4e93..f73c050ada 100644
+--- a/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.h
++++ b/src/compiler/translator/tree_ops/msl/AddExplicitTypeCasts.h
+@@ -17,7 +17,8 @@ namespace sh
+ // Adds explicit type casts into the AST where casting is done implicitly.
+ [[nodiscard]] bool AddExplicitTypeCasts(TCompiler &compiler,
+                                         TIntermBlock &root,
+-                                        SymbolEnv &symbolEnv);
++                                        SymbolEnv &symbolEnv,
++                                        bool needsExplicitBoolCasts);
+ 
+ }  // namespace sh
+ 
+diff --git a/src/libANGLE/renderer/metal/DisplayMtl.mm b/src/libANGLE/renderer/metal/DisplayMtl.mm
+index 45c286c09d..1583787434 100644
+--- a/src/libANGLE/renderer/metal/DisplayMtl.mm
++++ b/src/libANGLE/renderer/metal/DisplayMtl.mm
+@@ -1257,6 +1257,11 @@ void DisplayMtl::initializeFeatures()
+                             supportsAppleGPUFamily(1) && !isSimulator);
+     ANGLE_FEATURE_CONDITION((&mFeatures), emulateTransformFeedback, true);
+ 
++    ANGLE_FEATURE_CONDITION((&mFeatures), intelExplicitBoolCastWorkaround,
++                            isIntel() && GetMacOSVersion() < OSVersion(11, 0, 0));
++    ANGLE_FEATURE_CONDITION((&mFeatures), intelDisableFastMath,
++                            isIntel() && GetMacOSVersion() < OSVersion(12, 0, 0));
++
+     ANGLE_FEATURE_CONDITION((&mFeatures), emulateAlphaToCoverage,
+                             isSimulator || !supportsAppleGPUFamily(1));
+ 
+diff --git a/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm b/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm
+index 4a4a668b4a..e0acfa6346 100644
+--- a/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm
++++ b/src/libANGLE/renderer/metal/ProgramExecutableMtl.mm
+@@ -357,7 +357,9 @@ angle::Result CreateMslShaderLib(mtl::Context *context,
+ 
+         // Convert to actual binary shader
+         angle::ObjCPtr<NSError> err;
+-        const bool disableFastMath      = translatedMslInfo->hasIsnanOrIsinf;
++        const bool disableFastMath =
++            context->getDisplay()->getFeatures().intelDisableFastMath.enabled ||
++            translatedMslInfo->hasIsnanOrIsinf;
+         const bool usesInvariance       = translatedMslInfo->hasInvariant;
+         translatedMslInfo->metalLibrary = libraryCache.getOrCompileShaderLibrary(
+             context->getDisplay(), translatedMslInfo->metalShaderSource, substitutionMacros,
+diff --git a/src/libANGLE/renderer/metal/ProgramMtl.mm b/src/libANGLE/renderer/metal/ProgramMtl.mm
+index 8ad80b50b7..63880a1564 100644
+--- a/src/libANGLE/renderer/metal/ProgramMtl.mm
++++ b/src/libANGLE/renderer/metal/ProgramMtl.mm
+@@ -314,7 +314,8 @@ angle::Result ProgramMtl::compileMslShaderLibs(
+         mtl::TranslatedShaderInfo *translateInfo =
+             &executableMtl->mMslShaderTranslateInfo[shaderType];
+         std::map<std::string, std::string> macros = GetDefaultSubstitutionDictionary();
+-        const bool disableFastMath                = translateInfo->hasIsnanOrIsinf;
++        const bool disableFastMath = displayMtl->getFeatures().intelDisableFastMath.enabled ||
++                                     translateInfo->hasIsnanOrIsinf;
+         const bool usesInvariance = translateInfo->hasInvariant;
+ 
+         // Check if the shader is already in the cache and use it instead of spawning a new thread
+diff --git a/src/libANGLE/renderer/metal/ShaderMtl.mm b/src/libANGLE/renderer/metal/ShaderMtl.mm
+index fd75a48d5a..7bf41c5797 100644
+--- a/src/libANGLE/renderer/metal/ShaderMtl.mm
++++ b/src/libANGLE/renderer/metal/ShaderMtl.mm
+@@ -79,6 +79,12 @@ std::shared_ptr<ShaderTranslateTask> ShaderMtl::compile(const gl::Context *conte
+     options->metal.generateShareableShaders =
+         displayMtl->getFeatures().generateShareableShaders.enabled;
+ 
++    if (displayMtl->getFeatures().intelExplicitBoolCastWorkaround.enabled ||
++        options->metal.generateShareableShaders)
++    {
++        options->addExplicitBoolCasts = true;
++    }
++
+     options->clampPointSize = true;
+ #if TARGET_OS_IPHONE && !TARGET_OS_MACCATALYST
+     options->clampFragDepth = true;
+diff --git a/src/tests/compiler_tests/MSLOutput_test.cpp b/src/tests/compiler_tests/MSLOutput_test.cpp
+index 63caf4d128..8a7cf0e0c8 100644
+--- a/src/tests/compiler_tests/MSLOutput_test.cpp
++++ b/src/tests/compiler_tests/MSLOutput_test.cpp
+@@ -1048,6 +1048,7 @@ TEST_F(MSLOutputTest, UnnamedOutParameterNoCrash)
+ TEST_F(MSLOutputTest, ExplicitBoolCastsNoCrash)
+ {
+     ShCompileOptions options     = defaultOptions();
++    options.addExplicitBoolCasts = 1;
+     const char kShader[]         = R"(
+ precision mediump float;
+ void main(){vec2 c;bvec2 U=bvec2(c.xx);if (U.x) gl_FragColor = vec4(1);})";
+diff --git a/util/autogen/angle_features_autogen.cpp b/util/autogen/angle_features_autogen.cpp
+index 47958dd246..e75490ee76 100644
+--- a/util/autogen/angle_features_autogen.cpp
++++ b/util/autogen/angle_features_autogen.cpp
+@@ -230,6 +230,8 @@ constexpr PackedEnumMap<Feature, const char *> kFeatureNames = {{
+     {Feature::InitFragmentOutputVariables, "initFragmentOutputVariables"},
+     {Feature::InitializeCurrentVertexAttributes, "initializeCurrentVertexAttributes"},
+     {Feature::InjectAsmStatementIntoLoopBodies, "injectAsmStatementIntoLoopBodies"},
++    {Feature::IntelDisableFastMath, "intelDisableFastMath"},
++    {Feature::IntelExplicitBoolCastWorkaround, "intelExplicitBoolCastWorkaround"},
+     {Feature::IsVertexSyncDeferred, "isVertexSyncDeferred"},
+     {Feature::KeepBufferShadowCopy, "keepBufferShadowCopy"},
+     {Feature::LimitMax3dArrayTextureSizeTo1024, "limitMax3dArrayTextureSizeTo1024"},
+diff --git a/util/autogen/angle_features_autogen.h b/util/autogen/angle_features_autogen.h
+index 74b0fc4cbc..88812865f1 100644
+--- a/util/autogen/angle_features_autogen.h
++++ b/util/autogen/angle_features_autogen.h
+@@ -230,6 +230,8 @@ enum class Feature
+     InitFragmentOutputVariables,
+     InitializeCurrentVertexAttributes,
+     InjectAsmStatementIntoLoopBodies,
++    IntelDisableFastMath,
++    IntelExplicitBoolCastWorkaround,
+     IsVertexSyncDeferred,
+     KeepBufferShadowCopy,
+     LimitMax3dArrayTextureSizeTo1024,
+-- 
+2.54.0
+

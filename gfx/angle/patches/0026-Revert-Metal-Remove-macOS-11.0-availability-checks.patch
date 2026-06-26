@@ -1,0 +1,446 @@
+From 6cdb7c3d37e139ae92bbd563bdd5889195ff7370 Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jnicol@mozilla.com>
+Date: Fri, 29 May 2026 11:16:11 +0100
+Subject: [PATCH] Revert "Metal: Remove macOS 11.0 availability checks"
+
+This reverts commit 4aa12e9e17f5ab6b140febd83185583e8b7ac9d4.
+---
+ .../translator/msl/ProgramPrelude.cpp         | 84 +++++++++++++++++++
+ src/libANGLE/renderer/metal/DisplayMtl.mm     | 48 ++++++-----
+ src/libANGLE/renderer/metal/mtl_utils.mm      | 23 ++++-
+ 3 files changed, 131 insertions(+), 24 deletions(-)
+
+diff --git a/src/compiler/translator/msl/ProgramPrelude.cpp b/src/compiler/translator/msl/ProgramPrelude.cpp
+index 69da09c165..25381be6f2 100644
+--- a/src/compiler/translator/msl/ProgramPrelude.cpp
++++ b/src/compiler/translator/msl/ProgramPrelude.cpp
+@@ -1381,7 +1381,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texture(
+     metal::float3 const coord,
+     float const bias)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::bias(bias));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, coord.z);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -1404,7 +1408,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texture(
+     metal::float4 const coord,
+     float const bias)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::bias(bias));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -1427,7 +1435,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_texture(
+     metal::float4 const coord,
+     float const bias)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xyz, coord.w, metal::bias(bias));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xyz, coord.w);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -1756,6 +1768,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad(
+     metal::float2 const dPdx,
+     metal::float2 const dPdy)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     if (ANGLEUseSampleCompareGradient)
+     {
+         return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::gradient2d(dPdx, dPdy));
+@@ -1766,6 +1779,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad(
+         const float lod = 0.5 * metal::log2(metal::max(metal::length_squared(dPdx * dims), metal::length_squared(dPdy * dims)));
+         return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(lod));
+     }
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(0));
++#endif
+ }
+ )",
+                         functionConstants(),
+@@ -1779,6 +1795,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad(
+     metal::float2 const dPdx,
+     metal::float2 const dPdy)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     if (ANGLEUseSampleCompareGradient)
+     {
+         return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::gradient2d(dPdx, dPdy));
+@@ -1789,6 +1806,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad(
+         const float lod = 0.5 * metal::log2(metal::max(metal::length_squared(dPdx * dims), metal::length_squared(dPdy * dims)));
+         return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(lod));
+     }
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(0));
++#endif
+ }
+ )",
+                         functionConstants(),
+@@ -1802,6 +1822,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad(
+     metal::float3 const dPdx,
+     metal::float3 const dPdy)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     if (ANGLEUseSampleCompareGradient)
+     {
+         return env.texture->sample_compare(*env.sampler, coord.xyz, coord.w, metal::gradientcube(dPdx, dPdy));
+@@ -1819,6 +1840,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGrad(
+         const float lod = -1.0 + 0.5 * metal::log2(dim * dim * metal::max(metal::length_squared(d.xy), metal::length_squared(d.zw)));
+         return env.texture->sample_compare(*env.sampler, coord.xyz, coord.w, metal::level(lod));
+     }
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xyz, coord.w, metal::level(0));
++#endif
+ }
+ )",
+                         functionConstants(),
+@@ -1878,6 +1902,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset(
+     metal::float2 const dPdy,
+     metal::int2 const offset)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     if (ANGLEUseSampleCompareGradient)
+     {
+         return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::gradient2d(dPdx, dPdy), offset);
+@@ -1888,6 +1913,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset(
+         const float lod = 0.5 * metal::log2(metal::max(metal::length_squared(dPdx * dims), metal::length_squared(dPdy * dims)));
+         return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(lod), offset);
+     }
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(0), offset);
++#endif
+ }
+ )",
+                         functionConstants(),
+@@ -1902,6 +1930,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset(
+     metal::float2 const dPdy,
+     metal::int2 const offset)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     if (ANGLEUseSampleCompareGradient)
+     {
+         return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::gradient2d(dPdx, dPdy), offset);
+@@ -1912,6 +1941,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureGradOffset(
+         const float lod = 0.5 * metal::log2(metal::max(metal::length_squared(dPdx * dims), metal::length_squared(dPdy * dims)));
+         return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(lod), offset);
+     }
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(0), offset);
++#endif
+ }
+ )",
+                         functionConstants(),
+@@ -1963,7 +1995,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureLod(
+     metal::float3 const coord,
+     float const level)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(level));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(0));
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -1988,7 +2024,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureLod(
+     metal::float4 const coord,
+     float const level)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xyz, coord.w, metal::level(level));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xyz, coord.w, metal::level(0));
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2000,7 +2040,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureLod(
+     metal::float4 const coord,
+     float const level)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(level));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(0));
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2041,7 +2085,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureLodOffset(
+     float const level,
+     int2 const offset)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(level), offset);
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::level(0), offset);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2068,7 +2116,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureLodOffset(
+     float const level,
+     metal::int2 const offset)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(level), offset);
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::level(0), offset);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2174,7 +2226,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset(
+     metal::int2 const offset,
+     float const bias)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, metal::bias(bias), offset);
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, coord.z, offset);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2199,7 +2255,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureOffset(
+     metal::int2 const offset,
+     float const bias)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, metal::bias(bias), offset);
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy, uint32_t(metal::round(coord.z)), coord.w, offset);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2297,7 +2357,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProj(
+     metal::float4 const coord,
+     float const bias)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::bias(bias));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2338,6 +2402,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGrad(
+     metal::float2 const dPdx,
+     metal::float2 const dPdy)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     if (ANGLEUseSampleCompareGradient)
+     {
+         return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::gradient2d(dPdx, dPdy));
+@@ -2348,6 +2413,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGrad(
+         const float lod = 0.5 * metal::log2(metal::max(metal::length_squared(dPdx * dims), metal::length_squared(dPdy * dims)));
+         return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(lod));
+     }
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(0));
++#endif
+ }
+ )",
+                         functionConstants(),
+@@ -2406,6 +2474,7 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGradOffset(
+     metal::float2 const dPdy,
+     int2 const offset)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     if (ANGLEUseSampleCompareGradient)
+     {
+         return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::gradient2d(dPdx, dPdy), offset);
+@@ -2416,6 +2485,9 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProjGradOffset(
+         const float lod = 0.5 * metal::log2(metal::max(metal::length_squared(dPdx * dims), metal::length_squared(dPdy * dims)));
+         return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(lod), offset);
+     }
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(0), offset);
++#endif
+ }
+ )",
+                         functionConstants(),
+@@ -2469,7 +2541,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLod(
+     metal::float4 const coord,
+     float const level)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(level));
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(0));
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2523,7 +2599,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProjLodOffset(
+     float const level,
+     int2 const offset)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(level), offset);
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::level(0), offset);
++#endif
+ }
+ )",
+                         textureEnv())
+@@ -2643,7 +2723,11 @@ ANGLE_ALWAYS_INLINE auto ANGLE_textureProjOffset(
+     int2 const offset,
+     float const bias)
+ {
++#if defined(__METAL_IOS__) || (__METAL_VERSION__ >= 230)
+     return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, metal::bias(bias), offset);
++#else
++    return env.texture->sample_compare(*env.sampler, coord.xy/coord.w, coord.z/coord.w, offset);
++#endif
+ }
+ )",
+                         textureEnv())
+diff --git a/src/libANGLE/renderer/metal/DisplayMtl.mm b/src/libANGLE/renderer/metal/DisplayMtl.mm
+index 1583787434..61bf9df725 100644
+--- a/src/libANGLE/renderer/metal/DisplayMtl.mm
++++ b/src/libANGLE/renderer/metal/DisplayMtl.mm
+@@ -1021,23 +1021,27 @@ void DisplayMtl::initializeExtensions() const
+ 
+     mNativeExtensions.sampleVariablesOES = true;
+ 
+-    if ([mMetalDevice supportsPullModelInterpolation])
++    if (@available(macOS 11.0, *))
+     {
+-        mNativeExtensions.shaderMultisampleInterpolationOES = true;
+-        mNativeCaps.subPixelInterpolationOffsetBits         = 4;
+-        if (supportsAppleGPUFamily(1))
++        mNativeExtensions.shaderMultisampleInterpolationOES =
++            [mMetalDevice supportsPullModelInterpolation];
++        if (mNativeExtensions.shaderMultisampleInterpolationOES)
+         {
+-            mNativeCaps.minInterpolationOffset = -0.5f;
+-            mNativeCaps.maxInterpolationOffset = +0.5f;
+-        }
+-        else
+-        {
+-            // On non-Apple GPUs, the actual range is usually
+-            // [-0.5, +0.4375] but due to framebuffer Y-flip
+-            // the effective range for the Y direction will be
+-            // [-0.4375, +0.5] when the default FBO is bound.
+-            mNativeCaps.minInterpolationOffset = -0.4375f;  // -0.5 + (2 ^ -4)
+-            mNativeCaps.maxInterpolationOffset = +0.4375f;  // +0.5 - (2 ^ -4)
++            mNativeCaps.subPixelInterpolationOffsetBits = 4;
++            if (supportsAppleGPUFamily(1))
++            {
++                mNativeCaps.minInterpolationOffset = -0.5f;
++                mNativeCaps.maxInterpolationOffset = +0.5f;
++            }
++            else
++            {
++                // On non-Apple GPUs, the actual range is usually
++                // [-0.5, +0.4375] but due to framebuffer Y-flip
++                // the effective range for the Y direction will be
++                // [-0.4375, +0.5] when the default FBO is bound.
++                mNativeCaps.minInterpolationOffset = -0.4375f;  // -0.5 + (2 ^ -4)
++                mNativeCaps.maxInterpolationOffset = +0.4375f;  // +0.5 - (2 ^ -4)
++            }
+         }
+     }
+ 
+@@ -1378,7 +1382,11 @@ bool DisplayMtl::supportsEitherGPUFamily(uint8_t iOSFamily, uint8_t macFamily) c
+ bool DisplayMtl::supports32BitFloatFiltering() const
+ {
+ #if !TARGET_OS_WATCH
+-    return [mMetalDevice supports32BitFloatFiltering];
++    if (@available(macOS 11.0, *))
++    {
++        return [mMetalDevice supports32BitFloatFiltering];
++    }
++    return true;  // Always true on old macOS
+ #else
+     return false;
+ #endif
+@@ -1386,14 +1394,14 @@ bool DisplayMtl::supports32BitFloatFiltering() const
+ 
+ bool DisplayMtl::supportsBCTextureCompression() const
+ {
+-    if (@available(macCatalyst 16.4, iOS 16.4, *))
++    if (@available(macOS 11.0, macCatalyst 16.4, iOS 16.4, *))
+     {
+         return [mMetalDevice supportsBCTextureCompression];
+     }
+-#if TARGET_OS_MACCATALYST
+-    return true;  // Always true on old Catalyst
++#if TARGET_OS_OSX || TARGET_OS_MACCATALYST
++    return true;  // Always true on old macOS
+ #else
+-    return false;  // Always false on old iOS
++    return false;  // Always false everywhere else
+ #endif
+ }
+ 
+diff --git a/src/libANGLE/renderer/metal/mtl_utils.mm b/src/libANGLE/renderer/metal/mtl_utils.mm
+index 3986121e87..60a1354953 100644
+--- a/src/libANGLE/renderer/metal/mtl_utils.mm
++++ b/src/libANGLE/renderer/metal/mtl_utils.mm
+@@ -858,7 +858,12 @@ static MTLLanguageVersion GetUserSetOrHighestMSLVersion(const MTLLanguageVersion
+                     case 2:
+                         return MTLLanguageVersion2_2;
+                     case 3:
+-                        return MTLLanguageVersion2_3;
++                        if (@available(macOS 11.0, *))
++                        {
++                            return MTLLanguageVersion2_3;
++                        }
++                        assert(0 && "MSL 2.3 requires macOS 11.");
++                        break;
+                     case 4:
+                         if (@available(macOS 12.0, *))
+                         {
+@@ -897,14 +902,24 @@ angle::ObjCPtr<id<MTLLibrary>> CreateShaderLibrary(
+         angle::ObjCPtr options  = angle::adoptObjCPtr([[MTLCompileOptions alloc] init]);
+ 
+         // Mark all positions in VS with attribute invariant as non-optimizable
+-        options.get().preserveInvariance = usesInvariance;
++        bool canPreserveInvariance = false;
++        if (@available(macOS 11.0, *))
++        {
++            canPreserveInvariance             = true;
++            options.get().preserveInvariance = usesInvariance;
++        }
++
++        // If preserveInvariance is unavailable when compiling from source and the sources use
++        // invariance, disable fast math instead.
++        const bool shouldDisableFastMath =
++            disableFastMath || (usesInvariance && !canPreserveInvariance);
+ 
+ // mathMode and mathFloatingPointFunctions are only available with macOS 15+ and iPhoneOS 18+
+ #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000 || __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000 || \
+     __TV_OS_VERSION_MAX_ALLOWED >= 180000 || TARGET_OS_VISION
+         if (@available(macOS 15.0, iOS 18.0, *))
+         {
+-            if (disableFastMath)
++            if (shouldDisableFastMath)
+             {
+                 options.get().mathMode                   = MTLMathModeSafe;
+                 options.get().mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
+@@ -928,7 +943,7 @@ angle::ObjCPtr<id<MTLLibrary>> CreateShaderLibrary(
+             // once `fastMathEnabled` is no longer needed as a fallback.
+ #pragma clang diagnostic push
+ #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+-            options.get().fastMathEnabled = !disableFastMath;
++            options.get().fastMathEnabled = !shouldDisableFastMath;
+ #pragma clang diagnostic pop
+         }
+ 
+-- 
+2.54.0
+

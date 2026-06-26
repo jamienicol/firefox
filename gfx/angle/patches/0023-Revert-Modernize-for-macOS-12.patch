@@ -1,0 +1,131 @@
+From ec0e3dc6f2cf1313302a9a935f8e083c3295d916 Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jnicol@mozilla.com>
+Date: Fri, 29 May 2026 11:25:21 +0100
+Subject: [PATCH] Revert "Modernize for macOS 12"
+
+This reverts commit d28c6adf936bb811b5eb992919a0df88624eed3f.
+---
+ src/common/debug.cpp                          | 43 ++++++++++---------
+ src/libANGLE/renderer/metal/DisplayMtl.mm     | 10 ++++-
+ src/libANGLE/renderer/metal/mtl_utils.mm      |  7 ++-
+ .../renderer/vulkan/mac/WindowSurfaceVkMac.mm |  2 +
+ 4 files changed, 40 insertions(+), 22 deletions(-)
+
+diff --git a/src/common/debug.cpp b/src/common/debug.cpp
+index 2c7f18b509..96abfd29f6 100644
+--- a/src/common/debug.cpp
++++ b/src/common/debug.cpp
+@@ -273,28 +273,31 @@ void Trace(LogSeverity severity, const char *message)
+ #endif
+ 
+ #if defined(ANGLE_PLATFORM_APPLE)
+-        os_log_type_t apple_log_type = OS_LOG_TYPE_DEFAULT;
+-        switch (severity)
++        if (__builtin_available(macOS 10.12, iOS 10.0, *))
+         {
+-            case LOG_INFO:
+-            case LOG_EVENT:
+-                apple_log_type = OS_LOG_TYPE_INFO;
+-                break;
+-            case LOG_WARN:
+-                apple_log_type = OS_LOG_TYPE_DEFAULT;
+-                break;
+-            case LOG_ERR:
+-                apple_log_type = OS_LOG_TYPE_ERROR;
+-                break;
+-            case LOG_FATAL:
+-                // OS_LOG_TYPE_FAULT is too severe - grabs the entire process tree.
+-                apple_log_type = OS_LOG_TYPE_ERROR;
+-                break;
+-            default:
+-                UNREACHABLE();
++            os_log_type_t apple_log_type = OS_LOG_TYPE_DEFAULT;
++            switch (severity)
++            {
++                case LOG_INFO:
++                case LOG_EVENT:
++                    apple_log_type = OS_LOG_TYPE_INFO;
++                    break;
++                case LOG_WARN:
++                    apple_log_type = OS_LOG_TYPE_DEFAULT;
++                    break;
++                case LOG_ERR:
++                    apple_log_type = OS_LOG_TYPE_ERROR;
++                    break;
++                case LOG_FATAL:
++                    // OS_LOG_TYPE_FAULT is too severe - grabs the entire process tree.
++                    apple_log_type = OS_LOG_TYPE_ERROR;
++                    break;
++                default:
++                    UNREACHABLE();
++            }
++            os_log_with_type(OS_LOG_DEFAULT, apple_log_type, "ANGLE: %s: %s\n",
++                             LogSeverityName(severity), str.c_str());
+         }
+-        os_log_with_type(OS_LOG_DEFAULT, apple_log_type, "ANGLE: %s: %s\n",
+-                         LogSeverityName(severity), str.c_str());
+ #else
+         // Note: we use fprintf because <iostream> includes static initializers.
+         fprintf((severity >= LOG_WARN) ? stderr : stdout, "%s: %s\n", LogSeverityName(severity),
+diff --git a/src/libANGLE/renderer/metal/DisplayMtl.mm b/src/libANGLE/renderer/metal/DisplayMtl.mm
+index cdfd06b3f7..45c286c09d 100644
+--- a/src/libANGLE/renderer/metal/DisplayMtl.mm
++++ b/src/libANGLE/renderer/metal/DisplayMtl.mm
+@@ -757,7 +757,15 @@ void DisplayMtl::ensureCapsInitialized() const
+     // Metal-Feature-Set-Tables.pdf says that max supported point size is 511. We limit it to 64
+     // for now. http://anglebug.com/42263403
+ 
+-    mNativeCaps.maxAliasedPointSize = 511;
++    // NOTE(kpiddington): This seems to be fixed in macOS Monterey
++    if (@available(macOS 12.0, *))
++    {
++        mNativeCaps.maxAliasedPointSize = 511;
++    }
++    else
++    {
++        mNativeCaps.maxAliasedPointSize = 64;
++    }
+     mNativeCaps.minAliasedLineWidth = 1.0f;
+     mNativeCaps.maxAliasedLineWidth = 1.0f;
+ 
+diff --git a/src/libANGLE/renderer/metal/mtl_utils.mm b/src/libANGLE/renderer/metal/mtl_utils.mm
+index 681a82d46d..3986121e87 100644
+--- a/src/libANGLE/renderer/metal/mtl_utils.mm
++++ b/src/libANGLE/renderer/metal/mtl_utils.mm
+@@ -860,7 +860,12 @@ static MTLLanguageVersion GetUserSetOrHighestMSLVersion(const MTLLanguageVersion
+                     case 3:
+                         return MTLLanguageVersion2_3;
+                     case 4:
+-                        return MTLLanguageVersion2_4;
++                        if (@available(macOS 12.0, *))
++                        {
++                            return MTLLanguageVersion2_4;
++                        }
++                        assert(0 && "MSL 2.4 requires macOS 12.");
++                        break;
+                     default:
+                         assert(0 && "Unsupported MSL Minor Language Version.");
+                 }
+diff --git a/src/libANGLE/renderer/vulkan/mac/WindowSurfaceVkMac.mm b/src/libANGLE/renderer/vulkan/mac/WindowSurfaceVkMac.mm
+index 1f99df2776..79a7f7bfcc 100644
+--- a/src/libANGLE/renderer/vulkan/mac/WindowSurfaceVkMac.mm
++++ b/src/libANGLE/renderer/vulkan/mac/WindowSurfaceVkMac.mm
+@@ -30,6 +30,7 @@ WindowSurfaceVkMac::~WindowSurfaceVkMac()
+ }
+ 
+ angle::Result WindowSurfaceVkMac::createSurfaceVk(vk::ErrorContext *context)
++    API_AVAILABLE(macosx(10.11))
+ {
+     mMetalDevice = MTLCreateSystemDefaultDevice();
+ 
+@@ -60,6 +61,7 @@ angle::Result WindowSurfaceVkMac::createSurfaceVk(vk::ErrorContext *context)
+ 
+ angle::Result WindowSurfaceVkMac::getCurrentWindowSize(vk::ErrorContext *context,
+                                                        gl::Extents *extentsOut) const
++    API_AVAILABLE(macosx(10.11))
+ {
+     ANGLE_VK_CHECK(context, (mMetalLayer != nullptr), VK_ERROR_INITIALIZATION_FAILED);
+ 
+-- 
+2.54.0
+

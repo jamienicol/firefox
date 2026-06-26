@@ -1,0 +1,100 @@
+From 77e6014f876656b3f70be89daf582eca29904a96 Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jnicol@mozilla.com>
+Date: Wed, 3 Jun 2026 15:37:46 +0100
+Subject: [PATCH] Revert "Metal: Remove divMatrixScalar polyfills"
+
+This reverts commit 03de46efec50fede0c39bc034d08c08ce84ef72a.
+---
+ .../translator/msl/ProgramPrelude.cpp         | 51 ++++++++++++++++---
+ 1 file changed, 45 insertions(+), 6 deletions(-)
+
+diff --git a/src/compiler/translator/msl/ProgramPrelude.cpp b/src/compiler/translator/msl/ProgramPrelude.cpp
+index 652acfbd3a..69da09c165 100644
+--- a/src/compiler/translator/msl/ProgramPrelude.cpp
++++ b/src/compiler/translator/msl/ProgramPrelude.cpp
+@@ -130,6 +130,8 @@ class ProgramPrelude : public TIntermTraverser
+     void addScalarMatrix();
+     void subMatrixScalar();
+     void subScalarMatrix();
++    void divMatrixScalar();
++    void divMatrixScalarAssign();
+     void divScalarMatrix();
+     void componentWiseDivide();
+     void componentWiseDivideAssign();
+@@ -593,6 +595,32 @@ ANGLE_ALWAYS_INLINE metal::matrix<T, Cols, Rows> operator-(T x, metal::matrix<T,
+ }
+ )")
+ 
++PROGRAM_PRELUDE_DECLARE(divMatrixScalarAssign,
++                        R"(
++template <typename T, int Cols, int Rows>
++ANGLE_ALWAYS_INLINE thread metal::matrix<T, Cols, Rows> &operator/=(thread metal::matrix<T, Cols, Rows> &m, T x)
++{
++    for (size_t col = 0; col < Cols; ++col)
++    {
++        m[col] /= x;
++    }
++    return m;
++}
++)")
++
++PROGRAM_PRELUDE_DECLARE(divMatrixScalar,
++                        R"(
++#if __METAL_VERSION__ <= 220
++template <typename T, int Cols, int Rows>
++ANGLE_ALWAYS_INLINE metal::matrix<T, Cols, Rows> operator/(metal::matrix<T, Cols, Rows> m, T x)
++{
++    m /= x;
++    return m;
++}
++#endif
++)",
++                        divMatrixScalarAssign())
++
+ PROGRAM_PRELUDE_DECLARE(divScalarMatrix,
+                         R"(
+ template <typename T, int Cols, int Rows>
+@@ -3454,23 +3482,34 @@ void ProgramPrelude::visitOperator(TOperator op,
+             break;
+ 
+         case TOperator::EOpDiv:
+-            if (argType1->isMatrix())
++            if (argType0->isMatrix())
+             {
+-                if (argType0->isMatrix())
++                if (argType1->isMatrix())
+                 {
+                     componentWiseDivide();
+                 }
+-                else if (argType0->isScalar())
++                else if (argType1->isScalar())
+                 {
+-                    divScalarMatrix();
++                    divMatrixScalar();
+                 }
+             }
++            if (argType0->isScalar() && argType1->isMatrix())
++            {
++                divScalarMatrix();
++            }
+             break;
+ 
+         case TOperator::EOpDivAssign:
+-            if (argType0->isMatrix() && argType1->isMatrix())
++            if (argType0->isMatrix())
+             {
+-                componentWiseDivideAssign();
++                if (argType1->isMatrix())
++                {
++                    componentWiseDivideAssign();
++                }
++                else if (argType1->isScalar())
++                {
++                    divMatrixScalarAssign();
++                }
+             }
+             break;
+ 
+-- 
+2.54.0
+

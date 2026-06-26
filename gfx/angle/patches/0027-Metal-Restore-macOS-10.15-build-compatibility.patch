@@ -1,0 +1,232 @@
+From eca2b336b9d30543ee86bbeb1883d85060f48083 Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jnicol@mozilla.com>
+Date: Fri, 29 May 2026 11:46:05 +0100
+Subject: [PATCH] Metal: Restore macOS 10.15 build compatibility
+
+Partially restore the pre-966d0a1aefff9e2baedb898d2464242bbbc918c3
+memoryless-storage behavior. Keep use of
+MTLResourceStorageModeMemoryless guarded to platforms/OS versions that
+can actually reference it, and fall back to private storage otherwise.
+
+Partially restore the guarded symbol handling removed by
+a36c459e236a2dded3cbe2e403ab0b848942ae6a for
+MTLBlitOptionRowLinearPVRTC. When building for pre-macOS 11 or Mac
+Catalyst, use MTLBlitOptionNone instead of referencing the unavailable
+enum.
+
+Also tighten the generated Metal format table guards so macOS 11-only
+MTLPixelFormat values are emitted only when both the SDK and
+deployment target are macOS 11 or newer. This fixes 10.15-targeted
+builds, but it is a compile-time tradeoff: a binary built with a 10.15
+deployment target will not use those native macOS 11+ format
+mappings/caps even when running on macOS 11 or later. Existing
+fallback mappings are still used where the table provides them;
+formats without fallbacks remain unsupported in that build.
+---
+ src/libANGLE/renderer/metal/TextureMtl.mm     |  2 +-
+ .../renderer/metal/gen_mtl_format_table.py    | 17 ++++++++-----
+ src/libANGLE/renderer/metal/mtl_common.h      |  7 ++++++
+ .../metal/mtl_format_table_autogen.mm         | 25 +++++++++++--------
+ src/libANGLE/renderer/metal/mtl_resources.mm  | 21 ++++++++++++++--
+ 5 files changed, 53 insertions(+), 19 deletions(-)
+
+diff --git a/src/libANGLE/renderer/metal/TextureMtl.mm b/src/libANGLE/renderer/metal/TextureMtl.mm
+index 803f46d7eb..533b858dd9 100644
+--- a/src/libANGLE/renderer/metal/TextureMtl.mm
++++ b/src/libANGLE/renderer/metal/TextureMtl.mm
+@@ -2380,7 +2380,7 @@ angle::Result TextureMtl::setPerSliceSubImage(const gl::Context *context,
+             CopyBufferToOriginalTextureIfDstIsAView(
+                 contextMtl, blitEncoder, sourceBuffer, offset, pixelsRowPitch, srcBytesPerImage,
+                 mtlArea.size, imageDef.image, slice, mtl::kZeroNativeMipLevel, mtlArea.origin,
+-                imageFormat.isPVRTC() ? MTLBlitOptionRowLinearPVRTC : MTLBlitOptionNone);
++                imageFormat.isPVRTC() ? mtl::kBlitOptionRowLinearPVRTC : MTLBlitOptionNone);
+         }
+     }
+     else
+diff --git a/src/libANGLE/renderer/metal/gen_mtl_format_table.py b/src/libANGLE/renderer/metal/gen_mtl_format_table.py
+index 46c1605f23..7c3a03b8bf 100644
+--- a/src/libANGLE/renderer/metal/gen_mtl_format_table.py
++++ b/src/libANGLE/renderer/metal/gen_mtl_format_table.py
+@@ -478,9 +478,10 @@ def gen_image_map_switch_string(image_table, angle_to_gl):
+                                                         angle_to_gl, mac_angle_to_mtl)
+     switch_data += "#endif\n"
+ 
+-    # Override missing ES 3.0 formats for older macOS SDK or Catalyst
+-    switch_data += "#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED < 110000)) || \\\n"
+-    switch_data += "TARGET_OS_MACCATALYST\n"
++    # Override missing ES 3.0 formats for older macOS SDK/deployment target or Catalyst.
++    switch_data += "#if (TARGET_OS_OSX && ((__MAC_OS_X_VERSION_MAX_ALLOWED < 110000) || \\\n"
++    switch_data += "                       (__MAC_OS_X_VERSION_MIN_REQUIRED < 110000))) || \\\n"
++    switch_data += "    TARGET_OS_MACCATALYST\n"
+     for angle_format in sorted(mac_override_es3.keys()):
+         switch_data += gen_image_map_switch_simple_case(angle_format,
+                                                         mac_override_es3[angle_format],
+@@ -558,7 +559,8 @@ def gen_image_map_switch_string(image_table, angle_to_gl):
+     switch_data += "#endif // TARGET_OS_IPHONE\n"
+ 
+     # Try to support all iOS formats on newer macOS with Apple GPU.
+-    switch_data += "#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))\n"
++    switch_data += "#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \\\n"
++    switch_data += "     (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))\n"
+     for angle_format in sorted(ios_specific_map.keys()):
+         # Do not re-emit depth-specific formats.
+         if (angle_format not in mac_depth_fallbacks.keys()):
+@@ -620,7 +622,9 @@ def gen_image_mtl_to_angle_switch_string(image_table):
+     switch_data += "#endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
+ 
+     # iOS + macOS 11.0+ specific
+-    switch_data += "#if TARGET_OS_IPHONE || (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))\n"
++    switch_data += "#if TARGET_OS_IPHONE || \\\n"
++    switch_data += "    (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \\\n"
++    switch_data += "     (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))\n"
+     # Tracks whether the pixel format family being added to `switch_data` is deprecated.
+     section_contains_deprecated_format = False
+     for angle_format in sorted(ios_specific_map.keys()):
+@@ -762,7 +766,8 @@ def gen_mtl_format_caps_init_string(map_image):
+     caps_init_str += "#endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST\n"
+ 
+     caps_init_str += "#if (TARGET_OS_IPHONE && !TARGET_OS_MACCATALYST) || \\\n"
+-    caps_init_str += "    (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))\n"
++    caps_init_str += "    (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \\\n"
++    caps_init_str += "     (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))\n"
+ 
+     caps_init_str += caps_to_cpp(ios_platform_caps)
+ 
+diff --git a/src/libANGLE/renderer/metal/mtl_common.h b/src/libANGLE/renderer/metal/mtl_common.h
+index 6d9ad791ac..88ee739f45 100644
+--- a/src/libANGLE/renderer/metal/mtl_common.h
++++ b/src/libANGLE/renderer/metal/mtl_common.h
+@@ -173,6 +173,13 @@ constexpr size_t kOcclusionQueryResultSize = sizeof(uint64_t);
+ 
+ constexpr gl::Version kMaxSupportedGLVersion = gl::Version(3, 0);
+ 
++// Work around the enum not being available before macOS 11 or on Mac Catalyst.
++#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MIN_REQUIRED < 110000)) || TARGET_OS_MACCATALYST
++constexpr MTLBlitOption kBlitOptionRowLinearPVRTC = MTLBlitOptionNone;
++#else
++constexpr MTLBlitOption kBlitOptionRowLinearPVRTC = MTLBlitOptionRowLinearPVRTC;
++#endif
++
+ enum class PixelType
+ {
+     Int,
+diff --git a/src/libANGLE/renderer/metal/mtl_format_table_autogen.mm b/src/libANGLE/renderer/metal/mtl_format_table_autogen.mm
+index fe74e97118..ca33d4e0a3 100644
+--- a/src/libANGLE/renderer/metal/mtl_format_table_autogen.mm
++++ b/src/libANGLE/renderer/metal/mtl_format_table_autogen.mm
+@@ -167,7 +167,8 @@ angle::FormatID Format::MetalToAngleFormatID(MTLPixelFormat formatMtl)
+         case MTLPixelFormatDepth24Unorm_Stencil8:
+             return angle::FormatID::D24_UNORM_S8_UINT;
+ #endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST
+-#if TARGET_OS_IPHONE || (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
++#if TARGET_OS_IPHONE || (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \
++                         (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))
+         case MTLPixelFormatASTC_10x10_sRGB:
+             return angle::FormatID::ASTC_10x10_SRGB_BLOCK;
+         case MTLPixelFormatASTC_10x5_sRGB:
+@@ -952,7 +953,9 @@ void Format::init(const DisplayMtl *display, angle::FormatID intendedFormatId_)
+             break;
+ 
+ #endif
+-#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED < 110000)) || TARGET_OS_MACCATALYST
++#if (TARGET_OS_OSX &&                                                                              \
++     ((__MAC_OS_X_VERSION_MAX_ALLOWED < 110000) || (__MAC_OS_X_VERSION_MIN_REQUIRED < 110000))) || \
++    TARGET_OS_MACCATALYST
+         case angle::FormatID::EAC_R11G11_SNORM_BLOCK:
+ 
+             this->metalFormat    = MTLPixelFormatRG16Snorm;
+@@ -2279,7 +2282,8 @@ void Format::init(const DisplayMtl *display, angle::FormatID intendedFormatId_)
+ 
+ #    endif  // BC formats on iOS/tvOS/visionOS
+ #endif      // TARGET_OS_IPHONE
+-#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
++#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \
++     (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))
+         case angle::FormatID::ASTC_10x10_SRGB_BLOCK:
+ 
+             this->metalFormat    = MTLPixelFormatASTC_10x10_sRGB;
+@@ -2825,7 +2829,7 @@ void Format::init(const DisplayMtl *display, angle::FormatID intendedFormatId_)
+             }
+             break;
+ 
+-#endif  // TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
++#endif  // TARGET_OS_OSX && mac 11.0+ SDK/deployment target
+         default:
+             this->metalFormat    = MTLPixelFormatInvalid;
+             this->actualFormatId = angle::FormatID::NONE;
+@@ -3843,10 +3847,10 @@ void FormatTable::initNativeFormatCapsAutogen(const DisplayMtl *display)
+     const angle::FeaturesMtl &featuresMtl = display->getFeatures();
+     // Skip auto resolve if either hasDepth/StencilAutoResolve or allowMultisampleStoreAndResolve
+     // feature are disabled.
+-    bool supportDepthAutoResolve = featuresMtl.hasDepthAutoResolve.enabled &&
+-                                   featuresMtl.allowMultisampleStoreAndResolve.enabled;
+-    bool supportStencilAutoResolve = featuresMtl.hasStencilAutoResolve.enabled &&
+-                                     featuresMtl.allowMultisampleStoreAndResolve.enabled;
++    bool supportDepthAutoResolve        = featuresMtl.hasDepthAutoResolve.enabled &&
++                                          featuresMtl.allowMultisampleStoreAndResolve.enabled;
++    bool supportStencilAutoResolve      = featuresMtl.hasStencilAutoResolve.enabled &&
++                                          featuresMtl.allowMultisampleStoreAndResolve.enabled;
+     bool supportDepthStencilAutoResolve = supportDepthAutoResolve && supportStencilAutoResolve;
+ 
+     // Source: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
+@@ -4172,8 +4176,9 @@ void FormatTable::initNativeFormatCapsAutogen(const DisplayMtl *display)
+                       display->supportsDepth24Stencil8PixelFormat());
+ 
+ #endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST
+-#if (TARGET_OS_IPHONE && !TARGET_OS_MACCATALYST) || \
+-    (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
++#if (TARGET_OS_IPHONE && !TARGET_OS_MACCATALYST) ||                 \
++    (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \
++     (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))
+     setFormatCaps(MTLPixelFormatA1BGR5Unorm, /** filterable*/ display->supportsAppleGPUFamily(1),
+                   /** writable*/ false, /** blendable*/ display->supportsAppleGPUFamily(1),
+                   /** multisample*/ display->supportsAppleGPUFamily(1),
+diff --git a/src/libANGLE/renderer/metal/mtl_resources.mm b/src/libANGLE/renderer/metal/mtl_resources.mm
+index 2ff87c07f6..fbc17e7a9c 100644
+--- a/src/libANGLE/renderer/metal/mtl_resources.mm
++++ b/src/libANGLE/renderer/metal/mtl_resources.mm
+@@ -82,7 +82,13 @@ MTLResourceOptions resourceOptionsForStorageMode(MTLStorageMode storageMode)
+         case MTLStorageModePrivate:
+             return MTLResourceStorageModePrivate;
+         case MTLStorageModeMemoryless:
++#if (TARGET_OS_IOS || TARGET_OS_TV) && !TARGET_OS_MACCATALYST
+             return MTLResourceStorageModeMemoryless;
++#else
++            // Memoryless storage is unavailable before macOS 11. Use private storage as the
++            // non-memoryless fallback.
++            return MTLResourceStorageModePrivate;
++#endif
+ #if TARGET_OS_SIMULATOR
+         default:
+             // TODO(http://anglebug.com/42266474): Remove me once hacked SDKs are fixed.
+@@ -437,14 +443,25 @@ Texture::Texture(ContextMtl *context,
+ 
+         if (memoryLess)
+         {
+-            if (context->getDisplay()->supportsAppleGPUFamily(1))
++#if (TARGET_OS_IOS || TARGET_OS_TV) && !TARGET_OS_MACCATALYST
++            desc.resourceOptions = MTLResourceStorageModeMemoryless;
++#else
++            if (@available(macOS 11.0, macCatalyst 14.1, *))
+             {
+-                desc.resourceOptions = MTLResourceStorageModeMemoryless;
++                if (context->getDisplay()->supportsAppleGPUFamily(1))
++                {
++                    desc.resourceOptions = MTLResourceStorageModeMemoryless;
++                }
++                else
++                {
++                    desc.resourceOptions = MTLResourceStorageModePrivate;
++                }
+             }
+             else
+             {
+                 desc.resourceOptions = MTLResourceStorageModePrivate;
+             }
++#endif
+ 
+             // Regardless of whether MTLResourceStorageModeMemoryless is used or not, we disable
+             // Load/Store on this texture.
+-- 
+2.54.0
+
