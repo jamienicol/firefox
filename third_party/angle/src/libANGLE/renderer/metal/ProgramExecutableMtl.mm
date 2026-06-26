@@ -357,7 +357,9 @@ angle::Result CreateMslShaderLib(mtl::Context *context,
 
         // Convert to actual binary shader
         angle::ObjCPtr<NSError> err;
-        const bool disableFastMath      = translatedMslInfo->hasIsnanOrIsinf;
+        const bool disableFastMath =
+            context->getDisplay()->getFeatures().intelDisableFastMath.enabled ||
+            translatedMslInfo->hasIsnanOrIsinf;
         const bool usesInvariance       = translatedMslInfo->hasInvariant;
         translatedMslInfo->metalLibrary = libraryCache.getOrCompileShaderLibrary(
             context->getDisplay(), translatedMslInfo->metalShaderSource, substitutionMacros,

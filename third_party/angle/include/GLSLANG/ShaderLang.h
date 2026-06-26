@@ -417,6 +417,9 @@ struct ShCompileOptions
     // Dithering is emulated by injecting code in the fragment shader
     uint64_t emulateDithering : 1;
 
+    // Insert explicit casts for float/double/unsigned/signed int on macOS 10.15 with Intel driver
+    uint64_t addExplicitBoolCasts : 1;
+
     // Add round() after applying dither.  This works around a Qualcomm quirk where values can get
     // ceil()ed instead.
     uint64_t roundOutputAfterDithering : 1;

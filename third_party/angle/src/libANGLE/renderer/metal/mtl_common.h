@@ -173,6 +173,13 @@ constexpr size_t kOcclusionQueryResultSize = sizeof(uint64_t);
 
 constexpr gl::Version kMaxSupportedGLVersion = gl::Version(3, 0);
 
+// Work around the enum not being available before macOS 11 or on Mac Catalyst.
+#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MIN_REQUIRED < 110000)) || TARGET_OS_MACCATALYST
+constexpr MTLBlitOption kBlitOptionRowLinearPVRTC = MTLBlitOptionNone;
+#else
+constexpr MTLBlitOption kBlitOptionRowLinearPVRTC = MTLBlitOptionRowLinearPVRTC;
+#endif
+
 enum class PixelType
 {
     Int,

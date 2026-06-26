@@ -167,7 +167,8 @@ angle::FormatID Format::MetalToAngleFormatID(MTLPixelFormat formatMtl)
         case MTLPixelFormatDepth24Unorm_Stencil8:
             return angle::FormatID::D24_UNORM_S8_UINT;
 #endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST
-#if TARGET_OS_IPHONE || (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
+#if TARGET_OS_IPHONE || (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \
+                         (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))
         case MTLPixelFormatASTC_10x10_sRGB:
             return angle::FormatID::ASTC_10x10_SRGB_BLOCK;
         case MTLPixelFormatASTC_10x5_sRGB:
@@ -952,7 +953,9 @@ void Format::init(const DisplayMtl *display, angle::FormatID intendedFormatId_)
             break;
 
 #endif
-#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED < 110000)) || TARGET_OS_MACCATALYST
+#if (TARGET_OS_OSX &&                                                                              \
+     ((__MAC_OS_X_VERSION_MAX_ALLOWED < 110000) || (__MAC_OS_X_VERSION_MIN_REQUIRED < 110000))) || \
+    TARGET_OS_MACCATALYST
         case angle::FormatID::EAC_R11G11_SNORM_BLOCK:
 
             this->metalFormat    = MTLPixelFormatRG16Snorm;
@@ -2279,7 +2282,8 @@ void Format::init(const DisplayMtl *display, angle::FormatID intendedFormatId_)
 
 #    endif  // BC formats on iOS/tvOS/visionOS
 #endif      // TARGET_OS_IPHONE
-#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
+#if (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \
+     (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))
         case angle::FormatID::ASTC_10x10_SRGB_BLOCK:
 
             this->metalFormat    = MTLPixelFormatASTC_10x10_sRGB;
@@ -2825,7 +2829,7 @@ void Format::init(const DisplayMtl *display, angle::FormatID intendedFormatId_)
             }
             break;
 
-#endif  // TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
+#endif  // TARGET_OS_OSX && mac 11.0+ SDK/deployment target
         default:
             this->metalFormat    = MTLPixelFormatInvalid;
             this->actualFormatId = angle::FormatID::NONE;
@@ -3843,10 +3847,10 @@ void FormatTable::initNativeFormatCapsAutogen(const DisplayMtl *display)
     const angle::FeaturesMtl &featuresMtl = display->getFeatures();
     // Skip auto resolve if either hasDepth/StencilAutoResolve or allowMultisampleStoreAndResolve
     // feature are disabled.
-    bool supportDepthAutoResolve = featuresMtl.hasDepthAutoResolve.enabled &&
-                                   featuresMtl.allowMultisampleStoreAndResolve.enabled;
-    bool supportStencilAutoResolve = featuresMtl.hasStencilAutoResolve.enabled &&
-                                     featuresMtl.allowMultisampleStoreAndResolve.enabled;
+    bool supportDepthAutoResolve        = featuresMtl.hasDepthAutoResolve.enabled &&
+                                          featuresMtl.allowMultisampleStoreAndResolve.enabled;
+    bool supportStencilAutoResolve      = featuresMtl.hasStencilAutoResolve.enabled &&
+                                          featuresMtl.allowMultisampleStoreAndResolve.enabled;
     bool supportDepthStencilAutoResolve = supportDepthAutoResolve && supportStencilAutoResolve;
 
     // Source: https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf
@@ -4172,8 +4176,9 @@ void FormatTable::initNativeFormatCapsAutogen(const DisplayMtl *display)
                       display->supportsDepth24Stencil8PixelFormat());
 
 #endif  // TARGET_OS_OSX || TARGET_OS_MACCATALYST
-#if (TARGET_OS_IPHONE && !TARGET_OS_MACCATALYST) || \
-    (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000))
+#if (TARGET_OS_IPHONE && !TARGET_OS_MACCATALYST) ||                 \
+    (TARGET_OS_OSX && (__MAC_OS_X_VERSION_MAX_ALLOWED >= 110000) && \
+     (__MAC_OS_X_VERSION_MIN_REQUIRED >= 110000))
     setFormatCaps(MTLPixelFormatA1BGR5Unorm, /** filterable*/ display->supportsAppleGPUFamily(1),
                   /** writable*/ false, /** blendable*/ display->supportsAppleGPUFamily(1),
                   /** multisample*/ display->supportsAppleGPUFamily(1),

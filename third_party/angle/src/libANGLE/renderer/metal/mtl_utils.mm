@@ -858,9 +858,19 @@ static MTLLanguageVersion GetUserSetOrHighestMSLVersion(const MTLLanguageVersion
                     case 2:
                         return MTLLanguageVersion2_2;
                     case 3:
-                        return MTLLanguageVersion2_3;
+                        if (@available(macOS 11.0, *))
+                        {
+                            return MTLLanguageVersion2_3;
+                        }
+                        assert(0 && "MSL 2.3 requires macOS 11.");
+                        break;
                     case 4:
-                        return MTLLanguageVersion2_4;
+                        if (@available(macOS 12.0, *))
+                        {
+                            return MTLLanguageVersion2_4;
+                        }
+                        assert(0 && "MSL 2.4 requires macOS 12.");
+                        break;
                     default:
                         assert(0 && "Unsupported MSL Minor Language Version.");
                 }
@@ -892,14 +902,24 @@ angle::ObjCPtr<id<MTLLibrary>> CreateShaderLibrary(
         angle::ObjCPtr options  = angle::adoptObjCPtr([[MTLCompileOptions alloc] init]);
 
         // Mark all positions in VS with attribute invariant as non-optimizable
-        options.get().preserveInvariance = usesInvariance;
+        bool canPreserveInvariance = false;
+        if (@available(macOS 11.0, *))
+        {
+            canPreserveInvariance             = true;
+            options.get().preserveInvariance = usesInvariance;
+        }
+
+        // If preserveInvariance is unavailable when compiling from source and the sources use
+        // invariance, disable fast math instead.
+        const bool shouldDisableFastMath =
+            disableFastMath || (usesInvariance && !canPreserveInvariance);
 
 // mathMode and mathFloatingPointFunctions are only available with macOS 15+ and iPhoneOS 18+
 #if __MAC_OS_X_VERSION_MAX_ALLOWED >= 150000 || __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000 || \
     __TV_OS_VERSION_MAX_ALLOWED >= 180000 || TARGET_OS_VISION
         if (@available(macOS 15.0, iOS 18.0, *))
         {
-            if (disableFastMath)
+            if (shouldDisableFastMath)
             {
                 options.get().mathMode                   = MTLMathModeSafe;
                 options.get().mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
@@ -923,7 +943,7 @@ angle::ObjCPtr<id<MTLLibrary>> CreateShaderLibrary(
             // once `fastMathEnabled` is no longer needed as a fallback.
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-            options.get().fastMathEnabled = !disableFastMath;
+            options.get().fastMathEnabled = !shouldDisableFastMath;
 #pragma clang diagnostic pop
         }
 

@@ -82,7 +82,13 @@ MTLResourceOptions resourceOptionsForStorageMode(MTLStorageMode storageMode)
         case MTLStorageModePrivate:
             return MTLResourceStorageModePrivate;
         case MTLStorageModeMemoryless:
+#if (TARGET_OS_IOS || TARGET_OS_TV) && !TARGET_OS_MACCATALYST
             return MTLResourceStorageModeMemoryless;
+#else
+            // Memoryless storage is unavailable before macOS 11. Use private storage as the
+            // non-memoryless fallback.
+            return MTLResourceStorageModePrivate;
+#endif
 #if TARGET_OS_SIMULATOR
         default:
             // TODO(http://anglebug.com/42266474): Remove me once hacked SDKs are fixed.
@@ -437,14 +443,25 @@ Texture::Texture(ContextMtl *context,
 
         if (memoryLess)
         {
-            if (context->getDisplay()->supportsAppleGPUFamily(1))
+#if (TARGET_OS_IOS || TARGET_OS_TV) && !TARGET_OS_MACCATALYST
+            desc.resourceOptions = MTLResourceStorageModeMemoryless;
+#else
+            if (@available(macOS 11.0, macCatalyst 14.1, *))
             {
-                desc.resourceOptions = MTLResourceStorageModeMemoryless;
+                if (context->getDisplay()->supportsAppleGPUFamily(1))
+                {
+                    desc.resourceOptions = MTLResourceStorageModeMemoryless;
+                }
+                else
+                {
+                    desc.resourceOptions = MTLResourceStorageModePrivate;
+                }
             }
             else
             {
                 desc.resourceOptions = MTLResourceStorageModePrivate;
             }
+#endif
 
             // Regardless of whether MTLResourceStorageModeMemoryless is used or not, we disable
             // Load/Store on this texture.
