@@ -32,10 +32,6 @@ skip-if = [
   "os == 'linux' && os_version == '24.04' && arch == 'x86_64' && display == 'x11'",
   "os == 'android' && os_version == '14' && arch == 'aarch64'",
 ]
-fail-if = [
-  "os == 'mac' && os_version == '10.15' && arch == 'x86_64' && debug && !swgl",
-  "os == 'mac' && os_version == '14.70' && arch == 'x86_64' && debug && !swgl",
-]
 
 ["test_conformance__context__context-creation-and-destruction.html"]
 

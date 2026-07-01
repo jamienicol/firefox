@@ -39,8 +39,6 @@ fail-if = [
 ["ensure-exts/test_EXT_texture_compression_bptc.html"]
 fail-if = [
   "os == 'android'",
-  "os == 'mac' && os_version == '10.15' && arch == 'x86_64'",
-  "os == 'mac' && os_version == '14.70' && arch == 'x86_64'",
 ]
 
 ["ensure-exts/test_EXT_texture_compression_rgtc.html"]
