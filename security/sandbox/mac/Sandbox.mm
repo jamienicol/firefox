@@ -472,6 +472,10 @@ bool StartMacSandbox(MacSandboxInfo const& aInfo, std::string& aErrorMessage) {
     params.push_back(aInfo.appPath.c_str());
     params.push_back("HOME_PATH");
     params.push_back(getenv("HOME"));
+    params.push_back("HAS_SANDBOXED_PROFILE");
+    params.push_back(aInfo.hasSandboxedProfile ? "TRUE" : "FALSE");
+    params.push_back("PROFILE_DIR");
+    params.push_back(aInfo.profileDir.c_str());
     if (!aInfo.crashServerPort.empty()) {
       params.push_back("CRASH_PORT");
       params.push_back(aInfo.crashServerPort.c_str());
@@ -826,7 +830,20 @@ bool GetRDDSandboxParamsFromArgs(int aArgc, char** aArgv,
 
 bool GetGPUSandboxParamsFromArgs(int aArgc, char** aArgv,
                                  MacSandboxInfo& aInfo) {
-  return GetUtilitySandboxParamsFromArgs(aArgc, aArgv, aInfo, false);
+  if (!GetUtilitySandboxParamsFromArgs(aArgc, aArgv, aInfo, false)) {
+    return false;
+  }
+
+  for (int i = 0; i < aArgc; i++) {
+    if ((strcmp(aArgv[i], "-profile") == 0) && (i + 1 < aArgc)) {
+      aInfo.hasSandboxedProfile = true;
+      aInfo.profileDir.assign(aArgv[i + 1]);
+      i++;
+      continue;
+    }
+  }
+
+  return true;
 }
 
 /*

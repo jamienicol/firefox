@@ -836,6 +836,44 @@ TEST_F(GfxConfigManager, WebRenderShaderCacheBlocked) {
   EXPECT_TRUE(mFeatures.mGLNorm16Textures.IsEnabled());
 }
 
+TEST_F(GfxConfigManager, WebRenderShaderCacheEnabledWithMetalAngle) {
+  mWrAngleEnabled = Some(true);
+  mFeatureWrAngleBackend = mFeatureMetalAngle;
+  ConfigureWebRender();
+
+  EXPECT_TRUE(mFeatures.mWr.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrCompositor.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrDComp.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrShaderCache.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrOptimizedShaders.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrScissoredCacheClears.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrPartial.IsEnabled());
+  EXPECT_TRUE(mFeatures.mHwCompositing.IsEnabled());
+  EXPECT_TRUE(mFeatures.mGPUProcess.IsEnabled());
+  EXPECT_TRUE(mFeatures.mMetalAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mGLNorm16Textures.IsEnabled());
+}
+
+TEST_F(GfxConfigManager, WebRenderShaderCacheRequiresMetalAngle) {
+  mWrAngleEnabled = Some(false);
+  mFeatureWrAngleBackend = mFeatureMetalAngle;
+  ConfigureWebRender();
+
+  EXPECT_TRUE(mFeatures.mWr.IsEnabled());
+  EXPECT_FALSE(mFeatures.mWrCompositor.IsEnabled());
+  EXPECT_FALSE(mFeatures.mWrAngle.IsEnabled());
+  EXPECT_FALSE(mFeatures.mWrDComp.IsEnabled());
+  EXPECT_FALSE(mFeatures.mWrShaderCache.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrOptimizedShaders.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrScissoredCacheClears.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrPartial.IsEnabled());
+  EXPECT_TRUE(mFeatures.mHwCompositing.IsEnabled());
+  EXPECT_TRUE(mFeatures.mGPUProcess.IsEnabled());
+  EXPECT_TRUE(mFeatures.mMetalAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mGLNorm16Textures.IsEnabled());
+}
+
 TEST_F(GfxConfigManager, WebRenderScissoredCacheClearsDisabled) {
   mWrScissoredCacheClearsEnabled = false;
   ConfigureWebRender();

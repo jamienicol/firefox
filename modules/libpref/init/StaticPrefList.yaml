@@ -8581,7 +8581,7 @@
 
 - name: gfx.webrender.program-binary-disk
   type: bool
-#if defined(XP_WIN) || defined(ANDROID)
+#if defined(XP_WIN) || defined(ANDROID) || defined(XP_MACOSX)
   value: true
 #else
   value: false

@@ -14,6 +14,8 @@ static const char SandboxPolicyGPU[] = R"SANDBOX_LITERAL(
   (define appPath (param "APP_PATH"))
   (define userCacheDir (param "DARWIN_USER_CACHE_DIR"))
   (define bundleIDCacheDir (param "BUNDLE_ID_CACHE_DIR"))
+  (define hasProfileDir (param "HAS_SANDBOXED_PROFILE"))
+  (define profileDir (param "PROFILE_DIR"))
   (define homePath (param "HOME_PATH"))
   (define crashPort (param "CRASH_PORT"))
   (define macosVersion (string->number (param "MAC_OS_VERSION")))
@@ -155,6 +157,14 @@ static const char SandboxPolicyGPU[] = R"SANDBOX_LITERAL(
     (require-all
       (require-not (vnode-type SYMLINK))
       (subpath bundleIDCacheDir)))
+
+  (if (and (string? hasProfileDir)
+           (string? profileDir)
+           (string=? hasProfileDir "TRUE"))
+    (allow file-read* file-write*
+      (require-all
+        (require-not (vnode-type SYMLINK))
+        (subpath (string-append profileDir "/shader-cache")))))
 
   ; Allow issuing sandbox extensions for the MTLCompilerService process
   ; to be able to read and write files in the bundle ID cache dir in the

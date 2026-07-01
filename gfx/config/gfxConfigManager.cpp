@@ -293,6 +293,14 @@ void gfxConfigManager::ConfigureWebRender() {
                                         "WebRender disabled",
                                         "FEATURE_FAILURE_WR_DISABLED"_ns);
   }
+  if (mFeatureWrAngleBackend == mFeatureMetalAngle &&
+      !mFeatureWrAngle->IsEnabled()) {
+    // Native GL on macOS does not support shader caching, so disable the cache
+    // unless we're running on Metal via ANGLE.
+    mFeatureWrShaderCache->ForceDisable(FeatureStatus::Unavailable,
+                                        "Requires ANGLE-on-Metal",
+                                        "FEATURE_FAILURE_ANGLE_DISABLED"_ns);
+  }
 
   mFeatureWrOptimizedShaders->EnableByDefault();
   if (!mWrOptimizedShaders) {
