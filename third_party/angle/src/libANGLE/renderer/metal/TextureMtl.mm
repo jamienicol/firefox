@@ -2010,13 +2010,16 @@ angle::Result TextureMtl::bindToShader(const gl::Context *context,
     }
 
     minLodClamp = std::max(minLodClamp, 0.f);
+    const float originalMaxLodClamp = maxLodClamp;
+    maxLodClamp =
+        std::min(maxLodClamp, static_cast<float>(mViewFromBaseToMaxLevel->mipmapLevels() - 1));
 
     if (mViewFromBaseToMaxLevel->mipmapLevels() > 1)
     {
         ERR() << "Metal texture sampler bind: shaderType=" << static_cast<int>(shaderType)
               << " textureSlot=" << textureSlotIndex << " samplerSlot=" << samplerSlotIndex
               << " samplerObject=" << (sampler ? 1 : 0) << " minLodClamp=" << minLodClamp
-              << " maxLodClamp=" << maxLodClamp
+              << " originalMaxLodClamp=" << originalMaxLodClamp << " maxLodClamp=" << maxLodClamp
               << " viewBaseGLLevel=" << mViewFromBaseToMaxLevel->getBaseGLLevel()
               << " viewMipmapLevels=" << mViewFromBaseToMaxLevel->mipmapLevels()
               << " samplingViewMipmapLevels=" << mSwizzleStencilSamplingView->mipmapLevels()
