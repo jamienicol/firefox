@@ -369,6 +369,12 @@ angle::Result CreateMslShaderLib(mtl::Context *context,
             ERR() << "Metal MSL compilation warning: "
                   << err.get().localizedDescription.UTF8String;
         }
+        if (translatedMslInfo->metalShaderSource &&
+            translatedMslInfo->metalShaderSource->find("metal::bias(") != std::string::npos)
+        {
+            ERR() << "Metal texture-bias shader translated source:\n"
+                  << *(translatedMslInfo->metalShaderSource);
+        }
         if (!translatedMslInfo->metalLibrary)
         {
             const char *errorStr =
