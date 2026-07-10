@@ -8155,7 +8155,7 @@
 
 - name: gfx.webrender.enable-angle
   type: bool
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_MACOSX)
   value: true
 #else
   value: false
