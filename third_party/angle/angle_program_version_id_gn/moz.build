@@ -65,7 +65,7 @@ if CONFIG["OS_TARGET"] == "OpenBSD":
     GeneratedFile(
         "/third_party/angle/gen/ANGLEShaderProgramVersion.h.rsp",
         entry_point="write_paths",
-        inputs=['ANGLEShaderProgramVersion.h-c98ac207d8118669.rsp.in'],
+        inputs=['ANGLEShaderProgramVersion.h-6d343bb30cf5da7a.rsp.in'],
         script="/python/mozbuild/mozbuild/action/write_path_list.py",
     )
 

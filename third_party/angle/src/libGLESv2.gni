@@ -123,6 +123,12 @@ if (is_linux || is_chromeos || is_android || is_fuchsia) {
   ]
 }
 
+if (is_bsd) {
+  libangle_common_sources += [
+    "src/common/system_utils_posix.cpp",
+  ]
+}
+
 if (is_apple) {
   libangle_common_sources += [
     "src/common/apple/ObjCPtr.h",
