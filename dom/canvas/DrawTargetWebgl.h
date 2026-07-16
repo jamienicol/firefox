@@ -99,6 +99,7 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
   void OnMemoryPressure();
 
   void ClearCaches();
+  void FlushPendingRects();
 
   std::shared_ptr<gl::SharedSurface> ExportSharedSurface(
       layers::TextureType aTextureType, SourceSurface* aSurface);
@@ -128,6 +129,8 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
   // WebGL shader resources
   RefPtr<WebGLBuffer> mPathVertexBuffer;
   RefPtr<WebGLVertexArray> mPathVertexArray;
+  RefPtr<WebGLBuffer> mSolidInstanceBuffer;
+  RefPtr<WebGLVertexArray> mSolidInstanceVertexArray;
   // The current insertion offset into the GPU path buffer.
   uint32_t mPathVertexOffset = 0;
   // The maximum size of the GPU path buffer.
@@ -144,12 +147,17 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
   UniquePtr<WGR::OutputVertex[]> mWGROutputBuffer;
 
   RefPtr<WebGLProgram> mSolidProgram;
+  RefPtr<WebGLProgram> mSolidInstanceProgram;
   Maybe<uint32_t> mSolidProgramViewport;
   Maybe<uint32_t> mSolidProgramAA;
   Maybe<uint32_t> mSolidProgramTransform;
   Maybe<uint32_t> mSolidProgramColor;
   Maybe<uint32_t> mSolidProgramClipMask;
   Maybe<uint32_t> mSolidProgramClipBounds;
+  Maybe<uint32_t> mSolidInstanceProgramViewport;
+  Maybe<uint32_t> mSolidInstanceProgramAA;
+  Maybe<uint32_t> mSolidInstanceProgramClipMask;
+  Maybe<uint32_t> mSolidInstanceProgramClipBounds;
   RefPtr<WebGLProgram> mImageProgram;
   Maybe<uint32_t> mImageProgramViewport;
   Maybe<uint32_t> mImageProgramAA;
@@ -191,6 +199,18 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
     Maybe<Array<float, 4>> mColor;
     Maybe<Array<float, 4>> mClipBounds;
   } mSolidProgramUniformState;
+
+  struct SolidRectInstance {
+    Array<float, 6> mTransform;
+    Array<float, 4> mColor;
+  };
+  std::vector<SolidRectInstance> mPendingSolidRects;
+
+  struct SolidInstanceProgramUniformState {
+    Maybe<Array<float, 2>> mViewport;
+    Maybe<Array<float, 1>> mAA;
+    Maybe<Array<float, 4>> mClipBounds;
+  } mSolidInstanceProgramUniformState;
 
   struct ImageProgramUniformState {
     Maybe<Array<float, 2>> mViewport;

@@ -310,8 +310,32 @@ void SharedContextWebgl::UnlinkGlyphCaches() {
 void SharedContextWebgl::OnMemoryPressure() { mShouldClearCaches = true; }
 
 void SharedContextWebgl::ClearCaches() {
+  FlushPendingRects();
   OnMemoryPressure();
   ClearCachesIfNecessary();
+}
+
+void SharedContextWebgl::FlushPendingRects() {
+  if (mPendingSolidRects.empty()) {
+    return;
+  }
+
+  mWebgl->UseProgram(mSolidInstanceProgram);
+  mLastProgram = mSolidInstanceProgram;
+  mWebgl->BindVertexArray(mSolidInstanceVertexArray);
+  mWebgl->BindBuffer(LOCAL_GL_ARRAY_BUFFER, mSolidInstanceBuffer);
+  const auto dataLen =
+      CheckedInt<size_t>(mPendingSolidRects.size()) * sizeof(SolidRectInstance);
+  MOZ_RELEASE_ASSERT(dataLen.isValid());
+  mWebgl->BufferData(
+      LOCAL_GL_ARRAY_BUFFER, dataLen.value(),
+      reinterpret_cast<const uint8_t*>(mPendingSolidRects.data()),
+      LOCAL_GL_STREAM_DRAW);
+  mWebgl->DrawArraysInstanced(LOCAL_GL_TRIANGLES, 0, 6,
+                              mPendingSolidRects.size());
+  mWebgl->BindVertexArray(mPathVertexArray);
+  mWebgl->BindBuffer(LOCAL_GL_ARRAY_BUFFER, mPathVertexBuffer);
+  mPendingSolidRects.clear();
 }
 
 // Clear out the entire list of texture handles from any source.
@@ -707,6 +731,7 @@ bool SharedContextWebgl::SetTarget(DrawTargetWebgl* aDT,
     return false;
   }
   if (aDT != mCurrentTarget || mTargetHandle != aHandle) {
+    FlushPendingRects();
     mCurrentTarget = aDT;
     mTargetHandle = aHandle;
     IntRect bounds;
@@ -739,6 +764,7 @@ bool SharedContextWebgl::SetTarget(DrawTargetWebgl* aDT,
 void SharedContextWebgl::SetClipRect(const Rect& aClipRect) {
   // Only invalidate the clip rect if it actually changes.
   if (!mClipAARect.IsEqualEdges(aClipRect)) {
+    FlushPendingRects();
     mClipAARect = aClipRect;
     // Store the integer-aligned bounds.
     mClipRect = RoundedOut(aClipRect);
@@ -747,6 +773,7 @@ void SharedContextWebgl::SetClipRect(const Rect& aClipRect) {
 
 bool SharedContextWebgl::SetClipMask(const RefPtr<WebGLTexture>& aTex) {
   if (mLastClipMask != aTex) {
+    FlushPendingRects();
     if (!mWebgl) {
       return false;
     }
@@ -1582,8 +1609,10 @@ void DrawTargetWebgl::ReleaseBits(uint8_t* aData) {
 }
 
 // Format is x, y, alpha
-static const float kRectVertexData[12] = {0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-                                          1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f};
+static const float kRectVertexData[18] = {
+    0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+    0.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+};
 
 // Orphans the contents of the path vertex buffer. The beginning of the buffer
 // always contains data for a simple rectangle draw to avoid needing to switch
@@ -1744,6 +1773,121 @@ bool SharedContextWebgl::CreateShaders() {
     }
     mWebgl->UseProgram(mSolidProgram);
     UniformData(LOCAL_GL_INT, mSolidProgramClipMask, Array<int32_t, 1>{1});
+  }
+
+  if (!mSolidInstanceProgram) {
+    auto vsSource =
+        "attribute vec3 a_vertex;\n"
+        "attribute vec2 a_transform0;\n"
+        "attribute vec2 a_transform1;\n"
+        "attribute vec2 a_transform2;\n"
+        "attribute vec4 a_color;\n"
+        "uniform vec2 u_viewport;\n"
+        "uniform vec4 u_clipbounds;\n"
+        "uniform float u_aa;\n"
+        "varying vec2 v_cliptc;\n"
+        "varying vec4 v_clipdist;\n"
+        "varying vec4 v_dist;\n"
+        "varying float v_alpha;\n"
+        "varying vec4 v_color;\n"
+        "void main() {\n"
+        " vec2 scale = "
+        "vec2(dot(a_transform0,a_transform0),dot(a_transform1,a_transform1));\n"
+        " vec2 invScale = u_aa * inversesqrt(scale + 1.0e-6);\n"
+        " scale *= invScale;\n"
+        " vec2 extrude = a_vertex.xy + invScale * (2.0*a_vertex.xy-1.0);\n"
+        " vec2 vertex = a_transform0*extrude.x + a_transform1*extrude.y + "
+        "a_transform2;\n"
+        " gl_Position = vec4(vertex*2.0/u_viewport-1.0,0.0,1.0);\n"
+        " v_cliptc = vertex/u_viewport;\n"
+        " v_clipdist = vec4(vertex-u_clipbounds.xy,u_clipbounds.zw-vertex);\n"
+        " float noAA = 1.0-u_aa;\n"
+        " v_dist = vec4(extrude,1.0-extrude)*scale.xyxy+0.5+noAA;\n"
+        " v_alpha = min(a_vertex.z,min(scale.x,1.0)*min(scale.y,1.0)+noAA);\n"
+        " v_color = a_color;\n"
+        "}\n";
+    auto fsSource =
+        "precision mediump float;\n"
+        "uniform sampler2D u_clipmask;\n"
+        "varying highp vec2 v_cliptc;\n"
+        "varying vec4 v_clipdist;\n"
+        "varying vec4 v_dist;\n"
+        "varying float v_alpha;\n"
+        "varying vec4 v_color;\n"
+        "void main() {\n"
+        " float clip=texture2D(u_clipmask,v_cliptc).r;\n"
+        " vec4 dist=min(v_dist,v_clipdist); dist.xy=min(dist.xy,dist.zw);\n"
+        " float aa=clamp(min(dist.x,dist.y),0.0,v_alpha);\n"
+        " gl_FragColor=clip*aa*v_color;\n"
+        "}\n";
+    auto vs = mWebgl->CreateShader(LOCAL_GL_VERTEX_SHADER);
+    auto fs = mWebgl->CreateShader(LOCAL_GL_FRAGMENT_SHADER);
+    mWebgl->ShaderSource(*vs, vsSource);
+    mWebgl->ShaderSource(*fs, fsSource);
+    mWebgl->CompileShader(*vs);
+    mWebgl->CompileShader(*fs);
+    if (!mWebgl->GetCompileResult(*vs).success ||
+        !mWebgl->GetCompileResult(*fs).success) {
+      return false;
+    }
+    mSolidInstanceProgram = mWebgl->CreateProgram();
+    mWebgl->AttachShader(*mSolidInstanceProgram, *vs);
+    mWebgl->AttachShader(*mSolidInstanceProgram, *fs);
+    mWebgl->BindAttribLocation(*mSolidInstanceProgram, 0, "a_vertex");
+    mWebgl->BindAttribLocation(*mSolidInstanceProgram, 1, "a_transform0");
+    mWebgl->BindAttribLocation(*mSolidInstanceProgram, 2, "a_transform1");
+    mWebgl->BindAttribLocation(*mSolidInstanceProgram, 3, "a_transform2");
+    mWebgl->BindAttribLocation(*mSolidInstanceProgram, 4, "a_color");
+    mWebgl->LinkProgram(*mSolidInstanceProgram);
+    if (!mWebgl->GetLinkResult(*mSolidInstanceProgram).success) {
+      return false;
+    }
+    mSolidInstanceProgramViewport =
+        GetUniformLocation(mSolidInstanceProgram, "u_viewport");
+    mSolidInstanceProgramAA = GetUniformLocation(mSolidInstanceProgram, "u_aa");
+    mSolidInstanceProgramClipMask =
+        GetUniformLocation(mSolidInstanceProgram, "u_clipmask");
+    mSolidInstanceProgramClipBounds =
+        GetUniformLocation(mSolidInstanceProgram, "u_clipbounds");
+    if (!mSolidInstanceProgramViewport || !mSolidInstanceProgramAA ||
+        !mSolidInstanceProgramClipMask || !mSolidInstanceProgramClipBounds) {
+      return false;
+    }
+    mWebgl->UseProgram(mSolidInstanceProgram);
+    UniformData(LOCAL_GL_INT, mSolidInstanceProgramClipMask,
+                Array<int32_t, 1>{1});
+  }
+
+  if (!mSolidInstanceVertexArray) {
+    mSolidInstanceVertexArray = mWebgl->CreateVertexArray();
+    mSolidInstanceBuffer = mWebgl->CreateBuffer();
+    mWebgl->BindVertexArray(mSolidInstanceVertexArray);
+    mWebgl->BindBuffer(LOCAL_GL_ARRAY_BUFFER, mPathVertexBuffer);
+    mWebgl->EnableVertexAttribArray(0);
+    webgl::VertAttribPointerDesc vertexDesc;
+    vertexDesc.channels = 3;
+    vertexDesc.type = LOCAL_GL_FLOAT;
+    mWebgl->VertexAttribPointer(0, vertexDesc);
+    mWebgl->BindBuffer(LOCAL_GL_ARRAY_BUFFER, mSolidInstanceBuffer);
+    for (uint32_t i = 0; i < 3; ++i) {
+      webgl::VertAttribPointerDesc transformDesc;
+      transformDesc.channels = 2;
+      transformDesc.type = LOCAL_GL_FLOAT;
+      transformDesc.byteStrideOrZero = sizeof(SolidRectInstance);
+      transformDesc.byteOffset = i * sizeof(float) * 2;
+      mWebgl->EnableVertexAttribArray(i + 1);
+      mWebgl->VertexAttribPointer(i + 1, transformDesc);
+      mWebgl->VertexAttribDivisor(i + 1, 1);
+    }
+    webgl::VertAttribPointerDesc colorDesc;
+    colorDesc.channels = 4;
+    colorDesc.type = LOCAL_GL_FLOAT;
+    colorDesc.byteStrideOrZero = sizeof(SolidRectInstance);
+    colorDesc.byteOffset = sizeof(float) * 6;
+    mWebgl->EnableVertexAttribArray(4);
+    mWebgl->VertexAttribPointer(4, colorDesc);
+    mWebgl->VertexAttribDivisor(4, 1);
+    mWebgl->BindVertexArray(mPathVertexArray);
   }
 
   if (!mImageProgram) {
@@ -3001,7 +3145,7 @@ void SharedContextWebgl::MaybeUniformData(GLenum aFuncElemType,
 }
 
 inline void SharedContextWebgl::DrawQuad() {
-  mWebgl->DrawArraysInstanced(LOCAL_GL_TRIANGLE_FAN, 0, 4, 1);
+  mWebgl->DrawArraysInstanced(LOCAL_GL_TRIANGLES, 0, 6, 1);
 }
 
 void SharedContextWebgl::DrawTriangles(const PathVertexRange& aRange) {
@@ -3027,6 +3171,14 @@ bool SharedContextWebgl::DrawRectAccel(
   // If the rect or clip rect is empty, then there is nothing to draw.
   if (aRect.IsEmpty() || mClipRect.IsEmpty()) {
     return true;
+  }
+
+  const bool canBatchSolid = !aVertexRange && !aStrokeOptions && !aMaskColor &&
+                             !aBlendStage &&
+                             aPattern.GetType() == PatternType::COLOR &&
+                             aOptions.mCompositionOp == CompositionOp::OP_OVER;
+  if (!canBatchSolid) {
+    FlushPendingRects();
   }
 
   // Check if the drawing options and the pattern support acceleration. Also
@@ -3158,6 +3310,36 @@ bool SharedContextWebgl::DrawRectAccel(
         color = DeviceColor(1, 1, 1, 1);
       }
       SetBlendState(aOptions.mCompositionOp, blendColor, aBlendStage);
+      if (canBatchSolid) {
+        if (mLastProgram != mSolidInstanceProgram) {
+          mWebgl->UseProgram(mSolidInstanceProgram);
+          mLastProgram = mSolidInstanceProgram;
+        }
+        const Array<float, 2> viewportData = {float(mViewportSize.width),
+                                              float(mViewportSize.height)};
+        MaybeUniformData(LOCAL_GL_FLOAT_VEC2, mSolidInstanceProgramViewport,
+                         viewportData,
+                         mSolidInstanceProgramUniformState.mViewport);
+        const Array<float, 1> aaData = {1.0f};
+        MaybeUniformData(LOCAL_GL_FLOAT, mSolidInstanceProgramAA, aaData,
+                         mSolidInstanceProgramUniformState.mAA);
+        const Array<float, 4> clipBounds = {
+            mClipAARect.x - 0.5f, mClipAARect.y - 0.5f,
+            mClipAARect.XMost() + 0.5f, mClipAARect.YMost() + 0.5f};
+        MaybeUniformData(LOCAL_GL_FLOAT_VEC4, mSolidInstanceProgramClipBounds,
+                         clipBounds,
+                         mSolidInstanceProgramUniformState.mClipBounds);
+        Matrix xform(aRect.width, 0.0f, 0.0f, aRect.height, aRect.x, aRect.y);
+        if (aTransformed) {
+          xform *= rectXform;
+        }
+        mPendingSolidRects.push_back({
+            {xform._11, xform._12, xform._21, xform._22, xform._31, xform._32},
+            {color.b, color.g, color.r, color.a},
+        });
+        success = true;
+        break;
+      }
       // Since it couldn't be mapped to a scissored clear, we need to use the
       // solid color shader with supplied transform.
       if (mLastProgram != mSolidProgram) {
@@ -6629,6 +6811,7 @@ void DrawTargetWebgl::EndFrame() {
     DrawRect(Rect(corner), ColorPattern(DeviceColor(0.0f, 1.0f, 0.0f, 1.0f)),
              DrawOptions(), Nothing(), nullptr, false, false);
   }
+  mSharedContext->FlushPendingRects();
   mProfile.EndFrame();
   // Ensure we're not somehow using more than the allowed texture memory.
   mSharedContext->PruneTextureMemory();
