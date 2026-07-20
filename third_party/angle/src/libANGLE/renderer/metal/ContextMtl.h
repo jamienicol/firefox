@@ -51,6 +51,16 @@ class ContextMtl : public ContextImpl, public mtl::Context
         BufferUpload,
     };
 
+    enum class BufferUpdatePath : uint8_t
+    {
+        CPUFeature,
+        CPUIncompatible,
+        CPUIdle,
+        ShadowCopy,
+        StagingBlit,
+        BufferRename,
+    };
+
     ContextMtl(const gl::State &state,
                gl::ErrorSet *errorSet,
                const egl::AttributeMap &attribs,
@@ -414,6 +424,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     mtl::PipelineCache &getPipelineCache() { return mPipelineCache; }
 
     void recordDrawTiming(DrawTimingCategory category, uint64_t startTime, size_t bytes = 0);
+    void recordBufferUpdate(BufferUpdatePath path, size_t bytes);
     void recordPipelineCacheHit(bool hit);
 
     const angle::ImageLoadContext &getImageLoadContext() const { return mImageLoadContext; }
@@ -614,6 +625,18 @@ class ContextMtl : public ContextImpl, public mtl::Context
         uint64_t pipelineCacheMisses = 0;
         uint64_t bufferUploadCalls   = 0;
         uint64_t bufferUploadBytes   = 0;
+        uint64_t cpuFeatureCalls     = 0;
+        uint64_t cpuFeatureBytes     = 0;
+        uint64_t cpuIncompatibleCalls = 0;
+        uint64_t cpuIncompatibleBytes = 0;
+        uint64_t cpuIdleCalls        = 0;
+        uint64_t cpuIdleBytes        = 0;
+        uint64_t shadowCopyCalls     = 0;
+        uint64_t shadowCopyBytes     = 0;
+        uint64_t stagingBlitCalls    = 0;
+        uint64_t stagingBlitBytes    = 0;
+        uint64_t bufferRenameCalls   = 0;
+        uint64_t bufferRenameBytes   = 0;
         uint64_t setupDrawNs         = 0;
         uint64_t setupDrawImplNs     = 0;
         uint64_t syncStateNs         = 0;

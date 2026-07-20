@@ -1882,6 +1882,37 @@ void ContextMtl::recordDrawTiming(DrawTimingCategory category, uint64_t startTim
     }
 }
 
+void ContextMtl::recordBufferUpdate(BufferUpdatePath path, size_t bytes)
+{
+    switch (path)
+    {
+        case BufferUpdatePath::CPUFeature:
+            ++mDrawStats.cpuFeatureCalls;
+            mDrawStats.cpuFeatureBytes += bytes;
+            break;
+        case BufferUpdatePath::CPUIncompatible:
+            ++mDrawStats.cpuIncompatibleCalls;
+            mDrawStats.cpuIncompatibleBytes += bytes;
+            break;
+        case BufferUpdatePath::CPUIdle:
+            ++mDrawStats.cpuIdleCalls;
+            mDrawStats.cpuIdleBytes += bytes;
+            break;
+        case BufferUpdatePath::ShadowCopy:
+            ++mDrawStats.shadowCopyCalls;
+            mDrawStats.shadowCopyBytes += bytes;
+            break;
+        case BufferUpdatePath::StagingBlit:
+            ++mDrawStats.stagingBlitCalls;
+            mDrawStats.stagingBlitBytes += bytes;
+            break;
+        case BufferUpdatePath::BufferRename:
+            ++mDrawStats.bufferRenameCalls;
+            mDrawStats.bufferRenameBytes += bytes;
+            break;
+    }
+}
+
 void ContextMtl::recordPipelineCacheHit(bool hit)
 {
     if (hit)
@@ -1903,6 +1934,8 @@ void ContextMtl::dumpDrawStats()
         "ANGLE_METAL_DRAW_STATS: context=%p command_buffer=%llu draws=%llu setup_impl=%llu sync_state=%llu no_op=%llu "
         "encoder_resets=%llu textures=%llu framebuffer=%llu pipeline_changes=%llu "
         "pipeline_hits=%llu pipeline_misses=%llu uploads=%llu upload_bytes=%llu "
+        "cpu_feature=%llu/%llu cpu_incompatible=%llu/%llu cpu_idle=%llu/%llu "
+        "shadow_copy=%llu/%llu staging_blit=%llu/%llu buffer_rename=%llu/%llu "
         "setup_ms=%.3f setup_impl_ms=%.3f sync_state_ms=%.3f client_attribs_ms=%.3f dirty_textures_ms=%.3f "
         "framebuffer_ms=%.3f pipeline_check_ms=%.3f dirty_state_ms=%.3f "
         "program_ms=%.3f pipeline_ms=%.3f texture_ms=%.3f uniforms_ms=%.3f "
@@ -1921,6 +1954,18 @@ void ContextMtl::dumpDrawStats()
         static_cast<unsigned long long>(stats.pipelineCacheMisses),
         static_cast<unsigned long long>(stats.bufferUploadCalls),
         static_cast<unsigned long long>(stats.bufferUploadBytes),
+        static_cast<unsigned long long>(stats.cpuFeatureCalls),
+        static_cast<unsigned long long>(stats.cpuFeatureBytes),
+        static_cast<unsigned long long>(stats.cpuIncompatibleCalls),
+        static_cast<unsigned long long>(stats.cpuIncompatibleBytes),
+        static_cast<unsigned long long>(stats.cpuIdleCalls),
+        static_cast<unsigned long long>(stats.cpuIdleBytes),
+        static_cast<unsigned long long>(stats.shadowCopyCalls),
+        static_cast<unsigned long long>(stats.shadowCopyBytes),
+        static_cast<unsigned long long>(stats.stagingBlitCalls),
+        static_cast<unsigned long long>(stats.stagingBlitBytes),
+        static_cast<unsigned long long>(stats.bufferRenameCalls),
+        static_cast<unsigned long long>(stats.bufferRenameBytes),
         static_cast<double>(stats.setupDrawNs) / 1000000.0,
         static_cast<double>(stats.setupDrawImplNs) / 1000000.0,
         static_cast<double>(stats.syncStateNs) / 1000000.0,

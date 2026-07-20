@@ -743,34 +743,48 @@ angle::Result BufferMtl::setSubDataImpl(const gl::Context *context,
 
     if (features.preferCpuForBuffersubdata.enabled)
     {
+        contextMtl->recordBufferUpdate(ContextMtl::BufferUpdatePath::CPUFeature,
+                                       dataToCopy.size());
         return copyDataToExistingBufferViaCPU(contextMtl, dataToCopy, offset);
     }
 
     if (mShadowCopy.size() > 0)
     {
+        contextMtl->recordBufferUpdate(ContextMtl::BufferUpdatePath::ShadowCopy,
+                                       dataToCopy.size());
         return updateShadowCopyThenCopyShadowToNewBuffer(contextMtl, dataToCopy, offset, feedback);
     }
     else
     {
         bool alwaysUseStagedBufferUpdates = features.alwaysUseStagedBufferUpdates.enabled;
+        bool blitCompatible = isOffsetAndSizeMetalBlitCompatible(offset, dataToCopy.size());
+        bool bufferInUse =
+            blitCompatible && !alwaysUseStagedBufferUpdates && mBuffer->isBeingUsedByGPU(contextMtl);
 
-        if (isOffsetAndSizeMetalBlitCompatible(offset, dataToCopy.size()) &&
-            (alwaysUseStagedBufferUpdates || mBuffer->isBeingUsedByGPU(contextMtl)))
+        if (blitCompatible && (alwaysUseStagedBufferUpdates || bufferInUse))
         {
             if (alwaysUseStagedBufferUpdates || !isSafeToReadFromBufferViaBlit(contextMtl))
             {
                 // We can't use the buffer now so copy the data
                 // to a staging buffer and blit it in
+                contextMtl->recordBufferUpdate(ContextMtl::BufferUpdatePath::StagingBlit,
+                                               dataToCopy.size());
                 return updateExistingBufferViaBlitFromStagingBuffer(contextMtl, dataToCopy, offset);
             }
             else
             {
+                contextMtl->recordBufferUpdate(ContextMtl::BufferUpdatePath::BufferRename,
+                                               dataToCopy.size());
                 return putDataInNewBufferAndStartUsingNewBuffer(contextMtl, dataToCopy, offset,
                                                                 feedback);
             }
         }
         else
         {
+            contextMtl->recordBufferUpdate(
+                blitCompatible ? ContextMtl::BufferUpdatePath::CPUIdle
+                               : ContextMtl::BufferUpdatePath::CPUIncompatible,
+                dataToCopy.size());
             return copyDataToExistingBufferViaCPU(contextMtl, dataToCopy, offset);
         }
     }
