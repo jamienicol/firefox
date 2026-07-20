@@ -99,6 +99,7 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
   void OnMemoryPressure();
 
   void ClearCaches();
+  void FlushPendingRects();
 
   std::shared_ptr<gl::SharedSurface> ExportSharedSurface(
       layers::TextureType aTextureType, SourceSurface* aSurface);
@@ -128,6 +129,7 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
   // WebGL shader resources
   RefPtr<WebGLBuffer> mPathVertexBuffer;
   RefPtr<WebGLVertexArray> mPathVertexArray;
+  RefPtr<WebGLBuffer> mSolidInstanceBuffer;
   // The current insertion offset into the GPU path buffer.
   uint32_t mPathVertexOffset = 0;
   // The maximum size of the GPU path buffer.
@@ -150,6 +152,11 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
   Maybe<uint32_t> mSolidProgramColor;
   Maybe<uint32_t> mSolidProgramClipMask;
   Maybe<uint32_t> mSolidProgramClipBounds;
+  RefPtr<WebGLProgram> mSolidBatchProgram;
+  Maybe<uint32_t> mSolidBatchProgramViewport;
+  Maybe<uint32_t> mSolidBatchProgramAA;
+  Maybe<uint32_t> mSolidBatchProgramClipMask;
+  Maybe<uint32_t> mSolidBatchProgramClipBounds;
   RefPtr<WebGLProgram> mImageProgram;
   Maybe<uint32_t> mImageProgramViewport;
   Maybe<uint32_t> mImageProgramAA;
@@ -191,6 +198,18 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
     Maybe<Array<float, 4>> mColor;
     Maybe<Array<float, 4>> mClipBounds;
   } mSolidProgramUniformState;
+
+  struct SolidBatchProgramUniformState {
+    Maybe<Array<float, 2>> mViewport;
+    Maybe<Array<float, 1>> mAA;
+    Maybe<Array<float, 4>> mClipBounds;
+  } mSolidBatchProgramUniformState;
+
+  struct SolidRectInstance {
+    Array<float, 6> mTransform;
+    Array<float, 4> mColor;
+  };
+  std::vector<SolidRectInstance> mSolidInstanceData;
 
   struct ImageProgramUniformState {
     Maybe<Array<float, 2>> mViewport;
@@ -338,7 +357,7 @@ class SharedContextWebgl : public mozilla::RefCounted<SharedContextWebgl>,
   void RestoreCurrentTarget(const RefPtr<WebGLTexture>& aClipMask = nullptr);
 
   // Reset the current target.
-  void ClearTarget() { mCurrentTarget = nullptr; }
+  void ClearTarget();
   // Reset the last used texture to force binding next use.
   void ClearLastTexture(bool aFullClear = false);
 
