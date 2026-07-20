@@ -15,6 +15,8 @@
 
 #include <TargetConditionals.h>
 #include <cstdint>
+#include <cstdio>
+#include <mach/mach_time.h>
 
 #include "GLSLANG/ShaderLang.h"
 #include "common/debug.h"
@@ -129,6 +131,29 @@ bool IsTransformFeedbackOnly(const gl::State &glState)
     return glState.isTransformFeedbackActiveUnpaused() && glState.isRasterizerDiscardEnabled();
 }
 
+uint64_t ElapsedNanoseconds(uint64_t startTime)
+{
+    static const mach_timebase_info_data_t timebase = [] {
+        mach_timebase_info_data_t result;
+        mach_timebase_info(&result);
+        return result;
+    }();
+
+    return (mach_absolute_time() - startTime) * timebase.numer / timebase.denom;
+}
+
+class ScopedDrawTimer
+{
+  public:
+    explicit ScopedDrawTimer(uint64_t *total) : mTotal(total), mStartTime(mach_absolute_time()) {}
+
+    ~ScopedDrawTimer() { *mTotal += ElapsedNanoseconds(mStartTime); }
+
+  private:
+    uint64_t *mTotal;
+    uint64_t mStartTime;
+};
+
 // This class constructs line loop's last segment buffer inside begin() method
 // and perform the draw of the line loop's last segment inside destructor
 class LineLoopLastSegmentHelper
@@ -242,6 +267,7 @@ angle::Result ContextMtl::initialize(const angle::ImageLoadContext &imageLoadCon
 
 void ContextMtl::onDestroy(const gl::Context *context)
 {
+    dumpDrawStats();
     mTriFanIndexBuffer.destroy(this);
     mLineLoopIndexBuffer.destroy(this);
     mLineLoopLastSegmentIndexBuffer.destroy(this);
@@ -1118,6 +1144,8 @@ angle::Result ContextMtl::syncState(const gl::Context *context,
                                     const gl::state::ExtendedDirtyBits extendedBitMask,
                                     gl::Command command)
 {
+    ++mDrawStats.syncStateCalls;
+    ScopedDrawTimer timer(&mDrawStats.syncStateNs);
     const gl::State &glState = context->getState();
 
     // Metal's blend state is set at once, while ANGLE tracks separate dirty
@@ -1788,6 +1816,7 @@ void ContextMtl::endBlitAndComputeEncoding()
 
 void ContextMtl::endEncoding(bool forceSaveRenderPassContent)
 {
+    ScopedDrawTimer timer(&mDrawStats.endEncodingNs);
     endBlitAndComputeEncoding();
 
     if (mRenderEncoder.valid())
@@ -1821,6 +1850,7 @@ void ContextMtl::flushCommandBuffer(mtl::CommandBufferFinishOperation operation)
     if (mCmdBuffer.ready())
     {
         endEncoding(true);
+        dumpDrawStats();
         mCmdBuffer.commit(operation);
         mBufferManager.incrementNumCommandBufferCommits();
     }
@@ -1828,6 +1858,84 @@ void ContextMtl::flushCommandBuffer(mtl::CommandBufferFinishOperation operation)
     {
         mCmdBuffer.wait(operation);
     }
+}
+
+void ContextMtl::recordDrawTiming(DrawTimingCategory category, uint64_t startTime, size_t bytes)
+{
+    const uint64_t elapsed = ElapsedNanoseconds(startTime);
+    switch (category)
+    {
+        case DrawTimingCategory::Pipeline:
+            mDrawStats.pipelineSetupNs += elapsed;
+            break;
+        case DrawTimingCategory::Textures:
+            mDrawStats.textureSetupNs += elapsed;
+            break;
+        case DrawTimingCategory::Uniforms:
+            mDrawStats.uniformSetupNs += elapsed;
+            break;
+        case DrawTimingCategory::BufferUpload:
+            ++mDrawStats.bufferUploadCalls;
+            mDrawStats.bufferUploadBytes += bytes;
+            mDrawStats.bufferUploadNs += elapsed;
+            break;
+    }
+}
+
+void ContextMtl::recordPipelineCacheHit(bool hit)
+{
+    if (hit)
+    {
+        ++mDrawStats.pipelineCacheHits;
+    }
+    else
+    {
+        ++mDrawStats.pipelineCacheMisses;
+    }
+}
+
+void ContextMtl::dumpDrawStats()
+{
+    ++mDrawStatsCommandBufferCount;
+    const DrawStats &stats = mDrawStats;
+    std::fprintf(
+        stderr,
+        "ANGLE_METAL_DRAW_STATS: context=%p command_buffer=%llu draws=%llu setup_impl=%llu sync_state=%llu no_op=%llu "
+        "encoder_resets=%llu textures=%llu framebuffer=%llu pipeline_changes=%llu "
+        "pipeline_hits=%llu pipeline_misses=%llu uploads=%llu upload_bytes=%llu "
+        "setup_ms=%.3f setup_impl_ms=%.3f sync_state_ms=%.3f client_attribs_ms=%.3f dirty_textures_ms=%.3f "
+        "framebuffer_ms=%.3f pipeline_check_ms=%.3f dirty_state_ms=%.3f "
+        "program_ms=%.3f pipeline_ms=%.3f texture_ms=%.3f uniforms_ms=%.3f "
+        "upload_ms=%.3f end_encoding_ms=%.3f\n",
+        this,
+        static_cast<unsigned long long>(mDrawStatsCommandBufferCount),
+        static_cast<unsigned long long>(stats.drawCalls),
+        static_cast<unsigned long long>(stats.setupDrawImplCalls),
+        static_cast<unsigned long long>(stats.syncStateCalls),
+        static_cast<unsigned long long>(stats.noOpDraws),
+        static_cast<unsigned long long>(stats.encoderResets),
+        static_cast<unsigned long long>(stats.dirtyTextureUpdates),
+        static_cast<unsigned long long>(stats.framebufferUpdates),
+        static_cast<unsigned long long>(stats.pipelineDescChanges),
+        static_cast<unsigned long long>(stats.pipelineCacheHits),
+        static_cast<unsigned long long>(stats.pipelineCacheMisses),
+        static_cast<unsigned long long>(stats.bufferUploadCalls),
+        static_cast<unsigned long long>(stats.bufferUploadBytes),
+        static_cast<double>(stats.setupDrawNs) / 1000000.0,
+        static_cast<double>(stats.setupDrawImplNs) / 1000000.0,
+        static_cast<double>(stats.syncStateNs) / 1000000.0,
+        static_cast<double>(stats.clientAttribsNs) / 1000000.0,
+        static_cast<double>(stats.dirtyTexturesNs) / 1000000.0,
+        static_cast<double>(stats.framebufferNs) / 1000000.0,
+        static_cast<double>(stats.pipelineCheckNs) / 1000000.0,
+        static_cast<double>(stats.dirtyStateNs) / 1000000.0,
+        static_cast<double>(stats.programSetupNs) / 1000000.0,
+        static_cast<double>(stats.pipelineSetupNs) / 1000000.0,
+        static_cast<double>(stats.textureSetupNs) / 1000000.0,
+        static_cast<double>(stats.uniformSetupNs) / 1000000.0,
+        static_cast<double>(stats.bufferUploadNs) / 1000000.0,
+        static_cast<double>(stats.endEncodingNs) / 1000000.0);
+    mDrawStats = {};
 }
 
 void ContextMtl::flushCommandBufferIfNeeded()
@@ -2468,6 +2576,8 @@ angle::Result ContextMtl::setupDraw(const gl::Context *context,
                                     bool xfbPass,
                                     bool *isNoOp)
 {
+    ++mDrawStats.drawCalls;
+    ScopedDrawTimer timer(&mDrawStats.setupDrawNs);
     ANGLE_TRY(setupDrawImpl(context, mode, firstVertex, vertexOrIndexCount, instances,
                             indexTypeOrNone, indices, xfbPass, isNoOp));
     if (*isNoOp)
@@ -2504,6 +2614,8 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
                                         bool xfbPass,
                                         bool *isNoOp)
 {
+    ++mDrawStats.setupDrawImplCalls;
+    ScopedDrawTimer timer(&mDrawStats.setupDrawImplNs);
     ASSERT(mExecutable);
     *isNoOp = false;
     // instances=0 means no instanced draw.
@@ -2511,6 +2623,7 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
 
     if (context->hasAnyActiveClientAttrib())
     {
+        ScopedDrawTimer clientAttribTimer(&mDrawStats.clientAttribsNs);
         ANGLE_TRY(mVertexArray->updateClientAttribs(context, firstVertex, vertexOrIndexCount,
                                                     instanceCount, indexTypeOrNone, indices));
     }
@@ -2519,6 +2632,8 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
     bool textureChanged = false;
     if (mDirtyBits.test(DIRTY_BIT_TEXTURES))
     {
+        ++mDrawStats.dirtyTextureUpdates;
+        ScopedDrawTimer textureTimer(&mDrawStats.dirtyTexturesNs);
         textureChanged = true;
         ANGLE_TRY(handleDirtyActiveTextures(context));
     }
@@ -2539,12 +2654,15 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
 
     if (!mRenderEncoder.valid())
     {
+        ++mDrawStats.encoderResets;
         // re-apply everything
         invalidateState(context);
     }
 
     if (mDirtyBits.test(DIRTY_BIT_DRAW_FRAMEBUFFER))
     {
+        ++mDrawStats.framebufferUpdates;
+        ScopedDrawTimer framebufferTimer(&mDrawStats.framebufferNs);
         ANGLE_TRY(handleDirtyRenderPass(context));
     }
 
@@ -2556,7 +2674,11 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
     }
 
     bool isPipelineDescChanged;
-    ANGLE_TRY(checkIfPipelineChanged(context, mode, xfbPass, &isPipelineDescChanged));
+    {
+        ScopedDrawTimer pipelineTimer(&mDrawStats.pipelineCheckNs);
+        ANGLE_TRY(checkIfPipelineChanged(context, mode, xfbPass, &isPipelineDescChanged));
+    }
+    mDrawStats.pipelineDescChanges += isPipelineDescChanged;
 
     bool uniformBuffersDirty = false;
 
@@ -2566,69 +2688,73 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
         filterOutXFBOnlyDirtyBits(context);
     }
 
-    for (size_t bit : mDirtyBits)
     {
-        switch (bit)
+        ScopedDrawTimer stateTimer(&mDrawStats.dirtyStateNs);
+        for (size_t bit : mDirtyBits)
         {
-            case DIRTY_BIT_TEXTURES:
-                // Already handled.
-                break;
-            case DIRTY_BIT_DEFAULT_ATTRIBS:
-                ANGLE_TRY(handleDirtyDefaultAttribs(context));
-                break;
-            case DIRTY_BIT_DRIVER_UNIFORMS:
-                ANGLE_TRY(handleDirtyDriverUniforms(context, firstVertex, vertexOrIndexCount));
-                break;
-            case DIRTY_BIT_DEPTH_STENCIL_DESC:
-                ANGLE_TRY(handleDirtyDepthStencilState(context));
-                break;
-            case DIRTY_BIT_DEPTH_BIAS:
-                ANGLE_TRY(handleDirtyDepthBias(context));
-                break;
-            case DIRTY_BIT_DEPTH_CLIP_MODE:
-                mRenderEncoder.setDepthClipMode(
-                    mState.isDepthClampEnabled() ? MTLDepthClipModeClamp : MTLDepthClipModeClip);
-                break;
-            case DIRTY_BIT_STENCIL_REF:
-                mRenderEncoder.setStencilRefVals(mStencilRefFront, mStencilRefBack);
-                break;
-            case DIRTY_BIT_BLEND_COLOR:
-                mRenderEncoder.setBlendColor(
-                    mState.getBlendColor().red, mState.getBlendColor().green,
-                    mState.getBlendColor().blue, mState.getBlendColor().alpha);
-                break;
-            case DIRTY_BIT_VIEWPORT:
-                mRenderEncoder.setViewport(mViewport);
-                break;
-            case DIRTY_BIT_SCISSOR:
-                mRenderEncoder.setScissorRect(mScissorRect);
-                break;
-            case DIRTY_BIT_DRAW_FRAMEBUFFER:
-                // Already handled.
-                break;
-            case DIRTY_BIT_CULL_MODE:
-                mRenderEncoder.setCullMode(mCullMode);
-                break;
-            case DIRTY_BIT_FILL_MODE:
-                mRenderEncoder.setTriangleFillMode(mState.getPolygonMode() == gl::PolygonMode::Fill
-                                                       ? MTLTriangleFillModeFill
-                                                       : MTLTriangleFillModeLines);
-                break;
-            case DIRTY_BIT_WINDING:
-                mRenderEncoder.setFrontFacingWinding(mWinding);
-                break;
-            case DIRTY_BIT_RENDER_PIPELINE:
-                // Already handled. See checkIfPipelineChanged().
-                break;
-            case DIRTY_BIT_UNIFORM_BUFFERS_BINDING:
-                uniformBuffersDirty = true;
-                break;
-            case DIRTY_BIT_RASTERIZER_DISCARD:
-                // Already handled.
-                break;
-            default:
-                UNREACHABLE();
-                break;
+            switch (bit)
+            {
+                case DIRTY_BIT_TEXTURES:
+                    // Already handled.
+                    break;
+                case DIRTY_BIT_DEFAULT_ATTRIBS:
+                    ANGLE_TRY(handleDirtyDefaultAttribs(context));
+                    break;
+                case DIRTY_BIT_DRIVER_UNIFORMS:
+                    ANGLE_TRY(handleDirtyDriverUniforms(context, firstVertex, vertexOrIndexCount));
+                    break;
+                case DIRTY_BIT_DEPTH_STENCIL_DESC:
+                    ANGLE_TRY(handleDirtyDepthStencilState(context));
+                    break;
+                case DIRTY_BIT_DEPTH_BIAS:
+                    ANGLE_TRY(handleDirtyDepthBias(context));
+                    break;
+                case DIRTY_BIT_DEPTH_CLIP_MODE:
+                    mRenderEncoder.setDepthClipMode(
+                        mState.isDepthClampEnabled() ? MTLDepthClipModeClamp
+                                                      : MTLDepthClipModeClip);
+                    break;
+                case DIRTY_BIT_STENCIL_REF:
+                    mRenderEncoder.setStencilRefVals(mStencilRefFront, mStencilRefBack);
+                    break;
+                case DIRTY_BIT_BLEND_COLOR:
+                    mRenderEncoder.setBlendColor(
+                        mState.getBlendColor().red, mState.getBlendColor().green,
+                        mState.getBlendColor().blue, mState.getBlendColor().alpha);
+                    break;
+                case DIRTY_BIT_VIEWPORT:
+                    mRenderEncoder.setViewport(mViewport);
+                    break;
+                case DIRTY_BIT_SCISSOR:
+                    mRenderEncoder.setScissorRect(mScissorRect);
+                    break;
+                case DIRTY_BIT_DRAW_FRAMEBUFFER:
+                    // Already handled.
+                    break;
+                case DIRTY_BIT_CULL_MODE:
+                    mRenderEncoder.setCullMode(mCullMode);
+                    break;
+                case DIRTY_BIT_FILL_MODE:
+                    mRenderEncoder.setTriangleFillMode(
+                        mState.getPolygonMode() == gl::PolygonMode::Fill ? MTLTriangleFillModeFill
+                                                                          : MTLTriangleFillModeLines);
+                    break;
+                case DIRTY_BIT_WINDING:
+                    mRenderEncoder.setFrontFacingWinding(mWinding);
+                    break;
+                case DIRTY_BIT_RENDER_PIPELINE:
+                    // Already handled. See checkIfPipelineChanged().
+                    break;
+                case DIRTY_BIT_UNIFORM_BUFFERS_BINDING:
+                    uniformBuffersDirty = true;
+                    break;
+                case DIRTY_BIT_RASTERIZER_DISCARD:
+                    // Already handled.
+                    break;
+                default:
+                    UNREACHABLE();
+                    break;
+            }
         }
     }
 
@@ -2646,10 +2772,12 @@ angle::Result ContextMtl::setupDrawImpl(const gl::Context *context,
     // If so, skip program setup until we end up with a state that requires a program.
     if (isDrawNoOp(mRenderPipelineDesc, this, mContextDevice))
     {
+        ++mDrawStats.noOpDraws;
         *isNoOp = true;
     }
     else
     {
+        ScopedDrawTimer programTimer(&mDrawStats.programSetupNs);
         ANGLE_TRY(mExecutable->setupDraw(context, &mRenderEncoder, mRenderPipelineDesc,
                                          isPipelineDescChanged, textureChanged,
                                          uniformBuffersDirty));

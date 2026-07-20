@@ -13,6 +13,8 @@
 #import <Metal/Metal.h>
 #import <mach/mach_types.h>
 
+#include <cstdint>
+
 #include "common/Optional.h"
 #include "image_util/loadimage.h"
 #include "libANGLE/Context.h"
@@ -41,6 +43,14 @@ class TransformFeedbackMtl;
 class ContextMtl : public ContextImpl, public mtl::Context
 {
   public:
+    enum class DrawTimingCategory : uint8_t
+    {
+        Pipeline,
+        Textures,
+        Uniforms,
+        BufferUpload,
+    };
+
     ContextMtl(const gl::State &state,
                gl::ErrorSet *errorSet,
                const egl::AttributeMap &attribs,
@@ -403,6 +413,9 @@ class ContextMtl : public ContextImpl, public mtl::Context
 
     mtl::PipelineCache &getPipelineCache() { return mPipelineCache; }
 
+    void recordDrawTiming(DrawTimingCategory category, uint64_t startTime, size_t bytes = 0);
+    void recordPipelineCacheHit(bool hit);
+
     const angle::ImageLoadContext &getImageLoadContext() const { return mImageLoadContext; }
 
     bool getForceResyncDrawFramebuffer() const { return mForceResyncDrawFramebuffer; }
@@ -534,6 +547,7 @@ class ContextMtl : public ContextImpl, public mtl::Context
     angle::Result startOcclusionQueryInRenderPass(QueryMtl *query, bool clearOldValue);
 
     angle::Result checkCommandBufferError();
+    void dumpDrawStats();
 
     // Dirty bits.
     enum DirtyBitType : size_t
@@ -584,6 +598,36 @@ class ContextMtl : public ContextImpl, public mtl::Context
     struct DefaultAttribute
     {
         uint8_t values[sizeof(float) * 4];
+    };
+
+    struct DrawStats
+    {
+        uint64_t drawCalls           = 0;
+        uint64_t setupDrawImplCalls  = 0;
+        uint64_t syncStateCalls      = 0;
+        uint64_t noOpDraws           = 0;
+        uint64_t encoderResets       = 0;
+        uint64_t dirtyTextureUpdates = 0;
+        uint64_t framebufferUpdates  = 0;
+        uint64_t pipelineDescChanges = 0;
+        uint64_t pipelineCacheHits   = 0;
+        uint64_t pipelineCacheMisses = 0;
+        uint64_t bufferUploadCalls   = 0;
+        uint64_t bufferUploadBytes   = 0;
+        uint64_t setupDrawNs         = 0;
+        uint64_t setupDrawImplNs     = 0;
+        uint64_t syncStateNs         = 0;
+        uint64_t clientAttribsNs     = 0;
+        uint64_t dirtyTexturesNs     = 0;
+        uint64_t framebufferNs       = 0;
+        uint64_t pipelineCheckNs     = 0;
+        uint64_t dirtyStateNs        = 0;
+        uint64_t programSetupNs      = 0;
+        uint64_t pipelineSetupNs     = 0;
+        uint64_t textureSetupNs      = 0;
+        uint64_t uniformSetupNs      = 0;
+        uint64_t bufferUploadNs      = 0;
+        uint64_t endEncodingNs       = 0;
     };
 
     angle::ImageLoadContext mImageLoadContext;
@@ -649,6 +693,9 @@ class ContextMtl : public ContextImpl, public mtl::Context
     ProvokingVertexHelper mProvokingVertexHelper;
 
     mtl::ContextDevice mContextDevice;
+
+    DrawStats mDrawStats;
+    uint64_t mDrawStatsCommandBufferCount = 0;
 };
 
 }  // namespace rx

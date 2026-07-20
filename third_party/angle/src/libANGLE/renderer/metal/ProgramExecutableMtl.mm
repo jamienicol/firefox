@@ -12,6 +12,8 @@
 
 #include "libANGLE/renderer/metal/ProgramExecutableMtl.h"
 
+#include <mach/mach_time.h>
+
 #include "libANGLE/renderer/metal/BufferMtl.h"
 #include "libANGLE/renderer/metal/ContextMtl.h"
 #include "libANGLE/renderer/metal/TextureMtl.h"
@@ -883,6 +885,7 @@ angle::Result ProgramExecutableMtl::setupDraw(const gl::Context *glContext,
 
     if (pipelineDescChanged)
     {
+        const uint64_t startTime = mach_absolute_time();
         id<MTLFunction> vertexShader = nil;
         ANGLE_TRY(
             getSpecializedShader(context, gl::ShaderType::Vertex, pipelineDesc, &vertexShader));
@@ -913,10 +916,16 @@ angle::Result ProgramExecutableMtl::setupDraw(const gl::Context *glContext,
                 ? &mFragmentShaderVariants[PipelineParametersToFragmentShaderVariantIndex(
                       multisampledRendering, allowFragDepthWrite)]
                 : nullptr;
+        context->recordDrawTiming(ContextMtl::DrawTimingCategory::Pipeline, startTime);
     }
 
+    const uint64_t uniformsStartTime = mach_absolute_time();
     ANGLE_TRY(commitUniforms(context, cmdEncoder));
+    context->recordDrawTiming(ContextMtl::DrawTimingCategory::Uniforms, uniformsStartTime);
+
+    const uint64_t texturesStartTime = mach_absolute_time();
     ANGLE_TRY(updateTextures(glContext, cmdEncoder, forceTexturesSetting));
+    context->recordDrawTiming(ContextMtl::DrawTimingCategory::Textures, texturesStartTime);
 
     if (uniformBuffersDirty || pipelineDescChanged)
     {

@@ -13,6 +13,8 @@
 
 #include "libANGLE/renderer/metal/BufferMtl.h"
 
+#include <mach/mach_time.h>
+
 #include "common/debug.h"
 #include "common/utilities.h"
 #include "libANGLE/ErrorStrings.h"
@@ -695,12 +697,15 @@ angle::Result BufferMtl::putDataInNewBufferAndStartUsingNewBuffer(ContextMtl *co
 }
 
 angle::Result BufferMtl::copyDataToExistingBufferViaCPU(ContextMtl *contextMtl,
-                                                        angle::Span<const uint8_t> source,
-                                                        size_t offset)
+                                                         angle::Span<const uint8_t> source,
+                                                         size_t offset)
 {
+    const uint64_t startTime = mach_absolute_time();
     angle::Span<uint8_t> data = mBuffer->map(contextMtl, offset, source.size());
     std::copy(source.begin(), source.end(), data.begin());
     mBuffer->unmapAndFlushSubset(contextMtl, offset, source.size());
+    contextMtl->recordDrawTiming(ContextMtl::DrawTimingCategory::BufferUpload, startTime,
+                                 source.size());
     return angle::Result::Continue;
 }
 

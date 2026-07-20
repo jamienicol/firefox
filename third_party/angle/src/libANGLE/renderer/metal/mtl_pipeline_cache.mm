@@ -210,12 +210,14 @@ angle::Result PipelineCache::getRenderPipeline(
     auto iter = mPipelineCache.Get(key);
     if (iter != mPipelineCache.end())
     {
+        context->recordPipelineCacheHit(true);
         // Should be no way that this key matched a compute pipeline entry
         ASSERT(iter->second.renderPipeline);
         *outRenderPipeline = iter->second.renderPipeline;
         return angle::Result::Continue;
     }
 
+    context->recordPipelineCacheHit(false);
     angle::TrimCache(kMaxPipelines, kGCLimit, "render pipeline", &mPipelineCache);
 
     PipelineVariant newPipeline;
