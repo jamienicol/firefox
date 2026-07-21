@@ -1,0 +1,27 @@
+From 186c1d2140079939e21ea2e875176cff4ee97e86 Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jamiern@fastmail.com>
+Date: Wed, 22 Jul 2026 14:27:33 +0100
+Subject: [PATCH] More //chromium/build patches for android vulkan
+
+---
+ gni/angle.gni | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/gni/angle.gni b/gni/angle.gni
+index d56245adb4..60a19cdcda 100644
+--- a/gni/angle.gni
++++ b/gni/angle.gni
+@@ -384,8 +384,8 @@ if (angle_has_build) {
+ 
+ # Enable max lto optimization
+ if (is_android && angle_enable_vulkan) {
+-  angle_common_configs += [ "//build/config/compiler:thinlto_optimize_max" ]
+-  angle_remove_configs += [ "//build/config/compiler:thinlto_optimize_default" ]
++  angle_common_configs += [ "//chromium/build/config/compiler:thinlto_optimize_max" ]
++  angle_remove_configs += [ "//chromium/build/config/compiler:thinlto_optimize_default" ]
+ }
+ 
+ set_defaults("angle_executable") {
+-- 
+2.55.0
+
