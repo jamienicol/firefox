@@ -96,6 +96,17 @@ def prune_unused_files(angle_src_dir: Path, gn_configs) -> None:
     # Ensure we retain the LICENSE file.
     required_files = {Path("LICENSE")}
 
+    # Directory trees to retain in full. Some headers are pulled in transitively
+    # via #include rather than being listed as GN sources, so they must be kept
+    # explicitly. Vulkan's vulkan.h conditionally includes platform-specific
+    # headers (e.g. vulkan_android.h) that the vulkan_headers target does not
+    # list, so retain the whole include tree.
+    required_dirs = {
+        Path("third_party/vulkan-headers/src/include"),
+        Path("third_party/spirv-headers/src/include/spirv"),
+        Path("third_party/spirv-tools/src/source/val"),
+    }
+
     # Resolve a GN-style path to a angle_src_dir-relative path.
     def resolve_path(path: str) -> Path:
         if path.startswith("//"):
@@ -120,8 +131,12 @@ def prune_unused_files(angle_src_dir: Path, gn_configs) -> None:
         root_path = Path(root)
         for filename in files:
             path = root_path / filename
-            if path.relative_to(angle_src_dir) not in required_files:
-                path.unlink()
+            rel_path = path.relative_to(angle_src_dir)
+            if rel_path in required_files:
+                continue
+            if any(required_dir in rel_path.parents for required_dir in required_dirs):
+                continue
+            path.unlink()
 
         for dir in dirs:
             try:

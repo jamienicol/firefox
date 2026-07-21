@@ -5,6 +5,7 @@
   "mozilla_add_override_dir": "",
   "gn_target": {
     "*": "//:translator",
+    "android": "//:libEGL",
     "mac": "//:libEGL",
     "win": "//:libEGL"
   },
@@ -31,6 +32,12 @@
       "is_component_build": false,
       "use_custom_libcxx": false,
       "use_sysroot": false
+    },
+    "android": {
+      "angle_enable_vulkan": true,
+      "angle_build_vulkan_system_info": true,
+      "angle_enable_vulkan_validation_layers": false,
+      "vma_vulkan_headers_dir": "//angle/third_party/vulkan-headers/src"
     },
     "mac": {
       "angle_enable_metal": true,
@@ -93,6 +100,8 @@
     "third_party/angle/src/libGLESv2/entry_points_gles_3_0_autogen.cpp",
     "third_party/angle/src/libGLESv2/entry_points_gles_3_1_autogen.cpp",
     "third_party/angle/src/libGLESv2/entry_points_gles_3_2_autogen.cpp",
-    "third_party/angle/src/libGLESv2/entry_points_gles_ext_autogen.cpp"
+    "third_party/angle/src/libGLESv2/entry_points_gles_ext_autogen.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/spirv_fuzzer_options.cpp",
+    "third_party/angle/third_party/spirv-tools/src/source/val/validate_ray_tracing_reorder.cpp"
   ]
 }
