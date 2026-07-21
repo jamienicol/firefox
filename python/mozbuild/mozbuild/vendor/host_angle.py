@@ -21,6 +21,7 @@ DEPENDENCIES: tuple[str, ...] = (
     "third_party/zlib",
     "third_party/spirv-headers/src",
     "third_party/spirv-tools/src",
+    "third_party/vulkan-headers/src",
 )
 GOOGLESOURCE_HOST_SUFFIX = ".googlesource.com"
 

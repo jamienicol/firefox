@@ -93,8 +93,18 @@ def apply_patches(angle_src_dir: Path, patch_dir: Path) -> None:
 def prune_unused_files(angle_src_dir: Path, gn_configs) -> None:
     print("Pruning unused files")
 
-    # Ensure we retain the LICENSE file.
-    required_files = {Path("LICENSE")}
+    # Ensure we retain the LICENSE file
+    required_files = {
+        Path("LICENSE"),
+        Path("src/third_party/khronos/GL/wglext.h"),
+    }
+
+    # Directory trees to retain in full. Some headers are pulled in without
+    # being listed as GN sources. Build will fail if these are pruned, so ensure
+    # we retain them.
+    required_dirs = {
+        Path("third_party/vulkan-headers/src/include"),
+    }
 
     # Resolve a GN-style path to a angle_src_dir-relative path.
     def resolve_path(path: str) -> Path:
@@ -120,8 +130,12 @@ def prune_unused_files(angle_src_dir: Path, gn_configs) -> None:
         root_path = Path(root)
         for filename in files:
             path = root_path / filename
-            if path.relative_to(angle_src_dir) not in required_files:
-                path.unlink()
+            rel_path = path.relative_to(angle_src_dir)
+            if rel_path in required_files:
+                continue
+            if any(required_dir in rel_path.parents for required_dir in required_dirs):
+                continue
+            path.unlink()
 
         for dir in dirs:
             try:
