@@ -15,6 +15,7 @@ FINAL_LIBRARY = "xul"
 GeneratedFile(
     "/third_party/libwebrtc/gen/experiments/registered_field_trials.h",
     entry_point="action",
+    extra_deps=[],
     flags=[
         "/third_party/libwebrtc/experiments/field_trials.py",
         "/third_party/libwebrtc/",
