@@ -17,6 +17,7 @@ DEFINES["ANGLE_SKIP_DXGI_1_2_CHECK"] = True
 GeneratedFile(
     "/third_party/angle/gen/angle_commit.h",
     entry_point="action",
+    extra_deps=[],
     flags=[
         "/third_party/angle/src/commit_id.py",
         "/third_party/angle/",

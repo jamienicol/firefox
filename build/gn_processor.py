@@ -243,6 +243,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                 "type",
                 "args",
                 "inputs",
+                "sources",
                 "script",
                 "outputs",
                 "response_file_contents",
@@ -253,6 +254,13 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                     # path relative to the target dir.
                     spec[spec_attr] = [
                         mozpath.relpath(d, path) for d in spec[spec_attr]
+                    ]
+                elif spec_attr in ("inputs", "sources"):
+                    spec[spec_attr] = [
+                        "!//" + mozpath.relpath(d, path)
+                        if mozpath.basedir(d, [str(path)])
+                        else d
+                        for d in spec[spec_attr]
                     ]
             gn_out["targets"][target_fullname] = spec
             continue
@@ -452,6 +460,14 @@ def process_gn_config(
         if spec["type"] == "action" and "script" in spec:
             generated_files = []
 
+            extra_deps = [
+                "!" + resolve_path(path[1:])
+                if path.startswith("!")
+                else resolve_path(path)
+                for attr in ("inputs", "sources")
+                for path in spec.get(attr, [])
+            ]
+
             if spec.get("response_file_contents"):
                 # GN's response_file_contents field allows passing an unlimited
                 # amount of data to a script via a temporary file, avoiding
@@ -538,7 +554,7 @@ def process_gn_config(
                     "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                     "entry_point": "action",
                     "outputs": [resolve_path(f) for f in spec["outputs"]],
-                    "extra_deps": ["!" + output_response_file],
+                    "extra_deps": ["!" + output_response_file] + extra_deps,
                     "flags": flags,
                 })
 
@@ -551,6 +567,7 @@ def process_gn_config(
                     "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                     "entry_point": "action",
                     "outputs": [resolve_path(f) for f in spec["outputs"]],
+                    "extra_deps": extra_deps,
                     "flags": flags,
                 })
 
@@ -561,24 +578,25 @@ def process_gn_config(
         extensions = set()
         use_defines_in_asflags = False
 
-        for f in [item.lstrip("//") for item in spec.get("sources", [])]:
-            ext = mozpath.splitext(f)[-1]
-            extensions.add(ext)
-            src = f"{project_relsrcdir}/{f}"
-            if ext in {".h", ".hpp", ".inc"}:
-                continue
-            elif ext == ".def":
-                context_attrs["DEFFILE"] = f"/{src}"
-            elif ext == ".rc":
-                context_attrs["RCFILE"] = f"/{src}"
-            elif ext != ".S" and src not in non_unified_sources:
-                unified_sources.append(f"/{src}")
-            else:
-                sources.append(f"/{src}")
-            # The Mozilla build system doesn't use DEFINES for building
-            # ASFILES.
-            if ext == ".s":
-                use_defines_in_asflags = True
+        if spec["type"] != "action":
+            for f in [item.lstrip("//") for item in spec.get("sources", [])]:
+                ext = mozpath.splitext(f)[-1]
+                extensions.add(ext)
+                src = f"{project_relsrcdir}/{f}"
+                if ext in {".h", ".hpp", ".inc"}:
+                    continue
+                elif ext == ".def":
+                    context_attrs["DEFFILE"] = f"/{src}"
+                elif ext == ".rc":
+                    context_attrs["RCFILE"] = f"/{src}"
+                elif ext != ".S" and src not in non_unified_sources:
+                    unified_sources.append(f"/{src}")
+                else:
+                    sources.append(f"/{src}")
+                # The Mozilla build system doesn't use DEFINES for building
+                # ASFILES.
+                if ext == ".s":
+                    use_defines_in_asflags = True
 
         context_attrs["SOURCES"] = sources
         context_attrs["UNIFIED_SOURCES"] = unified_sources
