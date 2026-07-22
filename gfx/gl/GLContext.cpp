@@ -956,16 +956,20 @@ bool GLContext::InitImpl() {
 
   mMaxTexOrRbSize = std::min(mMaxTextureSize, mMaxRenderbufferSize);
 
-#ifdef MOZ_WIDGET_ANDROID
-  if (Renderer() == GLRenderer::SamsungXclipse && jni::GetAPIVersion() >= 35) {
-    // On Samsung Xclipse GPUs on Android 15 attribute values for the final
-    // vertex in a buffer may be incorrect. Padding the buffer to contain
-    // enough space for an additional vertex avoids the issue. See bug 1983036.
-    GLint maxVertexAttribStride;
-    raw_fGetIntegerv(LOCAL_GL_MAX_VERTEX_ATTRIB_STRIDE, &maxVertexAttribStride);
-    mVertexBufferExtraPadding = Some(maxVertexAttribStride);
-  }
-#endif
+  // Raises error (crashing debug builds) when running ANGLE's GL backend on top
+  // of system GL being ANGLE on Vulkan
+  // #ifdef MOZ_WIDGET_ANDROID
+  //   if (Renderer() == GLRenderer::SamsungXclipse && jni::GetAPIVersion() >=
+  //   35) {
+  //     // On Samsung Xclipse GPUs on Android 15 attribute values for the final
+  //     // vertex in a buffer may be incorrect. Padding the buffer to contain
+  //     // enough space for an additional vertex avoids the issue. See bug
+  //     1983036. GLint maxVertexAttribStride;
+  //     raw_fGetIntegerv(LOCAL_GL_MAX_VERTEX_ATTRIB_STRIDE,
+  //     &maxVertexAttribStride); mVertexBufferExtraPadding =
+  //     Some(maxVertexAttribStride);
+  //   }
+  // #endif
 
   ////////////////////////////////////////////////////////////////////////////
 
