@@ -243,6 +243,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                 "type",
                 "args",
                 "inputs",
+                "sources",
                 "script",
                 "outputs",
                 "response_file_contents",
@@ -561,24 +562,25 @@ def process_gn_config(
         extensions = set()
         use_defines_in_asflags = False
 
-        for f in [item.lstrip("//") for item in spec.get("sources", [])]:
-            ext = mozpath.splitext(f)[-1]
-            extensions.add(ext)
-            src = f"{project_relsrcdir}/{f}"
-            if ext in {".h", ".hpp", ".inc"}:
-                continue
-            elif ext == ".def":
-                context_attrs["DEFFILE"] = f"/{src}"
-            elif ext == ".rc":
-                context_attrs["RCFILE"] = f"/{src}"
-            elif ext != ".S" and src not in non_unified_sources:
-                unified_sources.append(f"/{src}")
-            else:
-                sources.append(f"/{src}")
-            # The Mozilla build system doesn't use DEFINES for building
-            # ASFILES.
-            if ext == ".s":
-                use_defines_in_asflags = True
+        if spec["type"] != "action":
+            for f in [item.lstrip("//") for item in spec.get("sources", [])]:
+                ext = mozpath.splitext(f)[-1]
+                extensions.add(ext)
+                src = f"{project_relsrcdir}/{f}"
+                if ext in {".h", ".hpp", ".inc"}:
+                    continue
+                elif ext == ".def":
+                    context_attrs["DEFFILE"] = f"/{src}"
+                elif ext == ".rc":
+                    context_attrs["RCFILE"] = f"/{src}"
+                elif ext != ".S" and src not in non_unified_sources:
+                    unified_sources.append(f"/{src}")
+                else:
+                    sources.append(f"/{src}")
+                # The Mozilla build system doesn't use DEFINES for building
+                # ASFILES.
+                if ext == ".s":
+                    use_defines_in_asflags = True
 
         context_attrs["SOURCES"] = sources
         context_attrs["UNIFIED_SOURCES"] = unified_sources
