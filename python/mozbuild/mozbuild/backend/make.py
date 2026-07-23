@@ -125,7 +125,10 @@ class MakeBackend(CommonBackend):
                     inputs=" " + " ".join(inputs) if inputs else "",
                     extra_deps=" " + " ".join(extra_deps) if extra_deps else "",
                     flags=(
-                        " " + " ".join(shell_quote(f) for f in obj.flags)
+                        " "
+                        + " ".join(
+                            shell_quote(f).replace(",", "$(comma)") for f in obj.flags
+                        )
                         if obj.flags
                         else ""
                     ),

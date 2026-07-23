@@ -21,6 +21,11 @@ core_realpath = $(error core_realpath is unsupported)
 
 core_winabspath = $(error core_winabspath is unsupported)
 
+# A literal comma, for embedding in $(call ...) arguments without it being
+# parsed as an argument separator (the surrounding "$(" ")" hide it from
+# call's comma-scanner, since that scanner tracks paren nesting).
+comma := ,
+
 # Run a named Python build action. The first argument is the name of the build
 # action. The second argument are the arguments to pass to the action (space
 # delimited arguments). e.g.
