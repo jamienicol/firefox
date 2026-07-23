@@ -8148,7 +8148,7 @@
 
 - name: gfx.webrender.enable-angle
   type: bool
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_MACOSX)
   value: true
 #else
   value: false
@@ -20058,7 +20058,7 @@
 
 - name: webgl.disable-angle
   type: RelaxedAtomicBool
-#if defined(XP_WIN)
+#if defined(XP_WIN) || defined(XP_MACOSX)
   value: false
 #else
   value: true
