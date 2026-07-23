@@ -34,6 +34,13 @@ generated_header = """
 # GN's substitution pattern for the response file path in action args.
 RESPONSE_FILE_NAME_FLAG = "{{response_file_name}}"
 
+# Placeholder substituted with the real topsrcdir by file_generate_wrapper.py
+# at build time. Kept as a matching literal constant in both files rather
+# than imported, since importing file_generate_wrapper.py here would also
+# execute its `import buildconfig`, which requires a configured objdir that
+# may not exist at vendoring time.
+TOPSRCDIR_PLACEHOLDER = "${topsrcdir}"
+
 
 class MozbuildWriter:
     def __init__(self, fh):
@@ -382,6 +389,45 @@ def process_gn_config(
             path = f"/{project_relsrcdir}/{path}"
         return path
 
+    # GN resolves paths outside the project root (e.g. files shared between
+    # this vendored project and other third_party dirs, like spirv-headers)
+    # with `rebase_path()`, which encodes them relative to whatever
+    # directory `gn gen` used as its build output root while this config was
+    # generated. That directory is a vendoring-time implementation detail
+    # with no meaning at build time, so when such an argument is copied
+    # verbatim into `args` it ends up looking like nonsense, e.g.
+    # "../../home/user/src/firefox/third_party/angle/...".
+    #
+    # We don't want to assume anything about the layout of that directory
+    # (e.g. its depth, or its relationship to topsrcdir), so instead of
+    # pattern-matching on topsrcdir's own text, look for a "../"-prefixed
+    # substring (a plain relative output path, like the "gen/..." paths
+    # used elsewhere in `args`, never starts with one, since it's already
+    # relative to the build root) that resolves, once rejoined with
+    # gn_config_dir, to a real file under topsrcdir. That's the only case
+    # `rebase_path()` can produce, since gn_config_dir is a vendoring-time
+    # scratch directory, never itself real (checked-in) source.
+    def maybe_encode_srcdir_path(arg):
+        assert TOPSRCDIR_PLACEHOLDER not in arg, (
+            f"arg already contains {TOPSRCDIR_PLACEHOLDER!r}, "
+            f"substitution would be ambiguous: {arg!r}"
+        )
+        idx = arg.find("../")
+        if idx == -1:
+            return arg
+        prefix, candidate = arg[:idx], arg[idx:]
+        resolved = mozpath.normpath(mozpath.join(str(gn_config_dir), candidate))
+        if not os.path.exists(resolved) or not mozpath.basedir(
+            resolved, [str(topsrcdir)]
+        ):
+            return arg
+        return (
+            prefix
+            + TOPSRCDIR_PLACEHOLDER
+            + "/"
+            + mozpath.relpath(resolved, str(topsrcdir))
+        )
+
     # Encodes a file path used in a response file contents as a mozbuild-style
     # path, e.g. prefixed with "/" to denote topsrcdir-relative, or "!/" to
     # denote objdir-relative.
@@ -528,7 +574,7 @@ def process_gn_config(
                 args = [
                     f"{spec['outputs'][0]}.rsp"
                     if arg == RESPONSE_FILE_NAME_FLAG
-                    else arg
+                    else maybe_encode_srcdir_path(arg)
                     for arg in spec.get("args", [])
                 ]
                 flags = [
@@ -547,7 +593,7 @@ def process_gn_config(
                 flags = [
                     resolve_path(spec["script"]),
                     resolve_path(""),
-                ] + spec.get("args", [])
+                ] + [maybe_encode_srcdir_path(arg) for arg in spec.get("args", [])]
                 generated_files.append({
                     "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                     "entry_point": "action",
