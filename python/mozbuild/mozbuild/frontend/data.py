@@ -1412,6 +1412,7 @@ class GeneratedFile(ContextDerived):
 
         suffixes = [
             ".h",
+            ".inc",
             ".py",
             ".rs",
             # We need to compile Java to generate JNI wrappers for native code
@@ -1444,7 +1445,6 @@ class GeneratedFile(ContextDerived):
                     ".asm",
                     ".c",
                     ".cpp",
-                    ".inc",
                     ".m",
                     ".mm",
                     ".def",
