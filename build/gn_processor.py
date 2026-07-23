@@ -304,10 +304,18 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                 ]
             if spec_attr == "include_dirs":
                 # Rebase outputs from an absolute path in the temp dir to a path
-                # relative to the target dir.
-                spec[spec_attr] = [
-                    d if gen_path != Path(d) else "!//gen" for d in spec[spec_attr]
-                ]
+                # relative to the target dir. This also needs to handle
+                # subdirectories of `gen_path`, e.g. a target's own
+                # `target_gen_dir`, not just `gen_path` itself.
+                def rebase_include_dir(d):
+                    d_path = Path(d)
+                    if d_path == gen_path:
+                        return "!//gen"
+                    if gen_path in d_path.parents:
+                        return "!//gen/" + str(d_path.relative_to(gen_path))
+                    return d
+
+                spec[spec_attr] = [rebase_include_dir(d) for d in spec[spec_attr]]
 
         gn_out["targets"][target_fullname] = spec
 
