@@ -21,6 +21,44 @@ DIRS += [
     "/third_party/angle/xxhash_gn"
 ]
 
+if CONFIG["OS_TARGET"] == "Android":
+
+    DIRS += [
+        "/third_party/angle/angle_frame_capture_mock_gn",
+        "/third_party/angle/angle_gpu_info_util_gn",
+        "/third_party/angle/angle_image_util_gn",
+        "/third_party/angle/angle_image_util_headers_gn",
+        "/third_party/angle/libANGLE_gn",
+        "/third_party/angle/libANGLE_headers_gn",
+        "/third_party/angle/libANGLE_no_vulkan_gn",
+        "/third_party/angle/libEGL_egl_loader_gn",
+        "/third_party/angle/libEGL_gn",
+        "/third_party/angle/libGLESv2_gn",
+        "/third_party/angle/src/common/spirv/angle_spirv_base_gn",
+        "/third_party/angle/src/common/spirv/angle_spirv_builder_gn",
+        "/third_party/angle/src/common/spirv/angle_spirv_parser_gn",
+        "/third_party/angle/src/common/vulkan/angle_libvulkan_loader_gn",
+        "/third_party/angle/src/common/vulkan/angle_vulkan_headers_gn",
+        "/third_party/angle/src/common/vulkan/angle_vulkan_icd_gn",
+        "/third_party/angle/src/common/vulkan/vulkan_gn",
+        "/third_party/angle/src/libANGLE/renderer/vulkan/angle_vk_mem_alloc_wrapper_gn",
+        "/third_party/angle/src/libANGLE/renderer/vulkan/angle_vulkan_backend_gn",
+        "/third_party/angle/src/third_party/volk/volk_gn",
+        "/third_party/angle/third_party/spirv-headers/src/spv_headers_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_core_tables_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_generators_inc_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_headers_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_language_header_cldebuginfo100_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_language_header_debuginfo_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_language_header_vkdebuginfo100_gn",
+        "/third_party/angle/third_party/spirv-tools/src/spvtools_val_gn",
+        "/third_party/angle/third_party/vulkan-headers/src/vulkan_headers_gn",
+        "/third_party/angle/third_party/vulkan_memory_allocator/vulkan_memory_allocator_gn",
+        "/third_party/angle/third_party/zlib/google/compression_utils_portable_gn",
+        "/third_party/angle/third_party/zlib/zlib_gn"
+    ]
+
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
 
     DIRS += [
@@ -58,6 +96,12 @@ if CONFIG["OS_TARGET"] == "WINNT":
         "/third_party/angle/src/libANGLE/renderer/d3d/angle_d3d_shared_gn",
         "/third_party/angle/third_party/zlib/google/compression_utils_portable_gn",
         "/third_party/angle/third_party/zlib/zlib_gn"
+    ]
+
+if CONFIG["MOZ_DEBUG"] == "1" and CONFIG["OS_TARGET"] == "Android":
+
+    DIRS += [
+        "/third_party/angle/angle_gl_enum_utils_gn"
     ]
 
 if CONFIG["MOZ_DEBUG"] == "1" and CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
