@@ -36,6 +36,26 @@ generated_header = """
 RESPONSE_FILE_NAME_FLAG = "{{response_file_name}}"
 
 
+class FStringLiteral:
+    """A value which must be written as an f-string when serialized, so that it
+    can refer to variables available in the mozbuild sandbox, such as TOPSRCDIR.
+    Its contents will become the exact contents of the f-string, meaning any
+    literal braces must already be escaped."""
+
+    def __init__(self, contents):
+        self._contents = contents
+
+    def __eq__(self, other):
+        return isinstance(other, FStringLiteral) and self._contents == other._contents
+
+    def __hash__(self):
+        return hash(self._contents)
+
+    def __repr__(self):
+        # Match mb_serialize()'s usage of json.dumps() for strings
+        return "f" + json.dumps(self._contents)
+
+
 class MozbuildWriter:
     def __init__(self, fh):
         self._fh = fh
@@ -52,10 +72,10 @@ class MozbuildWriter:
             if len(v) <= 1:
                 return repr(v)
             # Pretty print a list
-            raw = json.dumps(v, indent=self._indent_increment)
-            # Add the indent of the current indentation level
-            return raw.replace("\n", "\n" + self.indent)
-        if isinstance(v, bool):
+            item_indent = self.indent + " " * self._indent_increment
+            items = (",\n" + item_indent).join(self.mb_serialize(i) for i in v)
+            return f"[\n{item_indent}{items}\n{self.indent}]"
+        if isinstance(v, (bool, FStringLiteral)):
             return repr(v)
         return json.dumps(v)
 
@@ -402,6 +422,34 @@ def process_gn_config(
             path = f"/{project_relsrcdir}/{path}"
         return path
 
+    # If an arg contains a path to a vendored source file, rewrite it as an
+    # f-string referring to TOPSRCDIR. Args that do not contain paths to
+    # vendored source files are returned unchanged. This is required because
+    # actions are executed with a cwd in the objdir, and at vendor time we
+    # cannot know neither the absolute path of the source tree nor its relative
+    # path from the objdir.
+    def maybe_encode_srcdir_path_arg(arg):
+        # The arg may contain a prefix before the srcdir path. We know that any
+        # srcdir path will be a relative path from the tempdir to the source
+        # tree, and must therefore start with "../", so find the first
+        # occurrence of that string in order to find the path section. Args
+        # containing paths followed by a suffix are not currently supported.
+        idx = arg.find("../")
+        if idx == -1:
+            return arg
+        prefix, path = arg[:idx], arg[idx:]
+        path = mozpath.normpath(mozpath.join(str(gn_config_dir), path))
+        if not os.path.exists(path) or not mozpath.basedir(path, [str(topsrcdir)]):
+            return arg
+
+        def escape_braces(s):
+            return s.replace("{", "{{").replace("}", "}}")
+
+        relpath = mozpath.relpath(path, str(topsrcdir))
+        return FStringLiteral(
+            escape_braces(prefix) + "{TOPSRCDIR}/" + escape_braces(relpath)
+        )
+
     # Encodes a file path used in a response file contents as a mozbuild-style
     # path, e.g. prefixed with "/" to denote topsrcdir-relative, or "!/" to
     # denote objdir-relative.
@@ -556,7 +604,7 @@ def process_gn_config(
                 args = [
                     f"{spec['outputs'][0]}.rsp"
                     if arg == RESPONSE_FILE_NAME_FLAG
-                    else arg
+                    else maybe_encode_srcdir_path_arg(arg)
                     for arg in spec.get("args", [])
                 ]
                 flags = [
@@ -575,7 +623,7 @@ def process_gn_config(
                 flags = [
                     resolve_path(spec["script"]),
                     resolve_path(""),
-                ] + spec.get("args", [])
+                ] + [maybe_encode_srcdir_path_arg(arg) for arg in spec.get("args", [])]
                 generated_file = {
                     "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                     "entry_point": "action",
