@@ -1,0 +1,27 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+# Investigation for bug 2056565: checks whether darling's runtime (mount
+# namespace + overlayfs prefix) works inside a b-linux-docker-amd
+# docker-worker task, before building out the real toolchain/fetch plumbing
+# to run `metal`/`metallib` under it.
+#
+# Confirmed unprivileged doesn't work: mount(2) is rejected outright (even a
+# trivial tmpfs mount in a properly-owned fresh user+mount namespace fails
+# with plain "permission denied"). `worker.privileged: true` was tried as a
+# way around that, but `docker-worker:capability:privileged` isn't in the
+# scope set available to level-1/try pushes at all, so that can't even be
+# tested here. Left unprivileged; this is effectively a dead end for darling
+# on b-linux-docker-amd short of a policy exception from Taskcluster/RelEng.
+linux64-darling:
+    description: "darling runtime smoke test (bug 2056565)"
+    worker-type: b-linux-docker-amd
+    treeherder:
+        symbol: TL(darling)
+    worker:
+        max-run-time: 7200
+        docker-image: {in-tree: darling-toolchain-build}
+    run:
+        script: build-darling.sh
+        toolchain-artifact: public/build/darling.tar.zst
