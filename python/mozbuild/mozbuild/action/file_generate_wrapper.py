@@ -10,6 +10,8 @@ from pathlib import Path
 
 import buildconfig
 
+TOPSRCDIR_PLACEHOLDER = "{{topsrcdir}}"
+
 
 def action(fh, script, target_dir, *args):
     fh.close()
@@ -28,6 +30,7 @@ def action(fh, script, target_dir, *args):
         script = [str(abs_script)]
         if abs_script.suffix == ".py":
             script = [sys.executable] + script
+        args = [arg.replace(TOPSRCDIR_PLACEHOLDER, str(topsrcdir)) for arg in args]
         subprocess.check_call(script + args, cwd=abs_target_dir)
     except Exception:
         relative = os.path.relpath(__file__, topsrcdir)

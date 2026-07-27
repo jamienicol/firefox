@@ -34,6 +34,10 @@ generated_header = """
 # GN's substitution pattern for the response file path in action args.
 RESPONSE_FILE_NAME_FLAG = "{{response_file_name}}"
 
+# Placeholder string to use in GeneratedFile flags which contain paths to
+# vendored source files.
+TOPSRCDIR_PLACEHOLDER = "{{topsrcdir}}"
+
 
 class MozbuildWriter:
     def __init__(self, fh):
@@ -389,6 +393,35 @@ def process_gn_config(
             path = f"/{project_relsrcdir}/{path}"
         return path
 
+    # If an arg contains a path to a vendored source file, rewrite it using the
+    # TOPSRCDIR_PLACEHOLDER. Args that are not paths to vendored source files
+    # are returned unchanged. This is required because actions are executed with
+    # a cwd in the objdir, and at vendor time we cannot know the absolute path
+    # of the source tree nor its relative path from the objdir, hence we must
+    # use a placeholder.
+    def maybe_encode_srcdir_path_arg(arg):
+        # If the arg legitimately already contains TOPSRCDIR_PLACEHOLDER, then
+        # our substitution will be invalid. This seems unlikely to occur in
+        # practice, but best to fail early and obviously here.
+        assert TOPSRCDIR_PLACEHOLDER not in arg, (
+            f"arg {arg!r} already contains {TOPSRCDIR_PLACEHOLDER!r}, "
+        )
+        # The arg may contain a prefix before the srcdir path. We know that any
+        # srcdir path will be a relative path from the tempdir to the source
+        # tree, and must therefore start with "../", so find the first occurence
+        # of that string in order to find the path section. Args containing
+        # paths followed by a suffix are not currently supported.
+        idx = arg.find("../")
+        if idx == -1:
+            return arg
+        prefix, path = arg[:idx], arg[idx:]
+        path = mozpath.normpath(mozpath.join(str(gn_config_dir), path))
+        if not os.path.exists(path) or not mozpath.basedir(path, [str(topsrcdir)]):
+            return arg
+        return (
+            prefix + TOPSRCDIR_PLACEHOLDER + "/" + mozpath.relpath(path, str(topsrcdir))
+        )
+
     # Encodes a file path used in a response file contents as a mozbuild-style
     # path, e.g. prefixed with "/" to denote topsrcdir-relative, or "!/" to
     # denote objdir-relative.
@@ -543,7 +576,7 @@ def process_gn_config(
                 args = [
                     f"{spec['outputs'][0]}.rsp"
                     if arg == RESPONSE_FILE_NAME_FLAG
-                    else arg
+                    else maybe_encode_srcdir_path_arg(arg)
                     for arg in spec.get("args", [])
                 ]
                 flags = [
@@ -562,7 +595,7 @@ def process_gn_config(
                 flags = [
                     resolve_path(spec["script"]),
                     resolve_path(""),
-                ] + spec.get("args", [])
+                ] + [maybe_encode_srcdir_path_arg(arg) for arg in spec.get("args", [])]
                 generated_files.append({
                     "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                     "entry_point": "action",
