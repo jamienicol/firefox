@@ -75,32 +75,27 @@ void ThemeDrawing::PaintRoundedRectWithRadius(
   // Push the background.
   if (aBackgroundColor.a != 0.0f) {
     auto backgroundColor = wr::ToColorF(ToDeviceColor(aBackgroundColor));
-    wr::LayoutRect backgroundRect = [&] {
-      LayoutDeviceRect bg = aRect;
-      bg.Deflate(borderWidth);
-      return wr::ToLayoutRect(bg);
-    }();
+    LayoutDeviceRect backgroundRect = aRect;
+    backgroundRect.Deflate(borderWidth);
+    const wr::LayoutRect wrBackgroundRect = wr::ToLayoutRect(backgroundRect);
     if (radius == 0.0f) {
-      aWrData.mBuilder.PushRect(backgroundRect, clip, kBackfaceIsVisible, false,
-                                false, backgroundColor);
+      aWrData.mBuilder.PushRect(wrBackgroundRect, clip, kBackfaceIsVisible,
+                                false, false, backgroundColor);
     } else {
-      // NOTE(emilio): This follows DisplayListBuilder::PushRoundedRect and
-      // draws the rounded fill as an extra thick rounded border instead of a
-      // rectangle that's clipped to a rounded clip. Refer to that method for a
-      // justification. See bug 1694269.
       LayoutDeviceCoord backgroundRadius =
           std::max(0.0f, float(radius) - float(borderWidth));
-      wr::BorderSide side = {backgroundColor, wr::BorderStyle::Solid};
-      const wr::BorderSide sides[4] = {side, side, side, side};
-      float h = backgroundRect.width() * 0.6f;
-      float v = backgroundRect.height() * 0.6f;
-      wr::LayoutSideOffsets widths = {v, h, v, h};
-      wr::BorderRadius radii = {{backgroundRadius, backgroundRadius},
-                                {backgroundRadius, backgroundRadius},
-                                {backgroundRadius, backgroundRadius},
-                                {backgroundRadius, backgroundRadius}};
-      aWrData.mBuilder.PushBorder(backgroundRect, clip, kBackfaceIsVisible,
-                                  widths, {sides, 4}, radii);
+      const LayoutDeviceCoord maxRadius(
+          std::min(backgroundRect.Width(), backgroundRect.Height()) * 0.5f);
+      backgroundRadius = std::min(backgroundRadius, maxRadius);
+      auto roundedClip =
+          wr::SimpleRadii(wrBackgroundRect, float(backgroundRadius));
+      auto clipId =
+          aWrData.mBuilder.DefineRoundedRectClip(Nothing(), roundedClip);
+      auto clipChain = aWrData.mBuilder.DefineClipChain(
+          {&clipId, 1}, aWrData.mBuilder.CurrentClipChainIdIfNotRoot());
+      wr::SpaceAndClipChainHelper clipHelper(aWrData.mBuilder, clipChain);
+      aWrData.mBuilder.PushRect(wrBackgroundRect, clip, kBackfaceIsVisible,
+                                false, false, backgroundColor);
     }
   }
 
