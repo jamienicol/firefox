@@ -59,7 +59,7 @@ use crate::composite::{CompositorConfig, NativeSurfaceOperationDetails, NativeSu
 #[cfg(feature = "debugger")]
 use api::debugger::{CompositorDebugInfo, DebuggerTextureContent};
 use crate::debug_colors;
-use crate::device::{DepthFunction, Device, DrawTarget, ExternalTexture, GpuFrameId, UploadPBOPool};
+use crate::device::{DepthFunction, Device, DrawTarget, ExternalTexture, GpuFrameId, TextureUploader};
 use crate::device::{ReadTarget, ShaderError, Texture, TextureFilter, TextureFlags, TextureSlot, Texel};
 use crate::device::query::{GpuSampler, GpuTimer};
 #[cfg(feature = "capture")]
@@ -766,7 +766,7 @@ pub struct Renderer {
     // Manages and resolves source textures IDs to real texture IDs.
     texture_resolver: TextureResolver,
 
-    texture_upload_pbo_pool: UploadPBOPool,
+    texture_uploader: TextureUploader,
     staging_texture_pool: UploadTexturePool,
 
     dither_matrix_texture: Option<Texture>,
@@ -1283,7 +1283,7 @@ impl Renderer {
     }
 
     fn trim_upload_buffers(&mut self) {
-        self.texture_upload_pbo_pool.on_memory_pressure(&mut self.device);
+        self.texture_uploader.on_memory_pressure(&mut self.device);
         self.staging_texture_pool.delete_textures(&mut self.device);
         if let Some(texture) = self.gpu_buffer_texture_f.take() {
             self.device.delete_texture(texture);
@@ -1782,7 +1782,6 @@ impl Renderer {
         }
 
         self.staging_texture_pool.end_frame(&mut self.device);
-        self.texture_upload_pbo_pool.end_frame(&mut self.device);
         self.device.end_frame();
 
         if debug_overlay.is_some() {
@@ -3512,7 +3511,7 @@ impl Renderer {
 
         self.vertex_data_textures[self.current_vertex_data_textures].update(
             &mut self.device,
-            &mut self.texture_upload_pbo_pool,
+            &mut self.texture_uploader,
             frame,
         );
         self.current_vertex_data_textures =
@@ -3600,7 +3599,7 @@ impl Renderer {
         device: &mut Device,
         buffer: &GpuBuffer<T>,
         dst_texture: &mut Option<Texture>,
-        pbo_pool: &mut UploadPBOPool,
+        uploader: &mut TextureUploader,
     ) {
         if buffer.is_empty() {
             return;
@@ -3628,8 +3627,6 @@ impl Renderer {
             );
         }
 
-        let mut uploader = device.upload_texture(pbo_pool);
-
         uploader.upload(
             device,
             dst_texture.as_mut().unwrap(),
@@ -3642,8 +3639,6 @@ impl Renderer {
             buffer.data.as_ptr(),
             buffer.data.len(),
         );
-
-        uploader.flush(device);
     }
 
     fn maybe_evict_gpu_buffer_texture(
@@ -3695,13 +3690,13 @@ impl Renderer {
                 &mut self.device,
                 &frame.gpu_buffer_f,
                 &mut self.gpu_buffer_texture_f,
-                &mut self.texture_upload_pbo_pool,
+                &mut self.texture_uploader,
             );
             Self::update_gpu_buffer_texture(
                 &mut self.device,
                 &frame.gpu_buffer_i,
                 &mut self.gpu_buffer_texture_i,
-                &mut self.texture_upload_pbo_pool,
+                &mut self.texture_uploader,
             );
         }
 
@@ -4007,7 +4002,7 @@ impl Renderer {
         for textures in self.vertex_data_textures.drain(..) {
             textures.deinit(&mut self.device);
         }
-        self.texture_upload_pbo_pool.deinit(&mut self.device);
+        self.texture_uploader.deinit(&mut self.device);
         self.staging_texture_pool.delete_textures(&mut self.device);
         self.texture_resolver.deinit(&mut self.device);
         self.vaos.deinit(&mut self.device);
@@ -4056,7 +4051,7 @@ impl Renderer {
         report += self.texture_resolver.report_memory();
 
         // Texture upload PBO memory.
-        report += self.texture_upload_pbo_pool.report_memory();
+        report += self.texture_uploader.report_memory();
 
         // Textures held internally within the device layer.
         report += self.device.report_memory(self.size_of_ops.as_ref().unwrap(), swgl);

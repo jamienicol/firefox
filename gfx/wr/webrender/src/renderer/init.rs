@@ -15,7 +15,7 @@ use crate::render_backend_pool::{PoolMemberSetup, RenderBackendPool};
 use crate::scene_builder_thread::SceneBuilderRequest;
 use crate::composite::{CompositorKind, CompositorConfig};
 use crate::device::{
-    UploadMethod, UploadPBOPool, VertexUsageHint, Device, ProgramCache, TextureFilter
+    UploadMethod, TextureUploader, VertexUsageHint, Device, ProgramCache, TextureFilter
 };
 use crate::frame_builder::FrameBuilderConfig;
 use glyph_rasterizer::{GlyphRasterThread, SharedFontResources};
@@ -518,7 +518,7 @@ pub fn create_webrender_instance(
         if options.enable_instancing { None } else { NonZeroUsize::new(max_primitive_instance_count) },
     );
 
-    let texture_upload_pbo_pool = UploadPBOPool::new(&mut device, options.upload_pbo_default_size);
+    let texture_uploader = TextureUploader::new(&mut device, options.upload_pbo_default_size);
     let staging_texture_pool = UploadTexturePool::new();
     let texture_resolver = TextureResolver::new(&mut device);
 
@@ -793,7 +793,7 @@ pub fn create_webrender_instance(
         size_of_ops: make_size_of_ops(),
         cpu_profiles: VecDeque::new(),
         gpu_profiles: VecDeque::new(),
-        texture_upload_pbo_pool,
+        texture_uploader,
         staging_texture_pool,
         texture_resolver,
         renderer_errors: Vec::new(),

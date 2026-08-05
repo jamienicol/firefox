@@ -14,7 +14,6 @@ use crate::internal_types::{FastHashMap, RenderTargetInfo, Swizzle, SwizzleSetti
 use crate::util::round_up_to_multiple;
 use crate::profiler;
 use log::Level;
-use smallvec::SmallVec;
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
@@ -3270,22 +3269,6 @@ impl Device {
         (dst_size, dst_stride)
     }
 
-    /// Returns a `TextureUploader` which can be used to upload texture data to `texture`.
-    /// Once uploads have been performed the uploader must be flushed with `TextureUploader::flush()`.
-    pub fn upload_texture<'a>(
-        &mut self,
-        pbo_pool: &'a mut UploadPBOPool,
-    ) -> TextureUploader<'a> {
-        debug_assert!(self.inside_frame);
-
-        pbo_pool.begin_frame(self);
-
-        TextureUploader {
-            buffers: Vec::new(),
-            pbo_pool,
-        }
-    }
-
     /// Performs an immediate (non-PBO) texture upload.
     pub fn upload_texture_immediate<T: Texel>(
         &mut self,
@@ -4032,482 +4015,43 @@ struct UploadChunk<'a> {
     texture: &'a Texture,
 }
 
-#[derive(Debug)]
-struct PixelBuffer<'a> {
-    size_used: usize,
-    // small vector avoids heap allocation for a single chunk
-    chunks: SmallVec<[UploadChunk<'a>; 1]>,
-    inner: UploadPBO,
-    mapping: &'a mut [mem::MaybeUninit<u8>],
-}
-
-impl<'a> PixelBuffer<'a> {
-    fn new(
-        pbo: UploadPBO,
-    ) -> Self {
-        let mapping = unsafe {
-            slice::from_raw_parts_mut(pbo.mapping.get_ptr().as_ptr(), pbo.pbo.reserved_size)
-        };
-        Self {
-            size_used: 0,
-            chunks: SmallVec::new(),
-            inner: pbo,
-            mapping,
-        }
-    }
-
-    fn flush_chunks(&mut self, device: &mut Device) {
-        for chunk in self.chunks.drain(..) {
-            TextureUploader::update_impl(device, chunk);
-        }
-    }
-}
-
-impl<'a> Drop for PixelBuffer<'a> {
-    fn drop(&mut self) {
-        assert_eq!(self.chunks.len(), 0, "PixelBuffer must be flushed before dropping.");
-    }
-}
-
-#[derive(Debug)]
-enum PBOMapping {
-    Unmapped,
-    Transient(ptr::NonNull<mem::MaybeUninit<u8>>),
-    Persistent(ptr::NonNull<mem::MaybeUninit<u8>>),
-}
-
-impl PBOMapping {
-    fn get_ptr(&self) -> ptr::NonNull<mem::MaybeUninit<u8>> {
-        match self {
-            PBOMapping::Unmapped => unreachable!("Cannot get pointer to unmapped PBO."),
-            PBOMapping::Transient(ptr) => *ptr,
-            PBOMapping::Persistent(ptr) => *ptr,
-        }
-    }
-}
-
-/// A PBO for uploading texture data, managed by UploadPBOPool.
-#[derive(Debug)]
-struct UploadPBO {
+/// Uploads texture data, either directly or by streaming it through a single
+/// pixel buffer object, depending on [`Device::upload_method`].
+pub struct TextureUploader {
     pbo: PBO,
-    mapping: PBOMapping,
-    can_recycle: bool,
+    /// Default size at which to allocate PBOs. Preferring a fixed size helps
+    /// drivers allocate more efficiently. Larger PBOs will be allocated when
+    /// individual uploads require it.
+    default_pbo_size: usize,
+    /// The number of bytes of the buffer currently used. Subsequent uploads
+    /// may only write starting at this offset. When the buffer is full the
+    /// PBO will be reallocated.
+    used_bytes: usize,
 }
 
-impl UploadPBO {
-    fn empty() -> Self {
-        Self {
-            pbo: PBO {
-                id: 0,
-                reserved_size: 0,
-            },
-            mapping: PBOMapping::Unmapped,
-            can_recycle: false,
-        }
-    }
-}
-
-/// Allocates and recycles PBOs used for uploading texture data.
-/// Tries to allocate and recycle PBOs of a fixed size, but will make exceptions when
-/// a larger buffer is required or to work around driver bugs.
-pub struct UploadPBOPool {
-    /// Usage hint to provide to the driver for optimizations.
-    usage_hint: VertexUsageHint,
-    /// The preferred size, in bytes, of the buffers to allocate.
-    default_size: usize,
-    /// List of allocated PBOs ready to be re-used.
-    available_buffers: Vec<UploadPBO>,
-    /// PBOs which have been returned during the current frame,
-    /// and do not yet have an associated sync object.
-    returned_buffers: Vec<UploadPBO>,
-    /// PBOs which are waiting until their sync object is signalled,
-    /// indicating they can are ready to be re-used.
-    waiting_buffers: Vec<(gl::GLsync, Vec<UploadPBO>)>,
-    /// PBOs which have been orphaned.
-    /// We can recycle their IDs but must reallocate their storage.
-    orphaned_buffers: Vec<PBO>,
-}
-
-impl UploadPBOPool {
-    pub fn new(device: &mut Device, default_size: usize) -> Self {
-        let usage_hint = match device.upload_method {
-            UploadMethod::Immediate => VertexUsageHint::Stream,
-            UploadMethod::PixelBuffer(usage_hint) => usage_hint,
-        };
-        Self {
-            usage_hint,
-            default_size,
-            available_buffers: Vec::new(),
-            returned_buffers: Vec::new(),
-            waiting_buffers: Vec::new(),
-            orphaned_buffers: Vec::new(),
+impl TextureUploader {
+    pub fn new(device: &mut Device, default_pbo_size: usize) -> Self {
+        TextureUploader {
+            pbo: device.create_pbo(),
+            default_pbo_size,
+            used_bytes: 0,
         }
     }
 
-    /// To be called at the beginning of a series of uploads.
-    /// Moves any buffers which are now ready to be used from the waiting list to the ready list.
-    pub fn begin_frame(&mut self, device: &mut Device) {
-        // Iterate through the waiting buffers and check if each fence has been signalled.
-        // If a fence is signalled, move its corresponding buffers to the available list.
-        // On error, delete the buffers. Stop when we find the first non-signalled fence,
-        // and clean up the signalled fences.
-        let mut first_not_signalled = self.waiting_buffers.len();
-        for (i, (sync, buffers)) in self.waiting_buffers.iter_mut().enumerate() {
-            match device.gl.client_wait_sync(*sync, 0, 0) {
-                gl::TIMEOUT_EXPIRED => {
-                    first_not_signalled = i;
-                    break;
-                },
-                gl::ALREADY_SIGNALED | gl::CONDITION_SATISFIED => {
-                    self.available_buffers.extend(buffers.drain(..));
-                }
-                gl::WAIT_FAILED | _ => {
-                    warn!("glClientWaitSync error in UploadPBOPool::begin_frame()");
-                    for buffer in buffers.drain(..) {
-                        device.delete_pbo(buffer.pbo);
-                    }
-                }
-            }
-        }
-
-        // Delete signalled fences, and remove their now-empty Vecs from waiting_buffers.
-        for (sync, _) in self.waiting_buffers.drain(0..first_not_signalled) {
-            device.gl.delete_sync(sync);
-        }
-    }
-
-    // To be called at the end of a series of uploads.
-    // Creates a sync object, and adds the buffers returned during this frame to waiting_buffers.
-    pub fn end_frame(&mut self, device: &mut Device) {
-        if !self.returned_buffers.is_empty() {
-            let sync = device.gl.fence_sync(gl::SYNC_GPU_COMMANDS_COMPLETE, 0);
-            if !sync.is_null() {
-                self.waiting_buffers.push((sync, mem::replace(&mut self.returned_buffers, Vec::new())))
-            } else {
-                warn!("glFenceSync error in UploadPBOPool::end_frame()");
-
-                for buffer in self.returned_buffers.drain(..) {
-                    device.delete_pbo(buffer.pbo);
-                }
-            }
-        }
-    }
-
-    /// Obtain a PBO, either by reusing an existing PBO or allocating a new one.
-    /// min_size specifies the minimum required size of the PBO. The returned PBO
-    /// may be larger than required.
-    fn get_pbo(&mut self, device: &mut Device, min_size: usize) -> Result<UploadPBO, String> {
-
-        // If min_size is smaller than our default size, then use the default size.
-        // The exception to this is when due to driver bugs we cannot upload from
-        // offsets other than zero within a PBO. In this case, there is no point in
-        // allocating buffers larger than required, as they cannot be shared.
-        let (can_recycle, size) = if min_size <= self.default_size && device.capabilities.supports_nonzero_pbo_offsets {
-            (true, self.default_size)
-        } else {
-            (false, min_size)
-        };
-
-        // Try to recycle an already allocated PBO.
-        if can_recycle {
-            if let Some(mut buffer) = self.available_buffers.pop() {
-                assert_eq!(buffer.pbo.reserved_size, size);
-                assert!(buffer.can_recycle);
-
-                device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, buffer.pbo.id);
-
-                match buffer.mapping {
-                    PBOMapping::Unmapped => {
-                        // If buffer was unmapped then transiently map it.
-                        let ptr = device.gl.map_buffer_range(
-                            gl::PIXEL_UNPACK_BUFFER,
-                            0,
-                            buffer.pbo.reserved_size as _,
-                            gl::MAP_WRITE_BIT | gl::MAP_UNSYNCHRONIZED_BIT,
-                        ) as *mut _;
-
-                        let ptr = ptr::NonNull::new(ptr).ok_or_else(
-                            || format!("Failed to transiently map PBO of size {} bytes", buffer.pbo.reserved_size)
-                        )?;
-
-                        buffer.mapping = PBOMapping::Transient(ptr);
-                    }
-                    PBOMapping::Transient(_) => {
-                        unreachable!("Transiently mapped UploadPBO must be unmapped before returning to pool.");
-                    }
-                    PBOMapping::Persistent(_) => {
-                    }
-                }
-
-                return Ok(buffer);
-            }
-        }
-
-        // Try to recycle a PBO ID (but not its allocation) from a previously allocated PBO.
-        // If there are none available, create a new PBO.
-        let mut pbo = match self.orphaned_buffers.pop() {
-            Some(pbo) => pbo,
-            None => device.create_pbo(),
-        };
-
-        assert_eq!(pbo.reserved_size, 0);
-        pbo.reserved_size = size;
-
-        device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, pbo.id);
-        let mapping = if device.capabilities.supports_buffer_storage && can_recycle {
-            device.gl.buffer_storage(
-                gl::PIXEL_UNPACK_BUFFER,
-                pbo.reserved_size as _,
-                ptr::null(),
-                gl::MAP_WRITE_BIT | gl::MAP_PERSISTENT_BIT,
-            );
-            let ptr = device.gl.map_buffer_range(
-                gl::PIXEL_UNPACK_BUFFER,
-                0,
-                pbo.reserved_size as _,
-                // GL_MAP_COHERENT_BIT doesn't seem to work on Adreno, so use glFlushMappedBufferRange.
-                // kvark notes that coherent memory can be faster on some platforms, such as nvidia,
-                // so in the future we could choose which to use at run time.
-                gl::MAP_WRITE_BIT | gl::MAP_PERSISTENT_BIT | gl::MAP_FLUSH_EXPLICIT_BIT,
-            ) as *mut _;
-
-            let ptr = ptr::NonNull::new(ptr).ok_or_else(
-                || format!("Failed to transiently map PBO of size {} bytes", pbo.reserved_size)
-            )?;
-
-            PBOMapping::Persistent(ptr)
-        } else {
-            device.gl.buffer_data_untyped(
-                gl::PIXEL_UNPACK_BUFFER,
-                pbo.reserved_size as _,
-                ptr::null(),
-                self.usage_hint.to_gl(),
-            );
-            let ptr = device.gl.map_buffer_range(
-                gl::PIXEL_UNPACK_BUFFER,
-                0,
-                pbo.reserved_size as _,
-                // Unlike the above code path, where we are re-mapping a buffer that has previously been unmapped,
-                // this buffer has just been created there is no need for GL_MAP_UNSYNCHRONIZED_BIT.
-                gl::MAP_WRITE_BIT,
-            ) as *mut _;
-
-            let ptr = ptr::NonNull::new(ptr).ok_or_else(
-                || format!("Failed to transiently map PBO of size {} bytes", pbo.reserved_size)
-            )?;
-
-            PBOMapping::Transient(ptr)
-        };
-
-        Ok(UploadPBO { pbo, mapping, can_recycle })
-    }
-
-    /// Returns a PBO to the pool. If the PBO is recyclable it is placed in the waiting list.
-    /// Otherwise we orphan the allocation immediately, and will subsequently reuse just the ID.
-    fn return_pbo(&mut self, device: &mut Device, mut buffer: UploadPBO) {
-        assert!(
-            !matches!(buffer.mapping, PBOMapping::Transient(_)),
-            "Transiently mapped UploadPBO must be unmapped before returning to pool.",
-        );
-
-        if buffer.can_recycle {
-            self.returned_buffers.push(buffer);
-        } else {
-            device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, buffer.pbo.id);
-            device.gl.buffer_data_untyped(
-                gl::PIXEL_UNPACK_BUFFER,
-                0,
-                ptr::null(),
-                gl::STREAM_DRAW,
-            );
-            buffer.pbo.reserved_size = 0;
-            self.orphaned_buffers.push(buffer.pbo);
-        }
-
-        device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, 0);
-    }
-
-    /// Frees all allocated buffers in response to a memory pressure event.
-    pub fn on_memory_pressure(&mut self, device: &mut Device) {
-        for buffer in self.available_buffers.drain(..) {
-            device.delete_pbo(buffer.pbo);
-        }
-        for buffer in self.returned_buffers.drain(..) {
-            device.delete_pbo(buffer.pbo)
-        }
-        for (sync, buffers) in self.waiting_buffers.drain(..) {
-            device.gl.delete_sync(sync);
-            for buffer in buffers {
-                device.delete_pbo(buffer.pbo)
-            }
-        }
-        // There is no need to delete orphaned PBOs on memory pressure.
-    }
-
-    /// Generates a memory report.
-    pub fn report_memory(&self) -> MemoryReport {
-        let mut report = MemoryReport::default();
-        for buffer in &self.available_buffers {
-            report.texture_upload_pbos += buffer.pbo.reserved_size;
-        }
-        for buffer in &self.returned_buffers {
-            report.texture_upload_pbos += buffer.pbo.reserved_size;
-        }
-        for (_, buffers) in &self.waiting_buffers {
-            for buffer in buffers {
-                report.texture_upload_pbos += buffer.pbo.reserved_size;
-            }
-        }
-        report
-    }
-
-    pub fn deinit(&mut self, device: &mut Device) {
-        for buffer in self.available_buffers.drain(..) {
-            device.delete_pbo(buffer.pbo);
-        }
-        for buffer in self.returned_buffers.drain(..) {
-            device.delete_pbo(buffer.pbo)
-        }
-        for (sync, buffers) in self.waiting_buffers.drain(..) {
-            device.gl.delete_sync(sync);
-            for buffer in buffers {
-                device.delete_pbo(buffer.pbo)
-            }
-        }
-        for pbo in self.orphaned_buffers.drain(..) {
-            device.delete_pbo(pbo);
-        }
-    }
-}
-
-/// Used to perform a series of texture uploads.
-/// Create using Device::upload_texture(). Perform a series of uploads using either
-/// upload(), or stage() and upload_staged(), then call flush().
-pub struct TextureUploader<'a> {
-    /// A list of buffers containing uploads that need to be flushed.
-    buffers: Vec<PixelBuffer<'a>>,
-    /// Pool used to obtain PBOs to fill with texture data.
-    pub pbo_pool: &'a mut UploadPBOPool,
-}
-
-impl<'a> Drop for TextureUploader<'a> {
-    fn drop(&mut self) {
-        assert!(
-            thread::panicking() || self.buffers.is_empty(),
-            "TextureUploader must be flushed before it is dropped."
-        );
-    }
-}
-
-/// A buffer used to manually stage data to be uploaded to a texture.
-/// Created by calling TextureUploader::stage(), the data can then be written to via get_mapping().
-#[derive(Debug)]
-pub struct UploadStagingBuffer<'a> {
-    /// The PixelBuffer containing this upload.
-    buffer: PixelBuffer<'a>,
-    /// The offset of this upload within the PixelBuffer.
-    offset: usize,
-    /// The size of this upload.
-    size: usize,
-    /// The stride of the data within the buffer.
-    stride: usize,
-}
-
-impl<'a> UploadStagingBuffer<'a> {
-    /// Returns the required stride of the data to be written to the buffer.
-    pub fn get_stride(&self) -> usize {
-        self.stride
-    }
-
-    /// Returns a mapping of the data in the buffer, to be written to.
-    pub fn get_mapping(&mut self) -> &mut [mem::MaybeUninit<u8>] {
-        &mut self.buffer.mapping[self.offset..self.offset + self.size]
-    }
-}
-
-impl<'a> TextureUploader<'a> {
-    /// Returns an UploadStagingBuffer which can be used to manually stage data to be uploaded.
-    /// Once the data has been staged, it can be uploaded with upload_staged().
-    pub fn stage(
-        &mut self,
-        device: &mut Device,
-        format: ImageFormat,
-        size: DeviceIntSize,
-    ) -> Result<UploadStagingBuffer<'a>, String> {
-        assert!(matches!(device.upload_method, UploadMethod::PixelBuffer(_)), "Texture uploads should only be staged when using pixel buffers.");
-
-        // for optimal PBO texture uploads the offset and stride of the data in
-        // the buffer may have to be a multiple of a certain value.
-        let (dst_size, dst_stride) = device.required_upload_size_and_stride(
-            size,
-            format,
-        );
-
-        // Find a pixel buffer with enough space remaining, creating a new one if required.
-        let buffer_index = self.buffers.iter().position(|buffer| {
-            buffer.size_used + dst_size <= buffer.inner.pbo.reserved_size
-        });
-        let buffer = match buffer_index {
-            Some(i) => self.buffers.swap_remove(i),
-            None => PixelBuffer::new(self.pbo_pool.get_pbo(device, dst_size)?),
-        };
-
-        if !device.capabilities.supports_nonzero_pbo_offsets {
-            assert_eq!(buffer.size_used, 0, "PBO uploads from non-zero offset are not supported.");
-        }
-        assert!(buffer.size_used + dst_size <= buffer.inner.pbo.reserved_size, "PixelBuffer is too small");
-
-        let offset = buffer.size_used;
-
-        Ok(UploadStagingBuffer {
-            buffer,
-            offset,
-            size: dst_size,
-            stride: dst_stride,
-        })
-    }
-
-    /// Uploads manually staged texture data to the specified texture.
-    pub fn upload_staged(
-        &mut self,
-        device: &mut Device,
-        texture: &'a Texture,
-        rect: DeviceIntRect,
-        format_override: Option<ImageFormat>,
-        mut staging_buffer: UploadStagingBuffer<'a>,
-    ) -> usize {
-        let size = staging_buffer.size;
-
-        staging_buffer.buffer.chunks.push(UploadChunk {
-            rect,
-            stride: Some(staging_buffer.stride as i32),
-            offset: staging_buffer.offset,
-            format_override,
-            texture,
-        });
-        staging_buffer.buffer.size_used += staging_buffer.size;
-
-        // Flush the buffer if it is full, otherwise return it to the uploader for further use.
-        if staging_buffer.buffer.size_used < staging_buffer.buffer.inner.pbo.reserved_size {
-            self.buffers.push(staging_buffer.buffer);
-        } else {
-            Self::flush_buffer(device, self.pbo_pool, staging_buffer.buffer);
-        }
-
-        size
-    }
-
-    /// Uploads texture data to the specified texture.
+    /// Uploads texture data to the specified texture, returning the number of
+    /// bytes uploaded.
     pub fn upload<T>(
         &mut self,
         device: &mut Device,
-        texture: &'a Texture,
+        texture: &Texture,
         mut rect: DeviceIntRect,
         stride: Option<i32>,
         format_override: Option<ImageFormat>,
         data: *const T,
         len: usize,
     ) -> usize {
+        debug_assert!(device.inside_frame);
+
         // Textures dimensions may have been clamped by the hardware. Crop the
         // upload region to match.
         let cropped = rect.intersection(
@@ -4556,59 +4100,131 @@ impl<'a> TextureUploader<'a> {
                     Ok(staging_buffer) => staging_buffer,
                     Err(_) => return 0,
                 };
-                let dst_stride = staging_buffer.get_stride();
+                let dst_stride = staging_buffer.stride();
+                let dst = staging_buffer.data_mut();
 
-                unsafe {
-                    let src: &[mem::MaybeUninit<u8>] = slice::from_raw_parts(data as *const _, src_size);
+                let src: &[mem::MaybeUninit<u8>] = unsafe {
+                    slice::from_raw_parts(data as *const _, src_size)
+                };
 
-                    if src_stride == dst_stride {
-                        // the stride is already optimal, so simply copy
-                        // the data as-is in to the buffer
-                        staging_buffer.get_mapping()[..src_size].copy_from_slice(src);
-                    } else {
-                        // copy the data line-by-line in to the buffer so
-                        // that it has an optimal stride
-                        for y in 0..rect.height() as usize {
-                            let src_start = y * src_stride;
-                            let src_end = src_start + width_bytes;
-                            let dst_start = y * staging_buffer.get_stride();
-                            let dst_end = dst_start + width_bytes;
+                if src_stride == dst_stride {
+                    // The stride is already optimal, so simply copy the data as-is.
+                    dst[..src_size].copy_from_slice(src);
+                } else {
+                    // Copy the data line-by-line so that it has an optimal stride.
+                    for y in 0..rect.height() as usize {
+                        let src_start = y * src_stride;
+                        let src_end = src_start + width_bytes;
+                        let dst_start = y * dst_stride;
+                        let dst_end = dst_start + width_bytes;
 
-                            staging_buffer.get_mapping()[dst_start..dst_end].copy_from_slice(&src[src_start..src_end])
-                        }
+                        dst[dst_start..dst_end].copy_from_slice(&src[src_start..src_end])
                     }
                 }
 
-                self.upload_staged(device, texture, rect, format_override, staging_buffer)
+                staging_buffer.upload(texture, rect, format_override)
             }
         }
     }
 
-    fn flush_buffer(device: &mut Device, pbo_pool: &mut UploadPBOPool, mut buffer: PixelBuffer) {
-        device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, buffer.inner.pbo.id);
-        match buffer.inner.mapping {
-            PBOMapping::Unmapped => unreachable!("UploadPBO should be mapped at this stage."),
-            PBOMapping::Transient(_) => {
-                device.gl.unmap_buffer(gl::PIXEL_UNPACK_BUFFER);
-                buffer.inner.mapping = PBOMapping::Unmapped;
-            }
-            PBOMapping::Persistent(_) => {
-                device.gl.flush_mapped_buffer_range(gl::PIXEL_UNPACK_BUFFER, 0, buffer.size_used as _);
-            }
+    /// Maps a range of the PBO large enough to hold an upload of the specified
+    /// size and format. The returned [`UploadStagingBuffer`] is filled by the
+    /// caller and then uploaded with [`UploadStagingBuffer::upload()`].
+    pub fn stage<'a>(
+        &'a mut self,
+        device: &'a mut Device,
+        format: ImageFormat,
+        size: DeviceIntSize,
+    ) -> Result<UploadStagingBuffer<'a>, String> {
+        debug_assert!(device.inside_frame);
+
+        let UploadMethod::PixelBuffer(usage_hint) = device.upload_method else {
+            panic!("Texture uploads should only be staged when using pixel buffers.")
+        };
+
+        device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, self.pbo.id);
+
+        // For optimal PBO texture uploads the offset and stride of the data in
+        // the buffer may have to be a multiple of a certain value.
+        let (dst_size, dst_stride) = device.required_upload_size_and_stride(size, format);
+        let bytes_per_pixel = NonZeroUsize::new(format.bytes_per_pixel() as usize).unwrap();
+        let alignment = device.required_pbo_stride().num_bytes(format).max(bytes_per_pixel);
+        let mut offset = round_up_to_multiple(self.used_bytes, alignment);
+
+        if self.pbo.reserved_size < offset + dst_size {
+            let new_size = match device.capabilities.supports_nonzero_pbo_offsets {
+                true => self.default_pbo_size.max(dst_size),
+                // Using the exact size when non-zero PBO offsets avoids wasting space,
+                // and additionally ensures we must reallocate for the next upload
+                // ensuring we always use a zero offset.
+                false => dst_size,
+            };
+            device.gl.buffer_data_untyped(
+                gl::PIXEL_UNPACK_BUFFER,
+                new_size as _,
+                ptr::null(),
+                usage_hint.to_gl(),
+            );
+            self.pbo.reserved_size = new_size;
+            offset = 0;
         }
-        buffer.flush_chunks(device);
-        let pbo = mem::replace(&mut buffer.inner, UploadPBO::empty());
-        pbo_pool.return_pbo(device, pbo);
+        assert!(
+            device.capabilities.supports_nonzero_pbo_offsets || offset == 0,
+            "PBO uploads from a non-zero offset are not supported",
+        );
+        self.used_bytes = offset + dst_size;
+
+        let ptr = device.gl.map_buffer_range(
+            gl::PIXEL_UNPACK_BUFFER,
+            offset as _,
+            dst_size as _,
+            // MAP_UNSYNCHRONIZED_BIT is safe because we know the range being
+            // mapped has not been used since the buffer was last reallocated.
+            gl::MAP_WRITE_BIT | gl::MAP_UNSYNCHRONIZED_BIT,
+        ) as *mut _;
+
+        let mapping = ptr::NonNull::new(ptr).ok_or_else(|| {
+            device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, 0);
+            format!("Failed to map PBO region of size {} bytes", dst_size)
+        })?;
+
+        Ok(UploadStagingBuffer {
+            uploader: self,
+            device,
+            offset,
+            size: dst_size,
+            mapping,
+            stride: dst_stride,
+            mapped: true,
+        })
     }
 
-    /// Flushes all pending texture uploads. Must be called after all
-    /// required upload() or upload_staged() calls have been made.
-    pub fn flush(mut self, device: &mut Device) {
-        for buffer in self.buffers.drain(..) {
-            Self::flush_buffer(device, self.pbo_pool, buffer);
-        }
 
+    /// Frees allocated storage in response to a memory pressure event.
+    pub fn on_memory_pressure(&mut self, device: &mut Device) {
+        device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, self.pbo.id);
+        device.gl.buffer_data_untyped(
+            gl::PIXEL_UNPACK_BUFFER,
+            0,
+            ptr::null(),
+            gl::STREAM_DRAW,
+        );
         device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, 0);
+        self.pbo.reserved_size = 0;
+        self.used_bytes = 0;
+    }
+
+    /// Generates a memory report.
+    pub fn report_memory(&self) -> MemoryReport {
+        let mut report = MemoryReport::default();
+        report.texture_upload_pbos = self.pbo.reserved_size;
+        report
+    }
+
+    pub fn deinit(&mut self, device: &mut Device) {
+        let pbo = mem::replace(&mut self.pbo, PBO { id: 0, reserved_size: 0 });
+        device.delete_pbo(pbo);
+        self.used_bytes = 0;
     }
 
     fn update_impl(device: &mut Device, chunk: UploadChunk) {
@@ -4667,6 +4283,73 @@ impl<'a> TextureUploader<'a> {
         if chunk.stride.is_some() {
             device.gl.pixel_store_i(gl::UNPACK_ROW_LENGTH, 0 as _);
         }
+    }
+}
+
+/// A mapped range of a PBO, to be filled with texture data and then uploaded to
+/// a texture.
+///
+/// This exclusively borrows the [`TextureUploader`] which ensures the
+/// underlying buffer cannot be reallocated or deleted from underneath us.
+/// Once texture data has been written to [`Self::mapping`], it can be uploaded
+/// by calling [`Self::upload()`] which consumes `self` and drops the borrow.
+#[must_use]
+pub struct UploadStagingBuffer<'a> {
+    uploader: &'a mut TextureUploader,
+    device: &'a mut Device,
+    /// Offset within the PBO from which this is mapped
+    offset: usize,
+    size: usize,
+    mapping: ptr::NonNull<mem::MaybeUninit<u8>>,
+    stride: usize,
+    mapped: bool,
+}
+
+impl UploadStagingBuffer<'_> {
+    /// Returns the required stride of the data to be written.
+    pub fn stride(&self) -> usize {
+        self.stride
+    }
+
+    /// Returns the mapped range, to be written to.
+    pub fn data_mut(&mut self) -> &mut [mem::MaybeUninit<u8>] {
+        unsafe { slice::from_raw_parts_mut(self.mapping.as_ptr(), self.size) }
+    }
+
+    /// Unmaps the range and uploads it to the specified texture, returning the
+    /// number of bytes uploaded.
+    pub fn upload(
+        mut self,
+        texture: &Texture,
+        rect: DeviceIntRect,
+        format_override: Option<ImageFormat>,
+    ) -> usize {
+        self.device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, self.uploader.pbo.id);
+        self.device.gl.unmap_buffer(gl::PIXEL_UNPACK_BUFFER);
+
+        // Disarm drop()
+        self.mapped = false;
+
+        TextureUploader::update_impl(self.device, UploadChunk {
+            rect,
+            stride: Some(self.stride as i32),
+            offset: self.offset,
+            format_override,
+            texture,
+        });
+        self.device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, 0);
+
+        self.size
+    }
+}
+
+impl Drop for UploadStagingBuffer<'_> {
+    fn drop(&mut self) {
+        if self.mapped {
+            self.device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, self.uploader.pbo.id);
+            self.device.gl.unmap_buffer(gl::PIXEL_UNPACK_BUFFER);
+        }
+        self.device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, 0);
     }
 }
 
