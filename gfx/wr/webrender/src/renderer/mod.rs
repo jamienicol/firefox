@@ -59,7 +59,9 @@ use crate::composite::{CompositorConfig, NativeSurfaceOperationDetails, NativeSu
 #[cfg(feature = "debugger")]
 use api::debugger::{CompositorDebugInfo, DebuggerTextureContent};
 use crate::debug_colors;
-use crate::device::{DepthFunction, Device, DrawTarget, ExternalTexture, GpuFrameId, UploadPBOPool};
+use crate::device::{
+    DepthFunction, Device, DrawTarget, ExternalTexture, GpuFrameId, TextureUploader, UploadPBOPool,
+};
 use crate::device::{ReadTarget, ShaderError, Texture, TextureFilter, TextureFlags, TextureSlot, Texel};
 use crate::device::query::{GpuSampler, GpuTimer};
 #[cfg(feature = "capture")]
@@ -3510,11 +3512,35 @@ impl Renderer {
 
         let _timer = self.gpu_profiler.start_timer(GPU_TAG_SETUP_DATA);
 
-        self.vertex_data_textures[self.current_vertex_data_textures].update(
-            &mut self.device,
+        let mut texture_uploader = self.device.upload_texture(
             &mut self.texture_upload_pbo_pool,
-            frame,
         );
+
+        let vertex_data_textures =
+            &mut self.vertex_data_textures[self.current_vertex_data_textures];
+        vertex_data_textures.update(&mut self.device, &mut texture_uploader, frame);
+
+        {
+            let _gm = self.gpu_profiler.start_marker("gpu buffer update");
+
+            Self::update_gpu_buffer_texture(
+                &mut self.device,
+                &frame.gpu_buffer_f,
+                &mut self.gpu_buffer_texture_f,
+                &mut texture_uploader,
+            );
+            Self::update_gpu_buffer_texture(
+                &mut self.device,
+                &frame.gpu_buffer_i,
+                &mut self.gpu_buffer_texture_i,
+                &mut texture_uploader,
+            );
+        }
+
+        texture_uploader.flush(&mut self.device);
+
+        vertex_data_textures.bind(&mut self.device);
+
         self.current_vertex_data_textures =
             (self.current_vertex_data_textures + 1) % VERTEX_DATA_TEXTURE_COUNT;
 
@@ -3596,11 +3622,11 @@ impl Renderer {
         }
     }
 
-    fn update_gpu_buffer_texture<T: Texel>(
+    fn update_gpu_buffer_texture<'a, T: Texel>(
         device: &mut Device,
         buffer: &GpuBuffer<T>,
-        dst_texture: &mut Option<Texture>,
-        pbo_pool: &mut UploadPBOPool,
+        dst_texture: &'a mut Option<Texture>,
+        texture_uploader: &mut TextureUploader<'a>,
     ) {
         if buffer.is_empty() {
             return;
@@ -3628,9 +3654,7 @@ impl Renderer {
             );
         }
 
-        let mut uploader = device.upload_texture(pbo_pool);
-
-        uploader.upload(
+        texture_uploader.upload(
             device,
             dst_texture.as_mut().unwrap(),
             DeviceIntRect {
@@ -3642,8 +3666,6 @@ impl Renderer {
             buffer.data.as_ptr(),
             buffer.data.len(),
         );
-
-        uploader.flush(device);
     }
 
     fn maybe_evict_gpu_buffer_texture(
@@ -3686,23 +3708,6 @@ impl Renderer {
         if frame.passes.is_empty() {
             frame.has_been_rendered = true;
             return;
-        }
-
-        {
-            let _gm = self.gpu_profiler.start_marker("gpu buffer update");
-
-            Self::update_gpu_buffer_texture(
-                &mut self.device,
-                &frame.gpu_buffer_f,
-                &mut self.gpu_buffer_texture_f,
-                &mut self.texture_upload_pbo_pool,
-            );
-            Self::update_gpu_buffer_texture(
-                &mut self.device,
-                &frame.gpu_buffer_i,
-                &mut self.gpu_buffer_texture_i,
-                &mut self.texture_upload_pbo_pool,
-            );
         }
 
         self.device.disable_depth_write();

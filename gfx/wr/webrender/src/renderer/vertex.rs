@@ -11,7 +11,7 @@ use std::{marker::PhantomData, mem, num::NonZeroUsize, ops};
 use api::units::*;
 use crate::{
     device::{
-        Device, Texture, TextureFilter, TextureUploader, UploadPBOPool, VertexUsageHint, VAO,
+        Device, Texture, TextureFilter, TextureUploader, VertexUsageHint, VAO,
     },
     frame_builder::Frame,
     gpu_types::{PrimitiveHeaderI, PrimitiveHeaderF},
@@ -294,30 +294,32 @@ impl VertexDataTextures {
         }
     }
 
-    pub fn update(&mut self, device: &mut Device, pbo_pool: &mut UploadPBOPool, frame: &mut Frame) {
-        let mut texture_uploader = device.upload_texture(pbo_pool);
+    pub fn update<'a>(
+        &'a mut self,
+        device: &mut Device,
+        texture_uploader: &mut TextureUploader<'a>,
+        frame: &mut Frame,
+    ) {
         self.prim_header_f_texture.update(
             device,
-            &mut texture_uploader,
+            texture_uploader,
             &mut frame.prim_headers.headers_float,
         );
         self.prim_header_i_texture.update(
             device,
-            &mut texture_uploader,
+            texture_uploader,
             &mut frame.prim_headers.headers_int,
         );
         self.transforms_texture
-            .update(device, &mut texture_uploader, &mut frame.transform_palette);
+            .update(device, texture_uploader, &mut frame.transform_palette);
         self.render_task_texture.update(
             device,
-            &mut texture_uploader,
+            texture_uploader,
             &mut frame.render_tasks.task_data,
         );
+    }
 
-        // Flush and drop the texture uploader now, so that
-        // we can borrow the textures to bind them.
-        texture_uploader.flush(device);
-
+    pub fn bind(&self, device: &mut Device) {
         device.bind_texture(
             super::TextureSampler::PrimitiveHeadersF,
             &self.prim_header_f_texture.texture(),
