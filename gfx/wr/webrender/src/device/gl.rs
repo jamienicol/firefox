@@ -1026,6 +1026,10 @@ pub struct Capabilities {
     /// requires GL_EXT_read_format_bgra). If false, callers must read RGBA
     /// instead and swap the red and blue channels themselves.
     pub supports_bgra_read: bool,
+    /// Whether creating and destroying GLsync objects is slow. If so, we
+    /// typically prefer to rely on driver-internal synchronization rather than
+    /// implementing our own using fences.
+    pub fences_are_slow: bool,
     /// The name of the renderer, as reported by GL
     pub renderer_name: String,
 }
@@ -1600,6 +1604,8 @@ impl Device {
         }
         info!("GL context {:?} {}.{}", gl.get_type(), gl_version[0], gl_version[1]);
 
+        let is_macos_angle = cfg!(target_os = "macos") &&
+            renderer_name.starts_with("ANGLE");
         let is_macos_native_gl = cfg!(target_os = "macos") &&
             !renderer_name.starts_with("ANGLE");
 
@@ -1932,6 +1938,11 @@ impl Device {
         // an attached buffer has been orphaned.
         let requires_vao_rebind_after_orphaning = is_adreno_3xx;
 
+        // Profiles show creating and destroying fences is slow on Metal ANGLE.
+        // Where possible, prefer to rely on ANGLE/Metal internal
+        // synchronisation rather than using fences to implement our own.
+        let fences_are_slow = is_macos_angle;
+
         Device {
             gl,
             base_gl: None,
@@ -1970,6 +1981,7 @@ impl Device {
                 supports_image_external_essl3,
                 requires_vao_rebind_after_orphaning,
                 supports_bgra_read,
+                fences_are_slow,
                 renderer_name,
             },
 
@@ -4201,12 +4213,25 @@ impl UploadPBOPool {
         // If min_size is smaller than our default size, then use the default size.
         // The exception to this is when due to driver bugs we cannot upload from
         // offsets other than zero within a PBO. In this case, there is no point in
-        // allocating buffers larger than required, as they cannot be shared.
-        let (can_recycle, size) = if min_size <= self.default_size && device.capabilities.supports_nonzero_pbo_offsets {
-            (true, self.default_size)
+        // allocating buffers larger than required, as they cannot be recycled.
+        let size = if device.capabilities.supports_nonzero_pbo_offsets {
+            self.default_size.max(min_size)
         } else {
-            (false, min_size)
+            min_size
         };
+
+        // We typically want to recycle the PBO if it is the default size. However, we may
+        // just have happened to request a default-sized PBO on this occasion even though
+        // non-zero offsets are unsupported, in which case recycling it won't be
+        // worthwhile.
+        //
+        // On devices where fence creation and deletion is slow, we're better off relying
+        // on the driver's internal recycling than our own. Note we still prefer to use
+        // the default size where possible on such devices, to make life easier for the
+        // driver's allocation/recycling.
+        let can_recycle = size == self.default_size
+            && device.capabilities.supports_nonzero_pbo_offsets
+            && !device.capabilities.fences_are_slow;
 
         // Try to recycle an already allocated PBO.
         if can_recycle {
@@ -4313,6 +4338,14 @@ impl UploadPBOPool {
         if buffer.can_recycle {
             self.returned_buffers.push(buffer);
         } else {
+            // Persistently mapped buffers use immutable storage and therefore cannot be
+            // orphaned. We should only have created a persistently mapped buffer if it
+            // was recyclable.
+            assert!(
+                !matches!(buffer.mapping, PBOMapping::Persistent(_)),
+                "Persistently mapped UploadPBO should be recyclable.",
+            );
+
             device.gl.bind_buffer(gl::PIXEL_UNPACK_BUFFER, buffer.pbo.id);
             device.gl.buffer_data_untyped(
                 gl::PIXEL_UNPACK_BUFFER,
