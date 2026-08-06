@@ -45,8 +45,16 @@ enum CommandBufferFinishOperation
 
 class CommandBuffer;
 class CommandEncoder;
+class ContextDevice;
 class RenderCommandEncoder;
 class OcclusionQueryPool;
+
+struct EventPoolEntry
+{
+    angle::ObjCPtr<id<MTLEvent>> event;
+    uint64_t signalValue = 0;
+    uint64_t queueSerial = 0;
+};
 
 class AtomicSerial : angle::NonCopyable
 {
@@ -107,6 +115,9 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
     bool isSerialScheduled(uint64_t serial) const;
     void addCommandBufferScheduledCallback(uint64_t serial, std::function<void()> callback);
 
+    EventPoolEntry acquireEvent(const ContextDevice &device);
+    void releaseEvent(EventPoolEntry event);
+
     CommandQueue &operator=(id<MTLCommandQueue> metalQueue)
     {
         set(metalQueue);
@@ -134,6 +145,8 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
                                   uint64_t timeElapsedEntry);
 
     void onCommandBufferScheduled(uint64_t serial);
+
+    void clearEventPool();
 
     void addCommandBufferToTimeElapsedEntry(std::lock_guard<std::mutex> &lg, uint64_t id);
     void recordCommandBufferTimeElapsed(std::lock_guard<std::mutex> &lg,
@@ -176,6 +189,7 @@ class CommandQueue final : public WrappedObject<id<MTLCommandQueue>>, angle::Non
     AtomicCommandBufferError mCmdBufferError;
 
     angle::HashMap<uint64_t, std::vector<std::function<void()>>> mCommandBufferScheduledCallbacks;
+    std::vector<EventPoolEntry> mEventPool;
 };
 
 class CommandBuffer final : public WrappedObject<id<MTLCommandBuffer>>, angle::NonCopyable

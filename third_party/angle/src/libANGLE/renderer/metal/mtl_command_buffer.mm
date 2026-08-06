@@ -16,6 +16,7 @@
 
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <random>
 #include <type_traits>
 #include "mtl_command_buffer.h"
@@ -24,6 +25,7 @@
 #endif
 
 #include "common/debug.h"
+#include "libANGLE/renderer/metal/mtl_context_device.h"
 #include "libANGLE/renderer/metal/mtl_occlusion_query_pool.h"
 #include "libANGLE/renderer/metal/mtl_resources.h"
 #include "libANGLE/renderer/metal/mtl_utils.h"
@@ -46,6 +48,8 @@ namespace mtl
 
 namespace
 {
+
+constexpr size_t kMaxPooledEvents = 64;
 
 #define ANGLE_MTL_CMD_X(PROC)                        \
     PROC(Invalid)                                    \
@@ -488,14 +492,25 @@ void AtomicSerial::storeMaxValue(uint64_t value)
 void CommandQueue::reset()
 {
     finishAllCommands();
+    clearEventPool();
     ParentClass::reset();
 }
 
 void CommandQueue::set(id<MTLCommandQueue> metalQueue)
 {
     finishAllCommands();
+    clearEventPool();
 
     ParentClass::set(metalQueue);
+}
+
+void CommandQueue::clearEventPool()
+{
+    std::vector<EventPoolEntry> eventPool;
+    {
+        std::lock_guard<std::mutex> lg(mLock);
+        mEventPool.swap(eventPool);
+    }
 }
 
 void CommandQueue::finishAllCommands()
@@ -614,6 +629,45 @@ void CommandQueue::addCommandBufferScheduledCallback(uint64_t serial,
     else
     {
         mCommandBufferScheduledCallbacks[serial].push_back(std::move(callback));
+    }
+}
+
+EventPoolEntry CommandQueue::acquireEvent(const ContextDevice &device)
+{
+    {
+        std::lock_guard<std::mutex> lg(mLock);
+        for (size_t index = mEventPool.size(); index > 0; --index)
+        {
+            EventPoolEntry &entry = mEventPool[index - 1];
+            if (isSerialCompleted(entry.queueSerial))
+            {
+                EventPoolEntry result = std::move(entry);
+                if (index != mEventPool.size())
+                {
+                    entry = std::move(mEventPool.back());
+                }
+                mEventPool.pop_back();
+                ++result.signalValue;
+                result.queueSerial = 0;
+                return result;
+            }
+        }
+    }
+
+    return {device.newEvent(), 1, 0};
+}
+
+void CommandQueue::releaseEvent(EventPoolEntry event)
+{
+    if (!event.event || event.signalValue == std::numeric_limits<uint64_t>::max())
+    {
+        return;
+    }
+
+    std::lock_guard<std::mutex> lg(mLock);
+    if (mEventPool.size() < kMaxPooledEvents)
+    {
+        mEventPool.push_back(std::move(event));
     }
 }
 

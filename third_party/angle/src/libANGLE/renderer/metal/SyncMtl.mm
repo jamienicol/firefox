@@ -145,21 +145,26 @@ class SharedEventSyncImpl : public SyncImpl
 
 class EventSyncImpl : public SyncImpl
 {
-  private:
-    // MTLEvent starts with a value of 0, use 1 to signal it.
-    static constexpr uint64_t kEventSignalValue = 1;
-
   public:
-    ~EventSyncImpl() override {}
+    ~EventSyncImpl() override
+    {
+        if (mCommandQueue && mMetalEvent)
+        {
+            mCommandQueue->releaseEvent(
+                {std::move(mMetalEvent), mEventSignalValue, mEncodedCommandBufferSerial});
+        }
+    }
 
     angle::Result set(ContextMtl *contextMtl)
     {
-        ANGLE_MTL_OBJC_SCOPE
-        {
-            mMetalEvent = contextMtl->getMetalDevice().newEvent();
-        }
+        mtl::CommandQueue &commandQueue = contextMtl->getDisplay()->cmdQueue();
+        mtl::EventPoolEntry event       = commandQueue.acquireEvent(contextMtl->getMetalDevice());
+        mMetalEvent                     = std::move(event.event);
+        mEventSignalValue               = event.signalValue;
+        mCommandQueue                   = &commandQueue;
 
-        mEncodedCommandBufferSerial = contextMtl->queueEventSignal(mMetalEvent, kEventSignalValue);
+        mEncodedCommandBufferSerial =
+            contextMtl->queueEventSignal(mMetalEvent, mEventSignalValue);
         return angle::Result::Continue;
     }
 
@@ -194,7 +199,7 @@ class EventSyncImpl : public SyncImpl
 
     angle::Result serverWait(ContextMtl *contextMtl) override
     {
-        contextMtl->serverWaitEvent(mMetalEvent, kEventSignalValue);
+        contextMtl->serverWaitEvent(mMetalEvent, mEventSignalValue);
         return angle::Result::Continue;
     }
 
@@ -206,6 +211,8 @@ class EventSyncImpl : public SyncImpl
 
   private:
     angle::ObjCPtr<id<MTLEvent>> mMetalEvent;
+    mtl::CommandQueue *mCommandQueue     = nullptr;
+    uint64_t mEventSignalValue           = 0;
     uint64_t mEncodedCommandBufferSerial = 0;
 };
 
