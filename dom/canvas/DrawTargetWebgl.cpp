@@ -1592,8 +1592,10 @@ void DrawTargetWebgl::ReleaseBits(uint8_t* aData) {
 }
 
 // Format is x, y, alpha
-static const float kRectVertexData[12] = {0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f,
-                                          1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f};
+static const float kRectVertexData[18] = {
+    0.0f, 0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+    0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f,
+};
 
 // Orphans the contents of the path vertex buffer. The beginning of the buffer
 // always contains data for a simple rectangle draw to avoid needing to switch
@@ -3015,7 +3017,7 @@ void SharedContextWebgl::MaybeUniformData(GLenum aFuncElemType,
 }
 
 inline void SharedContextWebgl::DrawQuad() {
-  mWebgl->DrawArraysInstanced(LOCAL_GL_TRIANGLE_FAN, 0, 4, 1);
+  mWebgl->DrawArraysInstanced(LOCAL_GL_TRIANGLES, 0, 6, 1);
 }
 
 void SharedContextWebgl::DrawTriangles(const PathVertexRange& aRange) {
