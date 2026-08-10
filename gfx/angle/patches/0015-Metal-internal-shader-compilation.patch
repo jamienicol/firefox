@@ -1,0 +1,110 @@
+From 5b4ea68cac5be3d9be95ff1fe39b7e5a98b32940 Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jnicol@mozilla.com>
+Date: Mon, 10 Aug 2026 15:02:04 +0100
+Subject: [PATCH] Metal internal shader compilation
+
+---
+ src/libANGLE/renderer/metal/BUILD.gn          | 29 +------------------
+ src/libANGLE/renderer/metal/metal_backend.gni |  6 ++++--
+ .../renderer/metal/shaders/metal_wrapper.py   | 20 +++++++++++++++++++-
+ 3 files changed, 24 insertions(+), 31 deletions(-)
+
+diff --git a/src/libANGLE/renderer/metal/BUILD.gn b/src/libANGLE/renderer/metal/BUILD.gn
+index 5906bf33f3..d6b7961adc 100644
+--- a/src/libANGLE/renderer/metal/BUILD.gn
++++ b/src/libANGLE/renderer/metal/BUILD.gn
+@@ -34,34 +34,7 @@ if (metal_internal_shader_compilation_supported) {
+                                "metal_tool",
+                              ])
+       script = "shaders/metal_wrapper.py"
+-      if (angle_metal_toolchain_dir != "") {
+-        # Explicit Metal toolchain: run the "metal"/"metallib" binaries directly
+-        # from the provided directory. This bypasses "xcrun" and the hermetic
+-        # Chromium Mac SDK, which is required to prebuild the internal shaders
+-        # for iOS and other cross-compilation scenarios.
+-        args = [ angle_metal_toolchain_dir + "/" + metal_tool ]
+-      } else if (use_system_xcode) {
+-        # System Xcode: run metal and metallib via xcrun. Since Xcode 26.0, the
+-        # Metal toolchain has been unbundled from Xcode, and must be installed
+-        # separately by running `xcodebuild -downloadComponent MetalToolchain`.
+-        # There is a vestigial metal executable in mac_bin_path, but it’s
+-        # incapable of running successfuly without the
+-        # rest of the Metal toolchain surrounding it. `xcrun` is able to find
+-        # and run the correct Metal toolchain when properly installed.
+-        #
+-        # If you’re using system Xcode and your build fails with this message:
+-        #   error: error: cannot execute tool 'metal' due to missing Metal Toolchain; use: xcodebuild -downloadComponent MetalToolchain
+-        # then do what the error message suggests, and then retry your build.
+-        args = [
+-          "xcrun",
+-          metal_tool,
+-        ]
+-      } else {
+-        # Hermetic Xcode: at least for now, the Metal toolchain is
+-        # “spliced” into the location in the hermetic toolchain where it
+-        # lived before Xcode 26.0, so it can be run directly from there.
+-        args = [ mac_bin_path + metal_tool ]
+-      }
++      args = [ metal_tool ]
+ 
+       args += invoker.args
+     }
+diff --git a/src/libANGLE/renderer/metal/metal_backend.gni b/src/libANGLE/renderer/metal/metal_backend.gni
+index d8ab2892d6..e8f99e0 100644
+--- a/src/libANGLE/renderer/metal/metal_backend.gni
++++ b/src/libANGLE/renderer/metal/metal_backend.gni
+@@ -92,6 +92,9 @@ declare_args() {
+   # Set to precompile internal shaders for iOS or cross-compilation.
+   # Leave empty for default behavior.
+   angle_metal_toolchain_dir = ""
++
++  # Mozilla: whether to compile the internal shaders at build time.
++  angle_metal_internal_shader_compilation = false
+ }
+ 
+ # We can build the ANGLE internal shaders at build-time if we have access to the
+@@ -102,8 +105,7 @@ declare_args() {
+ # precompiling the internal shaders anyway, which enables prebuilt internal
+ # shaders for iOS as well.
+ metal_internal_shader_compilation_supported =
+-    angle_has_build &&
+-    (angle_metal_toolchain_dir != "" || (!is_ios && target_os == host_os))
++    angle_metal_internal_shader_compilation
+ 
+ metal_internal_shaders_header =
+     "$root_gen_dir/angle/mtl_internal_shaders_metallib.h"
+diff --git a/src/libANGLE/renderer/metal/shaders/metal_wrapper.py b/src/libANGLE/renderer/metal/shaders/metal_wrapper.py
+index 6ec1300794..3ed58b1 100644
+--- a/src/libANGLE/renderer/metal/shaders/metal_wrapper.py
++++ b/src/libANGLE/renderer/metal/shaders/metal_wrapper.py
+@@ -7,8 +7,26 @@ import subprocess
+ import sys
+ 
+ 
++def command(args):
++    import buildconfig
++
++    metal_dir = buildconfig.substs.get('MOZ_METAL_TOOLCHAIN_DIR')
++    if not metal_dir:
++        return ['xcrun', '--sdk', 'macosx'] + args
++
++    cmd = [os.path.join(metal_dir, 'usr', 'bin', args[0])]
++    args = args[1:]
++    darling_dir = buildconfig.substs.get('MOZ_DARLING_DIR')
++    if darling_dir:
++        cmd = [os.path.join(darling_dir, 'bin', 'darling-run')] + cmd
++        # Darling resolves absolute paths within its own root, so map host paths
++        # through /Volumes/SystemRoot.
++        args = ['/Volumes/SystemRoot' + a if os.path.isabs(a) else a for a in args]
++    return cmd + args
++
++
+ def main(args):
+-    return subprocess.run(args, stdout=subprocess.PIPE, text=True).returncode
++    return subprocess.run(command(args), stdout=subprocess.PIPE, text=True).returncode
+ 
+ 
+ if __name__ == '__main__':
+-- 
+2.55.0
+
