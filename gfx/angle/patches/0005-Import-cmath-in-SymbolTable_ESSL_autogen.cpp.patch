@@ -1,4 +1,4 @@
-From 7577b3f7c53657845636900b61d19fe64fb369b4 Mon Sep 17 00:00:00 2001
+From 0bf5ae24a8c536dd411cdc95b2fac942e0f355b2 Mon Sep 17 00:00:00 2001
 From: Kelsey Gilbert <jgilbert@mozilla.com>
 Date: Thu, 8 Sep 2022 17:10:21 -0700
 Subject: [PATCH] Import <cmath> in SymbolTable_ESSL_autogen.cpp.
@@ -15,7 +15,7 @@ Co-authored-by: Erich Gubler <erichdongubler@gmail.com>
  3 files changed, 6 insertions(+), 2 deletions(-)
 
 diff --git a/scripts/code_generation_hashes/Static_builtins.json b/scripts/code_generation_hashes/Static_builtins.json
-index bd61000..c57ae74 100644
+index bd610006a3..c57ae74b25 100644
 --- a/scripts/code_generation_hashes/Static_builtins.json
 +++ b/scripts/code_generation_hashes/Static_builtins.json
 @@ -4,7 +4,7 @@
@@ -37,7 +37,7 @@ index bd61000..c57ae74 100644
      "75295e2c833ce136f35ea1df47fef1c4",
    "src/tests/compiler_tests/ImmutableString_test_autogen.cpp":
 diff --git a/src/compiler/translator/SymbolTable_autogen.cpp b/src/compiler/translator/SymbolTable_autogen.cpp
-index 93a62fc..f496d45 100644
+index 93a62fc0df..f496d453b3 100644
 --- a/src/compiler/translator/SymbolTable_autogen.cpp
 +++ b/src/compiler/translator/SymbolTable_autogen.cpp
 @@ -9,6 +9,8 @@
@@ -50,7 +50,7 @@ index 93a62fc..f496d45 100644
  
  #include "angle_gl.h"
 diff --git a/src/compiler/translator/gen_builtin_symbols.py b/src/compiler/translator/gen_builtin_symbols.py
-index 71d1341..002fc1a 100755
+index 71d13413cc..002fc1ae75 100755
 --- a/src/compiler/translator/gen_builtin_symbols.py
 +++ b/src/compiler/translator/gen_builtin_symbols.py
 @@ -248,6 +248,8 @@ template_symboltable_cpp = """// GENERATED FILE - DO NOT EDIT.
@@ -63,5 +63,5 @@ index 71d1341..002fc1a 100755
  
  #include "angle_gl.h"
 -- 
-2.43.0
+2.55.0
 

@@ -1,4 +1,4 @@
-From 03a507a7787419c6770db35f1e0e22e5eefac72c Mon Sep 17 00:00:00 2001
+From 70bee5148ba493b64d17150e0b7ad36966c118d8 Mon Sep 17 00:00:00 2001
 From: Jamie Nicol <jnicol@mozilla.com>
 Date: Fri, 1 May 2026 10:56:48 +0100
 Subject: [PATCH] Patch build scripts for Firefox's gn_processor.py
@@ -32,7 +32,7 @@ repo, which ANGLE assumes is available due to enabling
  8 files changed, 50 insertions(+), 50 deletions(-)
 
 diff --git a/.gn b/.gn
-index 3579657..d5dd9c6 100644
+index 3579657659..d5dd9c6765 100644
 --- a/.gn
 +++ b/.gn
 @@ -7,11 +7,11 @@
@@ -66,7 +66,7 @@ index 3579657..d5dd9c6 100644
                          ]
  
 diff --git a/BUILD.gn b/BUILD.gn
-index d4e9a41..ae0a196 100644
+index d4e9a41285..ae0a196dc5 100644
 --- a/BUILD.gn
 +++ b/BUILD.gn
 @@ -15,15 +15,15 @@ if (angle_enable_wgpu) {
@@ -144,7 +144,7 @@ index d4e9a41..ae0a196 100644
    # Write debug logs to gn_logs.txt.
    _lines = [
 diff --git a/android/angle_apk.gni b/android/angle_apk.gni
-index a012335..96a24b7 100644
+index a0123357b7..96a24b710c 100644
 --- a/android/angle_apk.gni
 +++ b/android/angle_apk.gni
 @@ -2,7 +2,7 @@
@@ -157,7 +157,7 @@ index a012335..96a24b7 100644
  
  vulkan_validation_layers = [ "VkLayer_khronos_validation" ]
 diff --git a/gni/angle.gni b/gni/angle.gni
-index 6c3930e..f8f795a 100644
+index 6c3930ebd9..f8f795a027 100644
 --- a/gni/angle.gni
 +++ b/gni/angle.gni
 @@ -4,7 +4,7 @@
@@ -312,7 +312,7 @@ index 6c3930e..f8f795a 100644
      }
    }
 diff --git a/src/compiler/translator/ir/BUILD.gn b/src/compiler/translator/ir/BUILD.gn
-index aad1221..acfe7ef 100644
+index aad1221459..acfe7ef580 100644
 --- a/src/compiler/translator/ir/BUILD.gn
 +++ b/src/compiler/translator/ir/BUILD.gn
 @@ -4,7 +4,7 @@
@@ -325,7 +325,7 @@ index aad1221..acfe7ef 100644
  
  angle_translator_ir_sources = [
 diff --git a/src/libANGLE/renderer/gl/BUILD.gn b/src/libANGLE/renderer/gl/BUILD.gn
-index 6be9490..e25f58b 100644
+index 6be94901ed..e25f58b352 100644
 --- a/src/libANGLE/renderer/gl/BUILD.gn
 +++ b/src/libANGLE/renderer/gl/BUILD.gn
 @@ -8,7 +8,7 @@ import("../../../../gni/angle.gni")
@@ -347,7 +347,7 @@ index 6be9490..e25f58b 100644
  
    if (is_win) {
 diff --git a/src/libANGLE/renderer/metal/BUILD.gn b/src/libANGLE/renderer/metal/BUILD.gn
-index 8e4c836..5906bf3 100644
+index 8e4c836b00..5906bf33f3 100644
 --- a/src/libANGLE/renderer/metal/BUILD.gn
 +++ b/src/libANGLE/renderer/metal/BUILD.gn
 @@ -8,7 +8,7 @@ import("../../../../gni/angle.gni")
@@ -360,7 +360,7 @@ index 8e4c836..5906bf3 100644
  
  assert(is_mac || is_ios)
 diff --git a/src/libANGLE/renderer/vulkan/BUILD.gn b/src/libANGLE/renderer/vulkan/BUILD.gn
-index d59dab4..e652096 100644
+index d59dab48cc..e652096412 100644
 --- a/src/libANGLE/renderer/vulkan/BUILD.gn
 +++ b/src/libANGLE/renderer/vulkan/BUILD.gn
 @@ -4,7 +4,7 @@
@@ -373,5 +373,5 @@ index d59dab4..e652096 100644
  import("vulkan_backend.gni")
  
 -- 
-2.43.0
+2.55.0
 

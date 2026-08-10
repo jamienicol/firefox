@@ -1,4 +1,4 @@
-From 9c118e50eb2db17876633d758411c69852c808ab Mon Sep 17 00:00:00 2001
+From c45286b588f58ee8a9568515cf3ffc16d7d9c17c Mon Sep 17 00:00:00 2001
 From: Dzmitry Malyshau <dmalyshau@mozilla.com>
 Date: Thu, 5 Dec 2019 13:02:14 -0500
 Subject: [PATCH] Restrict the slow texture upload workaround to 128bit
@@ -20,7 +20,7 @@ Co-authored-by: Erich Gubler <erichdongubler@gmail.com>
  7 files changed, 39 insertions(+), 4 deletions(-)
 
 diff --git a/include/platform/autogen/FeaturesD3D_autogen.h b/include/platform/autogen/FeaturesD3D_autogen.h
-index 8bd269c..5d38b6e 100644
+index 8bd269c378..5d38b6eb01 100644
 --- a/include/platform/autogen/FeaturesD3D_autogen.h
 +++ b/include/platform/autogen/FeaturesD3D_autogen.h
 @@ -32,6 +32,12 @@ struct FeaturesD3D : FeatureSetBase
@@ -37,7 +37,7 @@ index 8bd269c..5d38b6e 100644
          "depthStencilBlitExtraCopy",
          FeatureCategory::D3DWorkarounds,
 diff --git a/include/platform/d3d_features.json b/include/platform/d3d_features.json
-index c718ced..0997289 100644
+index c718cedfff..09972897ef 100644
 --- a/include/platform/d3d_features.json
 +++ b/include/platform/d3d_features.json
 @@ -21,6 +21,13 @@
@@ -55,7 +55,7 @@ index c718ced..0997289 100644
              "name": "depth_stencil_blit_extra_copy",
              "category": "Workarounds",
 diff --git a/src/libANGLE/renderer/d3d/TextureD3D.cpp b/src/libANGLE/renderer/d3d/TextureD3D.cpp
-index caffb44..a0e6708 100644
+index caffb445ec..a0e6708fa9 100644
 --- a/src/libANGLE/renderer/d3d/TextureD3D.cpp
 +++ b/src/libANGLE/renderer/d3d/TextureD3D.cpp
 @@ -281,13 +281,30 @@ angle::Result TextureD3D::setStorageExternalMemory(const gl::Context *context,
@@ -100,7 +100,7 @@ index caffb44..a0e6708 100644
          // When making mipmaps with the setData workaround enabled, the texture storage has
          // the image data already. For non-render-target storage, we have to pull it out into
 diff --git a/src/libANGLE/renderer/d3d/TextureD3D.h b/src/libANGLE/renderer/d3d/TextureD3D.h
-index ee2dbe6..fe25217 100644
+index ee2dbe66d1..fe2521760d 100644
 --- a/src/libANGLE/renderer/d3d/TextureD3D.h
 +++ b/src/libANGLE/renderer/d3d/TextureD3D.h
 @@ -227,6 +227,7 @@ class TextureD3D : public TextureImpl, public angle::ObserverInterface
@@ -112,7 +112,7 @@ index ee2dbe6..fe25217 100644
  
      angle::Result generateMipmapUsingImages(const gl::Context *context, const GLuint maxLevel);
 diff --git a/src/libANGLE/renderer/d3d/d3d11/renderer11_utils.cpp b/src/libANGLE/renderer/d3d/d3d11/renderer11_utils.cpp
-index d250ea3..d0be62f 100644
+index d250ea374d..d0be62f035 100644
 --- a/src/libANGLE/renderer/d3d/d3d11/renderer11_utils.cpp
 +++ b/src/libANGLE/renderer/d3d/d3d11/renderer11_utils.cpp
 @@ -2188,8 +2188,10 @@ void InitializeFeatures(const Renderer11DeviceCaps &deviceCaps,
@@ -129,7 +129,7 @@ index d250ea3..d0be62f 100644
  
      ANGLE_FEATURE_CONDITION(features, disableB5G6R5Support,
 diff --git a/util/autogen/angle_features_autogen.cpp b/util/autogen/angle_features_autogen.cpp
-index ed34de9..2e0c9e2 100644
+index ed34de98bd..2e0c9e2649 100644
 --- a/util/autogen/angle_features_autogen.cpp
 +++ b/util/autogen/angle_features_autogen.cpp
 @@ -322,6 +322,7 @@ constexpr PackedEnumMap<Feature, const char *> kFeatureNames = {{
@@ -141,7 +141,7 @@ index ed34de9..2e0c9e2 100644
      {Feature::SetPrimitiveRestartFixedIndexForDrawArrays, "setPrimitiveRestartFixedIndexForDrawArrays"},
      {Feature::SetZeroLevelBeforeGenerateMipmap, "setZeroLevelBeforeGenerateMipmap"},
 diff --git a/util/autogen/angle_features_autogen.h b/util/autogen/angle_features_autogen.h
-index 5d63579..68724b7 100644
+index 5d63579b8a..68724b7edb 100644
 --- a/util/autogen/angle_features_autogen.h
 +++ b/util/autogen/angle_features_autogen.h
 @@ -322,6 +322,7 @@ enum class Feature
@@ -153,5 +153,5 @@ index 5d63579..68724b7 100644
      SetPrimitiveRestartFixedIndexForDrawArrays,
      SetZeroLevelBeforeGenerateMipmap,
 -- 
-2.43.0
+2.55.0
 

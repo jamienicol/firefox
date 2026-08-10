@@ -1,4 +1,4 @@
-From 175d180ff94880dc88830c6044d153678b5c742f Mon Sep 17 00:00:00 2001
+From f52430728e1a21110198edc64c5501bad8725b8d Mon Sep 17 00:00:00 2001
 From: Bob Hood <bhood@mozilla.com>
 Date: Thu, 13 Aug 2026 11:20:47 -0600
 Subject: [PATCH] Guard explicit context include in
@@ -19,7 +19,7 @@ gen_proc_table.py template it comes from.
  2 files changed, 4 insertions(+)
 
 diff --git a/scripts/gen_proc_table.py b/scripts/gen_proc_table.py
-index b5381ba..258cf34 100644
+index b5381bab88..258cf349f1 100644
 --- a/scripts/gen_proc_table.py
 +++ b/scripts/gen_proc_table.py
 @@ -126,7 +126,9 @@ includes_gles = """#include "libANGLE/Thread.h"
@@ -33,7 +33,7 @@ index b5381ba..258cf34 100644
  
  #include <iterator>
 diff --git a/src/libGLESv2/egl_stubs_getprocaddress_autogen.cpp b/src/libGLESv2/egl_stubs_getprocaddress_autogen.cpp
-index 26ed284..4f4e17c 100644
+index 26ed2843ca..4f4e17cb15 100644
 --- a/src/libGLESv2/egl_stubs_getprocaddress_autogen.cpp
 +++ b/src/libGLESv2/egl_stubs_getprocaddress_autogen.cpp
 @@ -19,7 +19,9 @@
@@ -47,5 +47,5 @@ index 26ed284..4f4e17c 100644
  
  #include <iterator>
 -- 
-2.43.0
+2.55.0
 

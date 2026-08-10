@@ -1,4 +1,4 @@
-From 6a78346cf7e755a9f5a206ca9011694bf073ea12 Mon Sep 17 00:00:00 2001
+From 29a09af85ba33fc162521a9fee79d4ca4bb766d3 Mon Sep 17 00:00:00 2001
 From: Bob Hood <bhood@mozilla.com>
 Date: Mon, 17 Aug 2026 11:58:51 -0600
 Subject: [PATCH] Avoid implicit StrictNumeric conversion in a new[] size
@@ -22,7 +22,7 @@ Compile-only change; checkedArraySize is already a CheckedNumeric<size_t>.
  1 file changed, 1 insertion(+), 1 deletion(-)
 
 diff --git a/src/compiler/translator/IntermNode.cpp b/src/compiler/translator/IntermNode.cpp
-index 710bba9..33d4a64 100644
+index 710bba9725..33d4a644e8 100644
 --- a/src/compiler/translator/IntermNode.cpp
 +++ b/src/compiler/translator/IntermNode.cpp
 @@ -880,7 +880,7 @@ const TConstantUnion *TIntermAggregate::getConstantValue() const
@@ -35,5 +35,5 @@ index 710bba9..33d4a64 100644
          size_t elementOffset = 0u;
          for (TIntermNode *constructorArg : mArguments)
 -- 
-2.43.0
+2.55.0
 
