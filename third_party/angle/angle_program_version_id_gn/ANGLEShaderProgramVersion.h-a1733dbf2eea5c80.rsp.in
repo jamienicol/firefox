@@ -950,3 +950,4 @@
 /third_party/angle/src/libANGLE/renderer/metal/shaders/constants.h
 /third_party/angle/src/libANGLE/renderer/metal/shaders/mtl_internal_shaders_src_autogen.h
 /third_party/angle/src/libANGLE/renderer/metal/shaders/rewrite_indices_shared.h
+!/third_party/angle/gen/mtl_internal_shaders_metallib.h

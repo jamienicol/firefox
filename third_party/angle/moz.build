@@ -35,6 +35,9 @@ if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
         "/third_party/angle/libEGL_gn",
         "/third_party/angle/libGLESv2_gn",
         "/third_party/angle/src/libANGLE/renderer/metal/angle_metal_backend_gn",
+        "/third_party/angle/src/libANGLE/renderer/metal/angle_metal_internal_shaders_gn",
+        "/third_party/angle/src/libANGLE/renderer/metal/angle_metal_internal_shaders_to_air_gn",
+        "/third_party/angle/src/libANGLE/renderer/metal/angle_metal_internal_shaders_to_mtllib_gn",
         "/third_party/angle/third_party/zlib/google/compression_utils_portable_gn",
         "/third_party/angle/third_party/zlib/zlib_gn"
     ]
