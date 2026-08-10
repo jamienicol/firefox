@@ -92,6 +92,9 @@ declare_args() {
   # Set to precompile internal shaders for iOS or cross-compilation.
   # Leave empty for default behavior.
   angle_metal_toolchain_dir = ""
+
+  # Mozilla: whether to compile the internal shaders at build time.
+  angle_metal_internal_shader_compilation = false
 }
 
 # We can build the ANGLE internal shaders at build-time if we have access to the
@@ -102,8 +105,7 @@ declare_args() {
 # precompiling the internal shaders anyway, which enables prebuilt internal
 # shaders for iOS as well.
 metal_internal_shader_compilation_supported =
-    false && angle_has_build &&
-    (angle_metal_toolchain_dir != "" || (!is_ios && target_os == host_os))
+    angle_metal_internal_shader_compilation
 
 metal_internal_shaders_header =
     "$root_gen_dir/angle/mtl_internal_shaders_metallib.h"
