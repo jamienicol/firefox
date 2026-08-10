@@ -1,4 +1,4 @@
-From 9db51803fc7581e0fa1f78b324454bf6bf7e7381 Mon Sep 17 00:00:00 2001
+From 9bdbd84124725dea9170fa56fd18cf0b5503d721 Mon Sep 17 00:00:00 2001
 From: Jeff Gilbert <jdashg@gmail.com>
 Date: Thu, 11 Feb 2021 17:34:00 -0800
 Subject: [PATCH] Don't assert for non-sampleable non-ms sources in
@@ -13,7 +13,7 @@ Firefox bug: https://bugzilla.mozilla.org/show_bug.cgi?id=1692355
  1 file changed, 49 insertions(+), 46 deletions(-)
 
 diff --git a/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp b/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
-index 427c219..563ee94 100644
+index 427c219118..563ee94ede 100644
 --- a/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
 +++ b/src/libANGLE/renderer/d3d/d3d11/Renderer11.cpp
 @@ -3623,50 +3623,6 @@ angle::Result Renderer11::blitRenderbufferRect(const gl::Context *context,
@@ -129,5 +129,5 @@ index 427c219..563ee94 100644
          UINT dstX = drawRect.x;
          UINT dstY = drawRect.y;
 -- 
-2.43.0
+2.55.0
 

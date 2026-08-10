@@ -1,0 +1,101 @@
+From 5b4ea68cac5be3d9be95ff1fe39b7e5a98b32940 Mon Sep 17 00:00:00 2001
+From: Jamie Nicol <jnicol@mozilla.com>
+Date: Mon, 10 Aug 2026 15:02:04 +0100
+Subject: [PATCH] Metal internal shader compilation
+
+---
+ src/libANGLE/renderer/metal/BUILD.gn          | 29 +------------------
+ src/libANGLE/renderer/metal/metal_backend.gni |  4 +--
+ .../renderer/metal/shaders/metal_wrapper.py   | 20 +++++++++++++
+ 3 files changed, 22 insertions(+), 31 deletions(-)
+
+diff --git a/src/libANGLE/renderer/metal/BUILD.gn b/src/libANGLE/renderer/metal/BUILD.gn
+index 5906bf33f3..d6b7961adc 100644
+--- a/src/libANGLE/renderer/metal/BUILD.gn
++++ b/src/libANGLE/renderer/metal/BUILD.gn
+@@ -34,34 +34,7 @@ if (metal_internal_shader_compilation_supported) {
+                                "metal_tool",
+                              ])
+       script = "shaders/metal_wrapper.py"
+-      if (angle_metal_toolchain_dir != "") {
+-        # Explicit Metal toolchain: run the "metal"/"metallib" binaries directly
+-        # from the provided directory. This bypasses "xcrun" and the hermetic
+-        # Chromium Mac SDK, which is required to prebuild the internal shaders
+-        # for iOS and other cross-compilation scenarios.
+-        args = [ angle_metal_toolchain_dir + "/" + metal_tool ]
+-      } else if (use_system_xcode) {
+-        # System Xcode: run metal and metallib via xcrun. Since Xcode 26.0, the
+-        # Metal toolchain has been unbundled from Xcode, and must be installed
+-        # separately by running `xcodebuild -downloadComponent MetalToolchain`.
+-        # There is a vestigial metal executable in mac_bin_path, but it’s
+-        # incapable of running successfuly without the
+-        # rest of the Metal toolchain surrounding it. `xcrun` is able to find
+-        # and run the correct Metal toolchain when properly installed.
+-        #
+-        # If you’re using system Xcode and your build fails with this message:
+-        #   error: error: cannot execute tool 'metal' due to missing Metal Toolchain; use: xcodebuild -downloadComponent MetalToolchain
+-        # then do what the error message suggests, and then retry your build.
+-        args = [
+-          "xcrun",
+-          metal_tool,
+-        ]
+-      } else {
+-        # Hermetic Xcode: at least for now, the Metal toolchain is
+-        # “spliced” into the location in the hermetic toolchain where it
+-        # lived before Xcode 26.0, so it can be run directly from there.
+-        args = [ mac_bin_path + metal_tool ]
+-      }
++      args = [ metal_tool ]
+ 
+       args += invoker.args
+     }
+diff --git a/src/libANGLE/renderer/metal/metal_backend.gni b/src/libANGLE/renderer/metal/metal_backend.gni
+index d8ab2892d6..7d095058cb 100644
+--- a/src/libANGLE/renderer/metal/metal_backend.gni
++++ b/src/libANGLE/renderer/metal/metal_backend.gni
+@@ -101,9 +101,7 @@ declare_args() {
+ # explicit Metal toolchain via "angle_metal_toolchain_dir" opts in to
+ # precompiling the internal shaders anyway, which enables prebuilt internal
+ # shaders for iOS as well.
+-metal_internal_shader_compilation_supported =
+-    angle_has_build &&
+-    (angle_metal_toolchain_dir != "" || (!is_ios && target_os == host_os))
++metal_internal_shader_compilation_supported = true
+ 
+ metal_internal_shaders_header =
+     "$root_gen_dir/angle/mtl_internal_shaders_metallib.h"
+diff --git a/src/libANGLE/renderer/metal/shaders/metal_wrapper.py b/src/libANGLE/renderer/metal/shaders/metal_wrapper.py
+index 6ec1300794..93646cc2c3 100644
+--- a/src/libANGLE/renderer/metal/shaders/metal_wrapper.py
++++ b/src/libANGLE/renderer/metal/shaders/metal_wrapper.py
+@@ -7,7 +7,27 @@ import subprocess
+ import sys
+ 
+ 
++def command(args):
++    darling_prefix = os.environ.get('DARLING_PREFIX')
++    if not darling_prefix:
++        return ['xcrun'] + args
++
++    metal_prefix = os.environ.get('METAL_PREFIX')
++    if not metal_prefix:
++        raise RuntimeError('METAL_PREFIX must be set when DARLING_PREFIX is set')
++
++    darling_run = os.path.join(darling_prefix, 'bin', 'darling-run')
++    metal_tool = os.path.join(metal_prefix, 'usr', 'bin', args[0])
++    return [darling_run, metal_tool] + args[1:]
++
++
+ def main(args):
++    try:
++        args = command(args)
++    except RuntimeError as error:
++        print(error, file=sys.stderr)
++        return 1
++
+     return subprocess.run(args, stdout=subprocess.PIPE, text=True).returncode
+ 
+ 
+-- 
+2.55.0
+

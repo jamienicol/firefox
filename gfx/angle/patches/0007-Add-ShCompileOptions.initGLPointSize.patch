@@ -1,4 +1,4 @@
-From 74dc5c8e9fd8a525772bb58762f78fcc7ca5674b Mon Sep 17 00:00:00 2001
+From 36f7a11b0218397302bc1dc47f7fb4d53201a853 Mon Sep 17 00:00:00 2001
 From: Kelsey Gilbert <kelsey.gilbert@mozilla.com>
 Date: Wed, 29 Mar 2023 16:13:39 -0700
 Subject: [PATCH] Add ShCompileOptions.initGLPointSize.
@@ -10,7 +10,7 @@ Change-Id: I1d998867f3e829ed0dc8181fa76be5fe701dde70
  2 files changed, 17 insertions(+)
 
 diff --git a/include/GLSLANG/ShaderLang.h b/include/GLSLANG/ShaderLang.h
-index f663f88..701f409 100644
+index f663f88fd3..701f4094e7 100644
 --- a/include/GLSLANG/ShaderLang.h
 +++ b/include/GLSLANG/ShaderLang.h
 @@ -221,6 +221,11 @@ struct ShCompileOptions
@@ -26,7 +26,7 @@ index f663f88..701f409 100644
      //   "a && b" with "a ? b : false",
      //   "a || b" with "a ? true : b".
 diff --git a/src/compiler/translator/Compiler.cpp b/src/compiler/translator/Compiler.cpp
-index 450d2a8..6d57bbc 100644
+index 450d2a8651..6d57bbcfdd 100644
 --- a/src/compiler/translator/Compiler.cpp
 +++ b/src/compiler/translator/Compiler.cpp
 @@ -1089,6 +1089,18 @@ bool TCompiler::checkAndSimplifyAST(TIntermBlock *root,
@@ -49,5 +49,5 @@ index 450d2a8..6d57bbc 100644
      // new statements from expressions. But it's fine to run DeferGlobalInitializers after the
      // above SplitSequenceOperator and RemoveArrayLengthMethod since they only have an effect on
 -- 
-2.43.0
+2.55.0
 

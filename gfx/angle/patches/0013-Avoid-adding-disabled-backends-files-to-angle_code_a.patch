@@ -1,4 +1,4 @@
-From db70a36fe472dca1175f698eb9d1320e8438c53a Mon Sep 17 00:00:00 2001
+From 3bc0f3574752e89a9a5f0450f7bd02ff238018e4 Mon Sep 17 00:00:00 2001
 From: Jamie Nicol <jnicol@mozilla.com>
 Date: Tue, 5 May 2026 10:20:09 +0100
 Subject: [PATCH] Avoid adding disabled backends' files to
@@ -12,7 +12,7 @@ otherwise unused files when vendoring ANGLE into Firefox.
  1 file changed, 15 insertions(+), 9 deletions(-)
 
 diff --git a/src/angle_program_serialize_data_version.gni b/src/angle_program_serialize_data_version.gni
-index 5a6c85f..da1bf61 100644
+index 5a6c85f62c..da1bf61f47 100644
 --- a/src/angle_program_serialize_data_version.gni
 +++ b/src/angle_program_serialize_data_version.gni
 @@ -42,13 +42,17 @@ angle_code_affecting_program_serialize += angle_preprocessor_sources
@@ -55,5 +55,5 @@ index 5a6c85f..da1bf61 100644
  if (angle_enable_metal) {
    metal_backend_dir = "libANGLE/renderer/metal/"
 -- 
-2.43.0
+2.55.0
 

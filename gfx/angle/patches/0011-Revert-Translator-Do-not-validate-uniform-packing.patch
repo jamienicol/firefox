@@ -1,4 +1,4 @@
-From f8e5a69b1482f627bd85128665a34c7d6bfb54fb Mon Sep 17 00:00:00 2001
+From 26fa5fb486c4ed76dd1316d40090e1cf0462eef4 Mon Sep 17 00:00:00 2001
 From: Jamie Nicol <jnicol@mozilla.com>
 Date: Thu, 30 Apr 2026 09:43:22 +0100
 Subject: [PATCH] Revert "Translator: Do not validate uniform packing"
@@ -13,7 +13,7 @@ Co-authored-by: Erich Gubler <erichdongubler@gmail.com>
  3 files changed, 44 insertions(+)
 
 diff --git a/include/GLSLANG/ShaderLang.h b/include/GLSLANG/ShaderLang.h
-index 7fe8ea6..408dfee 100644
+index 7fe8ea644b..408dfee298 100644
 --- a/include/GLSLANG/ShaderLang.h
 +++ b/include/GLSLANG/ShaderLang.h
 @@ -205,6 +205,12 @@ struct ShCompileOptions
@@ -30,7 +30,7 @@ index 7fe8ea6..408dfee 100644
      // the array. This ensures, for example, that you cannot read off the end of a uniform, whether
      // an array vec234, or mat234 type.
 diff --git a/src/compiler/translator/Compiler.cpp b/src/compiler/translator/Compiler.cpp
-index 4c04069..e0627ab 100644
+index 4c04069013..e0627ab6cc 100644
 --- a/src/compiler/translator/Compiler.cpp
 +++ b/src/compiler/translator/Compiler.cpp
 @@ -23,6 +23,7 @@
@@ -92,7 +92,7 @@ index 4c04069..e0627ab 100644
      {
          if (!ScalarizeVecAndMatConstructorArgs(this, root, &mSymbolTable))
 diff --git a/src/libANGLE/Shader.cpp b/src/libANGLE/Shader.cpp
-index 76c5b76..9d9bfd2 100644
+index 76c5b76415..9d9bfd28c3 100644
 --- a/src/libANGLE/Shader.cpp
 +++ b/src/libANGLE/Shader.cpp
 @@ -636,6 +636,7 @@ void Shader::compile(const Context *context, angle::JobResultExpectancy resultEx
@@ -104,5 +104,5 @@ index 76c5b76..9d9bfd2 100644
          options.rejectWebglShadersWithLargeVariables    = true;
          options.rejectWebglShadersWithUndefinedBehavior = true;
 -- 
-2.43.0
+2.55.0
 

@@ -1,4 +1,4 @@
-From 04e52210d732125e58f00e1a1a777a69e0f3af35 Mon Sep 17 00:00:00 2001
+From 46a3f4ad8034f0cdacaa970c01a3ccbd08d78ed1 Mon Sep 17 00:00:00 2001
 From: Jamie Nicol <jnicol@mozilla.com>
 Date: Tue, 5 May 2026 10:25:18 +0100
 Subject: [PATCH] Restore support for building ANGLE for macOS 10.15
@@ -24,7 +24,7 @@ MSL backend will not be safe to use.
  2 files changed, 27 insertions(+), 6 deletions(-)
 
 diff --git a/src/common/apple_platform_utils.mm b/src/common/apple_platform_utils.mm
-index 635abb6..8d0f6a6 100644
+index 635abb6f2f..8d0f6a65da 100644
 --- a/src/common/apple_platform_utils.mm
 +++ b/src/common/apple_platform_utils.mm
 @@ -122,8 +122,13 @@ bool IsMetalRendererAvailable()
@@ -44,7 +44,7 @@ index 635abb6..8d0f6a6 100644
      if (platformExpert == IO_OBJECT_NULL)
      {
 diff --git a/src/gpu_info_util/SystemInfo_macos.mm b/src/gpu_info_util/SystemInfo_macos.mm
-index 40c5ec9..17cccfa 100644
+index 40c5ec93cc..17cccfa0b6 100644
 --- a/src/gpu_info_util/SystemInfo_macos.mm
 +++ b/src/gpu_info_util/SystemInfo_macos.mm
 @@ -55,6 +55,11 @@ bool GetEntryProperty(io_registry_entry_t entry, CFStringRef name, uint32_t *val
@@ -114,5 +114,5 @@ index 40c5ec9..17cccfa 100644
      {
          return 0;
 -- 
-2.43.0
+2.55.0
 
