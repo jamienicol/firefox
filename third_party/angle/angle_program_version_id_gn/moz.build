@@ -3792,7 +3792,7 @@ if CONFIG["OS_TARGET"] == "Darwin" and CONFIG["TARGET_OS"] == "OSX":
     GeneratedFile(
         "/third_party/angle/gen/ANGLEShaderProgramVersion.h.rsp",
         entry_point="write_paths",
-        inputs=['ANGLEShaderProgramVersion.h-517e8378c7c3f6da.rsp.in'],
+        inputs=['ANGLEShaderProgramVersion.h-2e30fdb43d1f8983.rsp.in'],
         script="/python/mozbuild/mozbuild/action/write_path_list.py",
     )
 
@@ -4741,7 +4741,8 @@ if CONFIG["OS_TARGET"] == "Darwin" and CONFIG["TARGET_OS"] == "OSX":
             "/third_party/angle/src/libANGLE/renderer/metal/renderermtl_utils.h",
             "/third_party/angle/src/libANGLE/renderer/metal/shaders/constants.h",
             "/third_party/angle/src/libANGLE/renderer/metal/shaders/mtl_internal_shaders_src_autogen.h",
-            "/third_party/angle/src/libANGLE/renderer/metal/shaders/rewrite_indices_shared.h"
+            "/third_party/angle/src/libANGLE/renderer/metal/shaders/rewrite_indices_shared.h",
+            "!/third_party/angle/gen/mtl_internal_shaders_metallib.h"
         ],
         flags=[
             "/third_party/angle/src/program_serialize_data_version.py",

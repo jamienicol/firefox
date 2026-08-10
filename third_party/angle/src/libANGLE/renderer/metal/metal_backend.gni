@@ -101,9 +101,7 @@ declare_args() {
 # explicit Metal toolchain via "angle_metal_toolchain_dir" opts in to
 # precompiling the internal shaders anyway, which enables prebuilt internal
 # shaders for iOS as well.
-metal_internal_shader_compilation_supported =
-    false && angle_has_build &&
-    (angle_metal_toolchain_dir != "" || (!is_ios && target_os == host_os))
+metal_internal_shader_compilation_supported = true
 
 metal_internal_shaders_header =
     "$root_gen_dir/angle/mtl_internal_shaders_metallib.h"
