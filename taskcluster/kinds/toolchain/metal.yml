@@ -1,0 +1,17 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+---
+macosx64-metal:
+    description: "Metal toolchain"
+    attributes:
+        local-toolchain: true
+    worker-type: b-osx-arm64
+    treeherder:
+        symbol: TM(metal)
+    worker:
+        max-run-time: 1800
+    run:
+        script: unpack-metal.py
+        toolchain-artifact: project/gecko/mac-toolchain/metal.tar.zst
+        toolchain-alias: macosx64-aarch64-metal
