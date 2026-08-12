@@ -186,6 +186,8 @@ tasks:
                 - linux64-dump_syms
                 - linux64-nasm
                 - linux64-node
+                - linux64-darling
+                - macosx64-metal
                 - macosx64-sdk
                 - sysroot-x86_64-linux-gnu
                 - sysroot-wasm32-wasi
@@ -237,6 +239,8 @@ tasks:
                 - linux64-dump_syms
                 - linux64-nasm
                 - linux64-node
+                - linux64-darling
+                - macosx64-metal
                 - macosx64-sdk
                 - sysroot-x86_64-linux-gnu
                 - sysroot-wasm32-wasi
@@ -289,6 +293,8 @@ tasks:
                 - linux64-dump_syms
                 - linux64-nasm
                 - linux64-node
+                - linux64-darling
+                - macosx64-metal
                 - macosx64-sdk
                 - sysroot-x86_64-linux-gnu
                 - sysroot-wasm32-wasi
