@@ -473,3 +473,6 @@ tasks:
     android-ui-tests:
         symbol: I(android-ui-tests)
         parent: ubuntu2204-base
+    darling-build:
+        symbol: I(darling-build)
+        parent: deb13-toolchain-build
