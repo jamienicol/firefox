@@ -273,6 +273,9 @@ tasks:
         symbol: I(deb12-toolchain)
         parent: debian12-base
         definition: toolchain-build
+    darling-toolchain-build:
+        symbol: I(darling-toolchain)
+        parent: deb13-toolchain-build
     debian12-rpm-repackage:
         symbol: I(deb12-rpm-rpk)
         parent: debian12-base
