@@ -317,6 +317,56 @@ with only_when(host_is_osx | target_is_osx):
 
     set_config("MACOS_SDK_DIR", macos_sdk)
 
+with only_when(target_is_osx & ~artifact_builds):
+    @depends(host_is_osx)
+    def system_metal(host_is_osx):
+        if not host_is_osx:
+            return
+        if (
+            check_cmd_output(
+                "xcrun",
+                "--sdk",
+                "macosx",
+                "metal",
+                "--version",
+                onerror=lambda: None,
+            )
+            is None
+        ):
+            return
+        path = check_cmd_output(
+            "xcrun",
+            "--sdk",
+            "macosx",
+            "--find",
+            "metal",
+            onerror=lambda: None,
+        )
+        return path.rstrip() if path else None
+
+    @depends(host_is_osx, system_metal)
+    def bootstrap_metal_toolchain(host_is_osx, system_metal):
+        return not host_is_osx or not system_metal
+
+    bootstrapped_metal_toolchain = bootstrap_path(
+        "metal", when=bootstrap_metal_toolchain
+    )
+
+    @depends(system_metal, bootstrapped_metal_toolchain)
+    @checking("for metal", lambda result: result.path or "not found")
+    @imports("os")
+    def metal(system_metal, bootstrapped):
+        if bootstrapped:
+            return namespace(
+                path=os.path.join(bootstrapped, "usr", "bin", "metal"),
+                toolchain=bootstrapped,
+            )
+        return namespace(path=system_metal, toolchain=None)
+
+    set_config(
+        "METAL_TOOLCHAIN_DIR", depends(metal)(lambda result: result.toolchain)
+    )
+
 
 with only_when(target_is_ios):
     # iOS deployment target version

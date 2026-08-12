@@ -54,6 +54,7 @@ tasks-from:
     - mingw.yml
     - minidump-stackwalk.yml
     - misc.yml
+    - metal.yml
     - mozcheck.yml
     - nasm.yml
     - nimbus-fml.yml
