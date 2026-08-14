@@ -2722,6 +2722,7 @@ set_config("NASM_ASFLAGS", nasm_asflags)
 with only_when(compile_environment & target_is_osx):
     option(
         "--enable-angle-metal-shader-compilation",
+        default=depends(host)(lambda h: h.os == "OSX"),
         help="{Enable|Disable} build-time compilation of ANGLE's internal Metal shaders",
     )
 
