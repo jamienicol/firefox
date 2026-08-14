@@ -30,3 +30,7 @@ if [ "x$MOZ_PKG_SPECIAL" != "xasan" -a -z "$MOZ_AUTOMATION_ARTIFACT_BUILDS" ]; t
 fi
 
 unset MOZ_STDCXX_COMPAT
+
+if [ -z "$MOZ_AUTOMATION_ARTIFACT_BUILDS" ]; then
+  ac_add_options --enable-angle-metal-shader-compilation
+fi
