@@ -2735,6 +2735,103 @@ set_config("NASM_ASFLAGS", nasm_asflags)
 # ANGLE renderer
 # ==============================================================
 
+with only_when(compile_environment & target_is_osx):
+    option(
+        "--enable-angle-metal-shader-compilation",
+        default=depends(host)(lambda h: h.os == "OSX"),
+        help="{Enable|Disable} build-time compilation of ANGLE's internal Metal shaders",
+    )
+
+    angle_metal_shader_compilation = depends("--enable-angle-metal-shader-compilation")(
+        lambda value: bool(value)
+    )
+
+    set_config("MOZ_ANGLE_METAL_SHADER_COMPILATION", angle_metal_shader_compilation)
+
+with only_when(angle_metal_shader_compilation):
+    option(
+        "--with-metal-toolchain",
+        env="METAL_TOOLCHAIN_DIR",
+        nargs=1,
+        help="Location of the Metal toolchain to use",
+    )
+
+    @depends(
+        "--with-metal-toolchain",
+        host,
+        want_bootstrap,
+        bootstrap_path(
+            "metal", when=depends("--with-metal-toolchain")(lambda x: not x)
+        ),
+    )
+    @checking("for the Metal toolchain", lambda x: x or "provided by Xcode")
+    @imports("os")
+    @imports("subprocess")
+    def metal_toolchain(toolchain, host, want_bootstrap, bootstrapped):
+        if bootstrapped:
+            toolchain = [bootstrapped]
+        if toolchain:
+            toolchain = toolchain[0]
+            for tool in ("metal", "metallib"):
+                if not os.access(os.path.join(toolchain, "usr", "bin", tool), os.X_OK):
+                    die(
+                        "%s does not contain usr/bin/%s. When using "
+                        "--with-metal-toolchain, you must specify a valid Metal "
+                        "toolchain." % (toolchain, tool)
+                    )
+            return toolchain
+        if host.os != "OSX":
+            die(
+                "Need a Metal toolchain to compile ANGLE's Metal shaders. Please "
+                "use --with-metal-toolchain to give the path to a Metal "
+                "toolchain, or --disable-angle-metal-shader-compilation."
+            )
+        if not check_cmd_output(
+            "xcrun", "--sdk", "macosx", "metal", "--version", onerror=lambda: ""
+        ):
+            if not want_bootstrap("metal"):
+                die(
+                    "Could not find the Metal toolchain. Please run "
+                    "`xcodebuild -downloadComponent MetalToolchain`, or use "
+                    "--with-metal-toolchain to give the path to a Metal toolchain."
+                )
+            log.info("Installing the Xcode Metal toolchain component...")
+            subprocess.check_call([
+                "xcodebuild",
+                "-downloadComponent",
+                "MetalToolchain",
+            ])
+
+    set_config("MOZ_METAL_TOOLCHAIN_DIR", metal_toolchain)
+
+with only_when(angle_metal_shader_compilation & depends(host)(lambda h: h.os != "OSX")):
+    option(
+        "--with-darling",
+        env="DARLING_DIR",
+        nargs=1,
+        help="Location of Darling, used to run the Metal toolchain",
+    )
+
+    @depends(
+        "--with-darling",
+        bootstrap_path("darling", when=depends("--with-darling")(lambda x: not x)),
+    )
+    @checking("for Darling")
+    @imports("os")
+    def darling(value, bootstrapped):
+        path = value[0] if value else bootstrapped
+        if not path:
+            die(
+                "Need Darling to run the Metal toolchain on a non-macOS host. "
+                "Please use --with-darling to give the path to Darling, or "
+                "--disable-angle-metal-shader-compilation."
+            )
+        if not os.access(os.path.join(path, "bin", "darling-run"), os.X_OK):
+            die("%s does not contain bin/darling-run." % path)
+        return path
+
+    set_config("MOZ_DARLING_DIR", darling)
+
 with only_when(target_is_windows):
     # We only produce dxc builds for x86_64 and aarch64.
     @depends(target)
