@@ -93,6 +93,8 @@ extern "C" {
             *mut DirectAuxvDumpInfo,
         )
             -> bool,
+        #[cfg(any(target_os = "android", target_os = "linux"))]
+        use_remote_executor: u8,
     ) -> *mut c_void;
     fn CrashGenerationServer_shutdown(server: *mut c_void);
     fn CrashGenerationServer_set_path(server: *mut c_void, path: *const BreakpadChar);
@@ -163,6 +165,8 @@ impl BreakpadCrashGenerator {
                 &mut *context,
                 #[cfg(any(target_os = "android", target_os = "linux"))]
                 get_auxv_info,
+                #[cfg(any(target_os = "android", target_os = "linux"))]
+                0, // ¯\_(ツ)_/¯
             )
         };
 

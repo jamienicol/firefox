@@ -47,6 +47,7 @@
 #include "linux/handler/exception_handler.h"
 #include "linux/handler/guid_generator.h"
 #include "linux/minidump_writer/minidump_writer.h"
+#include "linux/log/log.h"
 #include "common/linux/eintr_wrapper.h"
 #include "common/linux/safe_readlink.h"
 
@@ -59,11 +60,13 @@ static const char kCommandQuit = 'x';
 namespace google_breakpad {
 
 using CrashReporter::UniqueFd;
+using CrashReporter::GenerationClientAction;
 
 CrashGenerationServer::CrashGenerationServer(
   const int listen_fd,
 #if defined(MOZ_OXIDIZED_BREAKPAD)
   std::function<GetAuxvInfoCallback> get_auxv_info,
+  bool use_remote_executor,
 #endif // defined(MOZ_OXIDIZED_BREAKPAD)
   std::function<OnClientDumpRequestCallback> dump_callback,
   void* dump_context,
@@ -71,6 +74,7 @@ CrashGenerationServer::CrashGenerationServer(
     server_fd_(listen_fd),
 #if defined(MOZ_OXIDIZED_BREAKPAD)
     get_auxv_info_(std::move(get_auxv_info)),
+    use_remote_executor_(use_remote_executor),
 #endif // defined(MOZ_OXIDIZED_BREAKPAD)
     dump_callback_(std::move(dump_callback)),
     dump_context_(dump_context),
@@ -203,6 +207,12 @@ CrashGenerationServer::Run()
   }
 }
 
+static bool SendActionToClient(
+    int server_endpoint,
+    pid_t crashing_pid,
+    GenerationClientAction action
+);
+
 bool
 CrashGenerationServer::ClientEvent(short revents)
 {
@@ -301,6 +311,21 @@ CrashGenerationServer::ClientEvent(short revents)
       break;
   }
 
+  UniqueFd remote_minidump_writer_endpoint;
+
+  if (use_remote_executor_) {
+    if (!SendActionToClient(
+        server_endpoint.get(),
+        crashing_pid,
+        GenerationClientAction::ForkAndLaunchExecutor)) {
+      return true;
+    }
+
+    // From this point forward, the server endpoint is done its job.
+    // It is now the endpoint for talking to the remote executor.
+    remote_minidump_writer_endpoint = std::move(server_endpoint);
+  }
+
   bool res = false;
 
   MinidumpWriterContext* writer = minidump_writer_create(
@@ -322,6 +347,11 @@ CrashGenerationServer::ClientEvent(short revents)
 
     minidump_writer_set_crash_context(writer, &breakpad_cc->context, float_state, &signalfd_si);
 
+    if (remote_minidump_writer_endpoint) {
+      // Pass ownership of the endpoint to the minidump-writer
+      minidump_writer_set_remote_unix_stream(writer, remote_minidump_writer_endpoint.release());
+    }
+
     res = minidump_writer_dump(writer, extra_data);
   }
 #else
@@ -339,7 +369,8 @@ CrashGenerationServer::ClientEvent(short revents)
     dump_callback_(dump_context_, info, minidump_filename);
   }
 
-  // Close the endpoint to tell the client the minidump is complete
+  // Close the endpoint, which will release a direct client and do nothing in the case of
+  // a remote client.
   server_endpoint.reset();
 
   return true;
@@ -383,6 +414,38 @@ CrashGenerationServer::MakeMinidumpFilename(string& outFilename)
 
   outFilename = path;
   return true;
+}
+
+static bool SendActionToClient(
+    int server_endpoint,
+    pid_t crashing_pid,
+    GenerationClientAction action
+) {
+  const uint8_t action_byte = static_cast<uint8_t>(action);
+
+  // MSG_DONTWAIT in case the client maliciously tries to freeze us by filling their buffer
+  const ssize_t rv = HANDLE_EINTR(send(
+    server_endpoint, &action_byte, sizeof(action_byte), MSG_NOSIGNAL | MSG_DONTWAIT));
+  if (rv == static_cast<ssize_t>(sizeof(action_byte))) {
+    return true;
+  }
+
+  char err_msg[256];
+  if (rv == -1) {
+    const int error_code = errno;
+    snprintf(err_msg, sizeof(err_msg),
+      "CrashGenerationServer failed to send action %hhu to process %d. Errno %d.\n",
+      action_byte,
+      static_cast<int>(crashing_pid), error_code);
+  } else {
+    snprintf(err_msg, sizeof(err_msg),
+      "CrashGenerationServer failed to send action %hhu to process %d with no error.\n",
+      action_byte,
+      static_cast<int>(crashing_pid));
+  }
+
+  logger::write(err_msg, strlen(err_msg));
+  return false;
 }
 
 }  // namespace google_breakpad

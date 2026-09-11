@@ -72,6 +72,7 @@ public:
   CrashGenerationServer(const int listen_fd,
 #if defined(MOZ_OXIDIZED_BREAKPAD)
                         std::function<GetAuxvInfoCallback> get_auxv_info,
+                        bool use_remote_executor,
 #endif // defined(MOZ_OXIDIZED_BREAKPAD)
                         std::function<OnClientDumpRequestCallback> dump_callback,
                         void* dump_context,
@@ -121,6 +122,7 @@ private:
 
 #if defined(MOZ_OXIDIZED_BREAKPAD)
   std::function<GetAuxvInfoCallback> get_auxv_info_;
+  bool use_remote_executor_ = false;
 #endif // defined(MOZ_OXIDIZED_BREAKPAD)
 
   std::function<OnClientDumpRequestCallback> dump_callback_;

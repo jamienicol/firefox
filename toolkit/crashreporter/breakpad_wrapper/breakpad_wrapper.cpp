@@ -171,7 +171,9 @@ extern "C" void* CrashGenerationServer_init(breakpad_init_type aBreakpadData,
 extern "C" void* CrashGenerationServer_init(breakpad_init_type aBreakpadData,
                                             const breakpad_char* aMinidumpPath,
                                             BreakpadContext* aContext,
-                                            RustAuxvCallback aAuxvCallback) {
+                                            RustAuxvCallback aAuxvCallback,
+                                            uint8_t aUseRemoteExecutor
+                                            ) {
   breakpad_string minidumpPath(aMinidumpPath);
   breakpad_init_type breakpadData = aBreakpadData;
 
@@ -180,6 +182,7 @@ extern "C" void* CrashGenerationServer_init(breakpad_init_type aBreakpadData,
       [aAuxvCallback](GeckoChildID aId, DirectAuxvDumpInfo* aAuxvInfo) {
         return getAuxvDumpInfo(aAuxvCallback, aId, aAuxvInfo);
       },
+      !!aUseRemoteExecutor,
       [aContext](void* dump_context, const ClientInfo& aClientInfo,
                  const breakpad_string& aFilePath) {
         onClientDumpRequestCallback(aContext, aClientInfo, aFilePath);

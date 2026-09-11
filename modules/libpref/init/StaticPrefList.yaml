@@ -1552,6 +1552,20 @@
   value: 0
   mirror: always
 
+#ifdef XP_LINUX
+
+# Control whether to use the forked-process remote executor in minidump-writer
+#
+# 0 = Force disabled
+# 1 = Default (Only when Android Isolated Processes is enabled)
+# 2 = Force enabled (Useful for desktop Linux testing)
+- name: browser.crashReporter.remoteExecutorMode
+  type: RelaxedAtomicInt32
+  value: 0
+  mirror: always
+
+#endif
+
 # Min font device pixel size at which to turn on high quality.
 - name: browser.display.auto_quality_min_font_size
   type: RelaxedAtomicUint32
