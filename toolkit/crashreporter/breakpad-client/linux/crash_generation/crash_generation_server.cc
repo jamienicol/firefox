@@ -42,6 +42,7 @@
 #include <vector>
 
 #include "linux/crash_generation/crash_generation_server.h"
+#include "linux/crash_generation/crash_generation.h"
 #include "linux/crash_generation/client_info.h"
 #include "linux/handler/exception_handler.h"
 #include "linux/handler/guid_generator.h"
@@ -56,6 +57,8 @@
 static const char kCommandQuit = 'x';
 
 namespace google_breakpad {
+
+using CrashReporter::UniqueFd;
 
 CrashGenerationServer::CrashGenerationServer(
   const int listen_fd,
@@ -242,7 +245,7 @@ CrashGenerationServer::ClientEvent(short revents)
 
   // Walk the control payload and extract the file descriptor and validated pid.
   pid_t crashing_pid = -1;
-  int signal_fd = -1;
+  UniqueFd server_endpoint;
   for (struct cmsghdr *hdr = CMSG_FIRSTHDR(&msg); hdr;
        hdr = CMSG_NXTHDR(&msg, hdr)) {
     if (hdr->cmsg_level != SOL_SOCKET)
@@ -259,7 +262,7 @@ CrashGenerationServer::ClientEvent(short revents)
           close(reinterpret_cast<int*>(CMSG_DATA(hdr))[i]);
         return true;
       } else {
-        signal_fd = reinterpret_cast<int*>(CMSG_DATA(hdr))[0];
+        server_endpoint.reset(*reinterpret_cast<int*>(CMSG_DATA(hdr)));
       }
     } else if (hdr->cmsg_type == SCM_CREDENTIALS) {
       const struct ucred *cred =
@@ -268,9 +271,7 @@ CrashGenerationServer::ClientEvent(short revents)
     }
   }
 
-  if (crashing_pid == -1 || signal_fd == -1) {
-    if (signal_fd != -1)
-      close(signal_fd);
+  if (crashing_pid == -1 || !server_endpoint) {
     return true;
   }
 
@@ -327,7 +328,6 @@ CrashGenerationServer::ClientEvent(short revents)
   if (!google_breakpad::WriteMinidump(minidump_filename.c_str(),
                                       crashing_pid, crash_context,
                                       kCrashContextSize)) {
-    close(signal_fd);
     return true;
   }
 #endif
@@ -339,9 +339,8 @@ CrashGenerationServer::ClientEvent(short revents)
     dump_callback_(dump_context_, info, minidump_filename);
   }
 
-  // Send the done signal to the process: it can exit now.
-  // (Closing this will make the child's sys_read unblock and return 0.)
-  close(signal_fd);
+  // Close the endpoint to tell the client the minidump is complete
+  server_endpoint.reset();
 
   return true;
 }

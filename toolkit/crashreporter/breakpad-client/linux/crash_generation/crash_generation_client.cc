@@ -28,6 +28,7 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "linux/crash_generation/crash_generation_client.h"
+#include "linux/crash_generation/crash_generation.h"
 
 #include <stdio.h>
 #include <sys/socket.h>
@@ -43,15 +44,22 @@ namespace google_breakpad {
 
 namespace {
 
+using CrashReporter::UniqueFd;
+
+static bool CreateStreamSocketPair(UniqueFd* a, UniqueFd* b);
+
 class CrashGenerationClientImpl : public CrashGenerationClient {
  public:
   explicit CrashGenerationClientImpl(int server_fd) : server_fd_(server_fd) {}
   virtual ~CrashGenerationClientImpl() {}
 
   virtual bool RequestDump(const void* blob, size_t blob_size) {
-    int fds[2];
-    if (sys_pipe(fds) < 0)
+    UniqueFd server_endpoint;
+    UniqueFd client_endpoint;
+    if (!CreateStreamSocketPair(&server_endpoint, &client_endpoint)) {
       return false;
+    }
+
     static const unsigned kControlMsgSize = CMSG_SPACE(sizeof(int));
 
     struct kernel_iovec iov;
@@ -70,21 +78,23 @@ class CrashGenerationClientImpl : public CrashGenerationClient {
     hdr->cmsg_type = SCM_RIGHTS;
     hdr->cmsg_len = CMSG_LEN(sizeof(int));
     int* p = reinterpret_cast<int*>(CMSG_DATA(hdr));
-    *p = fds[1];
+    *p = server_endpoint.get();
 
     ssize_t ret = HANDLE_EINTR(sys_sendmsg(server_fd_, &msg, 0));
-    sys_close(fds[1]);
     if (ret < 0) {
-      sys_close(fds[0]);
       return false;
     }
 
-    // Wait for an ACK from the server.
-    char b;
-    IGNORE_RET(HANDLE_EINTR(sys_read(fds[0], &b, 1)));
-    sys_close(fds[0]);
+    server_endpoint.reset();
 
-    return true;
+    // Wait for server to indicate that it's done by hanging up on us
+    uint8_t dummy;
+    ssize_t rv = HANDLE_EINTR(sys_read(client_endpoint.get(), &dummy, sizeof(dummy)));
+    if (rv == -1) {
+      return false;
+    }
+
+    return rv == 0;
   }
 
  private:
@@ -92,6 +102,16 @@ class CrashGenerationClientImpl : public CrashGenerationClient {
 
   DISALLOW_COPY_AND_ASSIGN(CrashGenerationClientImpl);
 };
+
+static bool CreateStreamSocketPair(UniqueFd* a, UniqueFd* b) {
+  int fds[2];
+  if (sys_socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == -1) {
+    return false;
+  }
+  (*a) = UniqueFd(fds[0]);
+  (*b) = UniqueFd(fds[1]);
+  return true;
+}
 
 }  // namespace
 
