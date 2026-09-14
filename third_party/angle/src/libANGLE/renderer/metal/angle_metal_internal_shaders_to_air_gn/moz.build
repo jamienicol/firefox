@@ -23,7 +23,7 @@ GeneratedFile(
         "/third_party/angle/",
         "metal",
         "-c",
-        "{{topsrcdir}}/third_party/angle/src/libANGLE/renderer/metal/shaders/mtl_internal_shaders_autogen.metal",
+        f'{TOPSRCDIR}/third_party/angle/src/libANGLE/renderer/metal/shaders/mtl_internal_shaders_autogen.metal',
         "-o",
         "gen/mtl_internal_shaders_autogen.air",
         "--std=macos-metal2.1",
