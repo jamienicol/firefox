@@ -34,9 +34,15 @@ generated_header = """
 # GN's substitution pattern for the response file path in action args.
 RESPONSE_FILE_NAME_FLAG = "{{response_file_name}}"
 
-# Placeholder string to use in GeneratedFile flags which contain paths to
-# vendored source files.
-TOPSRCDIR_PLACEHOLDER = "{{topsrcdir}}"
+
+class MozbuildFString(str):
+    """A value which must be written out as an f-string, so that it can refer to
+    variables available in moz.build, such as TOPSRCDIR. Its contents are the
+    contents of the f-string, meaning any literal braces must already be
+    doubled."""
+
+    def __repr__(self):
+        return "f" + super().__repr__()
 
 
 class MozbuildWriter:
@@ -54,11 +60,11 @@ class MozbuildWriter:
         if isinstance(v, list):
             if len(v) <= 1:
                 return repr(v)
-            # Pretty print a list
-            raw = json.dumps(v, indent=self._indent_increment)
-            # Add the indent of the current indentation level
-            return raw.replace("\n", "\n" + self.indent)
-        if isinstance(v, bool):
+            # Pretty print a list, with each item at the next indentation level.
+            item_indent = self.indent + " " * self._indent_increment
+            items = (",\n" + item_indent).join(self.mb_serialize(i) for i in v)
+            return f"[\n{item_indent}{items}\n{self.indent}]"
+        if isinstance(v, (bool, MozbuildFString)):
             return repr(v)
         return json.dumps(v)
 
@@ -398,19 +404,13 @@ def process_gn_config(
             path = f"/{project_relsrcdir}/{path}"
         return path
 
-    # If an arg contains a path to a vendored source file, rewrite it using the
-    # TOPSRCDIR_PLACEHOLDER. Args that are not paths to vendored source files
-    # are returned unchanged. This is required because actions are executed with
-    # a cwd in the objdir, and at vendor time we cannot know the absolute path
-    # of the source tree nor its relative path from the objdir, hence we must
-    # use a placeholder.
+    # If an arg contains a path to a vendored source file, rewrite it as an
+    # f-string referring to TOPSRCDIR. Args that do not contain paths to
+    # vendored source files are returned unchanged. This is required because
+    # actions are executed with a cwd in the objdir, and at vendor time we can
+    # know neither the absolute path of the source tree nor its relative path
+    # from the objdir.
     def maybe_encode_srcdir_path_arg(arg):
-        # If the arg legitimately already contains TOPSRCDIR_PLACEHOLDER, then
-        # our substitution will be invalid. This seems unlikely to occur in
-        # practice, but best to fail early and obviously here.
-        assert TOPSRCDIR_PLACEHOLDER not in arg, (
-            f"arg {arg!r} already contains {TOPSRCDIR_PLACEHOLDER!r}, "
-        )
         # The arg may contain a prefix before the srcdir path. We know that any
         # srcdir path will be a relative path from the tempdir to the source
         # tree, and must therefore start with "../", so find the first occurence
@@ -423,8 +423,13 @@ def process_gn_config(
         path = mozpath.normpath(mozpath.join(str(gn_config_dir), path))
         if not os.path.exists(path) or not mozpath.basedir(path, [str(topsrcdir)]):
             return arg
-        return (
-            prefix + TOPSRCDIR_PLACEHOLDER + "/" + mozpath.relpath(path, str(topsrcdir))
+
+        def escape_braces(s):
+            return s.replace("{", "{{").replace("}", "}}")
+
+        relpath = mozpath.relpath(path, str(topsrcdir))
+        return MozbuildFString(
+            escape_braces(prefix) + "{TOPSRCDIR}/" + escape_braces(relpath)
         )
 
     # Encodes a file path used in a response file contents as a mozbuild-style
