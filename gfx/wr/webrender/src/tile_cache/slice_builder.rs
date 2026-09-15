@@ -234,17 +234,38 @@ impl TileCacheBuilder {
             *scroll_root_occurrences.entry(scroll_root).or_insert(0) += 1;
         }
 
-        // We can't just select the most commonly occurring scroll root in this
-        // primitive list. If that is a nested scroll root, there may be
-        // primitives in the list that are outside that scroll root, which
-        // can cause panics when calculating relative transforms. To ensure
-        // this doesn't happen, only retain scroll root candidates that are
-        // also ancestors of every other scroll root candidate.
         let scroll_roots: Vec<SpatialNodeIndex> = scroll_root_occurrences
             .keys()
             .cloned()
             .collect();
 
+        // Root-space primitives can be tracked relative to a scrolling picture
+        // cache. Prefer a dominant non-root candidate when all remaining content
+        // is either fixed or below that candidate in the spatial tree.
+        let root_occurrences = scroll_root_occurrences
+            .get(&self.root_spatial_node_index)
+            .copied()
+            .unwrap_or(0);
+        let dominant_scroll_root = scroll_root_occurrences
+            .iter()
+            .filter_map(|(spatial_node_index, occurrences)| {
+                (*spatial_node_index != self.root_spatial_node_index &&
+                 *occurrences > root_occurrences &&
+                 scroll_roots.iter().all(|other_spatial_node_index| {
+                     other_spatial_node_index == spatial_node_index ||
+                     *other_spatial_node_index == self.root_spatial_node_index ||
+                     spatial_tree.is_ancestor(
+                         *spatial_node_index,
+                         *other_spatial_node_index,
+                     )
+                 }))
+                    .then_some((*spatial_node_index, *occurrences))
+            })
+            .max_by_key(|(_, occurrences)| *occurrences)
+            .map(|(spatial_node_index, _)| spatial_node_index);
+
+        // A nested or sibling scroll root can have primitives that cannot be
+        // mapped into its space. Retain the ancestral candidates for fallback.
         scroll_root_occurrences.retain(|parent_spatial_node_index, _| {
             scroll_roots.iter().all(|child_spatial_node_index| {
                 parent_spatial_node_index == child_spatial_node_index ||
@@ -256,11 +277,13 @@ impl TileCacheBuilder {
         });
 
         // Select the scroll root by finding the most commonly occurring one
-        let scroll_root = scroll_root_occurrences
-            .iter()
-            .max_by_key(|entry | entry.1)
-            .map(|(spatial_node_index, _)| *spatial_node_index)
-            .unwrap_or(self.root_spatial_node_index);
+        let scroll_root = dominant_scroll_root.unwrap_or_else(|| {
+            scroll_root_occurrences
+                .iter()
+                .max_by_key(|entry | entry.1)
+                .map(|(spatial_node_index, _)| *spatial_node_index)
+                .unwrap_or(self.root_spatial_node_index)
+        });
 
         Some(SliceDescriptor {
             scroll_root,

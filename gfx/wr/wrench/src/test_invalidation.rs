@@ -116,6 +116,7 @@ impl<'a> TestHarness<'a> {
         self.test_basic();
         self.test_composite_nop();
         self.test_scroll_subpic();
+        self.test_backdrop_filter_scroll();
         self.test_clip_promotion();
         self.test_rounded_rect_intersection();
         self.test_promotion_shapes();
@@ -252,6 +253,21 @@ impl<'a> TestHarness<'a> {
         assert!(
             results.pc_debug.slice(0).tile(0, 0).is_valid(),
             "Ensure the cache tile was not invalidated after scrolling",
+        );
+    }
+
+    fn test_backdrop_filter_scroll(&mut self) {
+        self.render_yaml("backdrop_filter_scroll_1");
+        let results = self.render_yaml("backdrop_filter_scroll_2");
+        let slice = results.pc_debug.slice(0);
+
+        assert!(
+            slice.tile(1, 1).is_valid(),
+            "Expected scrolling content to remain valid",
+        );
+        assert!(
+            matches!(slice.tile(0, 0), TileDebugInfo::Dirty(..)),
+            "Expected the fixed backdrop filter to invalidate",
         );
     }
 
