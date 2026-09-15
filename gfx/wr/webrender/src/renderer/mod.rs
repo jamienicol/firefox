@@ -34,7 +34,7 @@
 //! up the scissor, are accepting already transformed coordinates, which we can get by
 //! calling `DrawTarget::to_framebuffer_rect`
 
-use api::{ColorF, MixBlendMode, TextureCacheCategory};
+use api::{ColorF, MixBlendMode, PremultipliedColorF, TextureCacheCategory};
 use api::{DocumentId, Epoch, ExternalImageHandler, RenderReasons};
 use api::{PipelineId, Checkpoint, NotificationRequest, ImageBufferKind};
 use api::{FramePublishId, ImageFormat, RenderBackendId};
@@ -53,7 +53,8 @@ use crate::batch::{AlphaBatchContainer, BatchKind, BatchFeatures, BatchTextures,
 use crate::batch::ClipMaskInstanceList;
 #[cfg(any(feature = "capture", feature = "replay"))]
 use crate::capture::{CaptureConfig, ExternalCaptureImage, PlainExternalImage};
-use crate::composite::{CompositeState, CompositeTileSurface};
+use crate::composite::{CompositeState, CompositeSurfaceFormat};
+use crate::composite::CompositeTileSurface;
 use crate::composite::{CompositorKind, Compositor, NativeTileId};
 use crate::composite::{CompositorConfig, NativeSurfaceOperationDetails, NativeSurfaceId, NativeSurfaceOperation};
 #[cfg(feature = "debugger")]
@@ -65,7 +66,8 @@ use crate::device::query::{GpuSampler, GpuTimer};
 use crate::debug_item::DebugItem;
 use crate::frame_builder::Frame;
 use glyph_rasterizer::GlyphFormat;
-use crate::gpu_types::{ScalingInstance, SVGFEFilterInstance, CopyInstance, PrimitiveInstanceData};
+use crate::gpu_types::{CompositeInstance, ScalingInstance, SVGFEFilterInstance};
+use crate::gpu_types::{CopyInstance, PrimitiveInstanceData};
 use crate::gpu_types::{BlurInstance, ClearInstance};
 use crate::internal_types::{TextureSource, TextureSourceExternal, FrameVec};
 #[cfg(any(feature = "capture", feature = "replay"))]
@@ -77,7 +79,7 @@ use crate::picture::ResolvedSurfaceTexture;
 use crate::profiler::{self, RenderCommandLog, GpuProfileTag, TransactionProfile};
 use crate::profiler::{Profiler, add_event_marker, add_text_marker, thread_is_being_profiled};
 use crate::device::query::GpuProfiler;
-use crate::render_target::ResolveOp;
+use crate::render_target::{ResolveOp, ResolveSource};
 use crate::render_task_graph::RenderTaskGraph;
 use crate::render_task::{RenderTask, RenderTaskKind, ReadbackTask};
 use crate::screen_capture::AsyncScreenshotGrabber;
@@ -2262,6 +2264,8 @@ impl Renderer {
         resolve_ops: &[ResolveOp],
         render_tasks: &RenderTaskGraph,
         draw_target: DrawTarget,
+        projection: &default::Transform3D<f32>,
+        stats: &mut RendererStats,
     ) {
         if resolve_ops.is_empty() {
             return;
@@ -2274,6 +2278,8 @@ impl Renderer {
                 resolve_op,
                 render_tasks,
                 draw_target,
+                projection,
+                stats,
             );
         }
 
@@ -2701,7 +2707,77 @@ impl Renderer {
         resolve_op: &ResolveOp,
         render_tasks: &RenderTaskGraph,
         draw_target: DrawTarget,
+        projection: &default::Transform3D<f32>,
+        stats: &mut RendererStats,
     ) {
+        let dest_task_rect = render_tasks[resolve_op.dest_task_id].get_target_rect();
+
+        if !resolve_op.sources.is_empty() {
+            self.set_blend_mode(BlendMode::PremultipliedAlpha, FramebufferKind::Other);
+        }
+
+        for source in &resolve_op.sources {
+            let (instance, textures, features) = match *source {
+                ResolveSource::Texture { source, src_rect, dest_rect } => {
+                    let dest_rect = dest_rect
+                        .translate(dest_task_rect.min.to_vector())
+                        .to_f32();
+                    let src_rect = src_rect.to_f32();
+                    let instance = CompositeInstance::new_rgb(
+                        dest_rect,
+                        dest_rect,
+                        PremultipliedColorF::WHITE,
+                        TexelRect::new(
+                            src_rect.min.x,
+                            src_rect.min.y,
+                            src_rect.max.x,
+                            src_rect.max.y,
+                        ),
+                        false,
+                        (false, false),
+                        None,
+                    );
+                    let features = instance.get_rgb_features();
+                    (instance, BatchTextures::composite_rgb(source), features)
+                }
+                ResolveSource::Color { color, dest_rect } => {
+                    let dest_rect = dest_rect
+                        .translate(dest_task_rect.min.to_vector())
+                        .to_f32();
+                    let instance = CompositeInstance::new(
+                        dest_rect,
+                        dest_rect,
+                        color.premultiplied(),
+                        (false, false),
+                        None,
+                    );
+                    let features = instance.get_rgb_features();
+                    (instance, BatchTextures::composite_rgb(TextureSource::Dummy), features)
+                }
+            };
+
+            self.shaders
+                .borrow_mut()
+                .get_composite_shader(
+                    CompositeSurfaceFormat::Rgba,
+                    ImageBufferKind::Texture2D,
+                    features,
+                ).bind(
+                    &mut self.device,
+                    projection,
+                    None,
+                    &mut self.renderer_errors,
+                    &mut self.profile,
+                    &mut self.command_log,
+                );
+            self.draw_instanced_batch(
+                &[instance],
+                VertexArrayKind::Composite,
+                &textures,
+                stats,
+            );
+        }
+
         for src_task_id in &resolve_op.src_task_ids {
             let src_task = &render_tasks[*src_task_id];
             let src_info = match src_task.kind {
@@ -3316,6 +3392,8 @@ impl Renderer {
             &target.resolve_ops,
             render_tasks,
             draw_target,
+            &projection,
+            stats,
         );
 
         // Handle any blits from the texture cache to this target.

@@ -6,20 +6,23 @@
 //! surfaces that are created during the prepare pass, and other surface related types and
 //! helpers.
 
+use api::ColorF;
 use api::units::*;
 use crate::command_buffer::{CommandBufferBuilderKind, CommandBufferList, CommandBufferBuilder, CommandBufferIndex};
-use crate::internal_types::{FastHashMap, FastHashSet};
+use crate::internal_types::{FastHashMap, FastHashSet, TextureSource};
 use crate::picture_composite_mode::PictureCompositeMode;
 use crate::tile_cache::{TileKey, SubSliceIndex, MAX_COMPOSITOR_SURFACES};
 use crate::prim_store::PictureIndex;
 use crate::render_task_graph::{RenderTaskId, RenderTaskGraphBuilder};
-use crate::render_target::ResolveOp;
+use crate::render_target::{ResolveOp, ResolveSource};
 use crate::render_task::{RenderTask, RenderTaskKind, RenderTaskLocation};
 use crate::space::SpaceMapper;
 use crate::spatial_tree::{CoordinateSpaceMapping, CoordinateSystemId, SpatialTree, SpatialNodeIndex};
 use crate::util::{MaxRect, ScaleOffset};
 use crate::visibility::{DrawState, PrimitiveDrawHeader, FrameVisibilityContext};
 pub use crate::picture_composite_mode::get_surface_rects;
+use rustc_hash::FxHasher;
+use std::hash::{Hash, Hasher};
 
 /// Walk the filter chain rooted at `task_id` and make every task in it that
 /// samples `src_task_id` depend on `dep_task_id` as well.
@@ -570,6 +573,8 @@ pub struct SurfaceTileDescriptor {
     pub backdrop_task_id: Option<RenderTaskId>,
     /// Coverage written since `backdrop_task_id` was captured.
     pub written_rect: Option<PictureRect>,
+    pub slice_index: usize,
+    pub pic_to_device: Option<ScaleOffset>,
 }
 
 // Details of how a surface is rendered
@@ -720,6 +725,27 @@ pub struct SurfaceBuilder {
     // A map of the output render tasks from any sub-graphs that haven't
     // been consumed by BackdropRender prims yet
     pub sub_graph_output_map: FastHashMap<PictureIndex, RenderTaskId>,
+    backdrop_sources: Vec<BackdropSource>,
+}
+
+#[derive(Clone)]
+pub enum BackdropSourceKind {
+    Texture(TextureSource),
+    Color(ColorF),
+}
+
+#[derive(Clone)]
+pub struct BackdropSource {
+    pub slice_index: usize,
+    pub kind: BackdropSourceKind,
+    pub device_rect: DeviceRect,
+    pub surface_rect: DeviceRect,
+    pub producer_task_id: Option<RenderTaskId>,
+}
+
+pub struct BackdropInputSignature {
+    pub hash: u64,
+    pub has_dirty_source: bool,
 }
 
 impl SurfaceBuilder {
@@ -728,7 +754,187 @@ impl SurfaceBuilder {
             current_cmd_buffers: CommandBufferTargets::new(),
             builder_stack: Vec::new(),
             sub_graph_output_map: FastHashMap::default(),
+            backdrop_sources: Vec::new(),
         }
+    }
+
+    pub fn register_backdrop_source(&mut self, source: BackdropSource) {
+        self.backdrop_sources.push(source);
+    }
+
+    fn map_device_rect_between(
+        rect: DeviceRect,
+        from: DeviceRect,
+        to: DeviceRect,
+    ) -> Option<DeviceIntRect> {
+        if from.is_empty() || to.is_empty() {
+            return None;
+        }
+
+        let scale_x = to.width() / from.width();
+        let scale_y = to.height() / from.height();
+        let p0 = DevicePoint::new(
+            to.min.x + (rect.min.x - from.min.x) * scale_x,
+            to.min.y + (rect.min.y - from.min.y) * scale_y,
+        );
+        let p1 = DevicePoint::new(
+            to.min.x + (rect.max.x - from.min.x) * scale_x,
+            to.min.y + (rect.max.y - from.min.y) * scale_y,
+        );
+        let mapped = DeviceRect::new(p0, p1).round().to_i32();
+
+        (!mapped.is_empty()).then_some(mapped)
+    }
+
+    pub fn get_backdrop_input_signature(
+        &self,
+        current_slice_index: usize,
+        current_pic_to_device: ScaleOffset,
+        capture_rect: PictureRect,
+    ) -> BackdropInputSignature {
+        let capture_device_rect: DeviceRect = current_pic_to_device
+            .map_rect::<PicturePixel, DevicePixel>(&capture_rect);
+        let mut has_dirty_source = false;
+        let mut entry_hashes = Vec::new();
+
+        for source in &self.backdrop_sources {
+            if source.slice_index >= current_slice_index {
+                continue;
+            }
+
+            let Some(device_rect) = capture_device_rect.intersection(&source.device_rect) else {
+                continue;
+            };
+            let device_rect = device_rect.round().to_i32();
+            if device_rect.is_empty() {
+                continue;
+            }
+
+            let mut entry_hasher = FxHasher::default();
+            source.slice_index.hash(&mut entry_hasher);
+            device_rect.min.x.hash(&mut entry_hasher);
+            device_rect.min.y.hash(&mut entry_hasher);
+            device_rect.max.x.hash(&mut entry_hasher);
+            device_rect.max.y.hash(&mut entry_hasher);
+
+            match source.kind {
+                BackdropSourceKind::Texture(texture_source) => {
+                    let Some(src_rect) = Self::map_device_rect_between(
+                        device_rect.to_f32(),
+                        source.device_rect,
+                        source.surface_rect,
+                    ) else {
+                        continue;
+                    };
+                    texture_source.hash(&mut entry_hasher);
+                    src_rect.min.x.hash(&mut entry_hasher);
+                    src_rect.min.y.hash(&mut entry_hasher);
+                    src_rect.max.x.hash(&mut entry_hasher);
+                    src_rect.max.y.hash(&mut entry_hasher);
+                }
+                BackdropSourceKind::Color(color) => {
+                    color.r.to_bits().hash(&mut entry_hasher);
+                    color.g.to_bits().hash(&mut entry_hasher);
+                    color.b.to_bits().hash(&mut entry_hasher);
+                    color.a.to_bits().hash(&mut entry_hasher);
+                }
+            }
+
+            has_dirty_source |= source.producer_task_id.is_some();
+            entry_hashes.push(entry_hasher.finish());
+        }
+
+        entry_hashes.sort_unstable();
+        let mut hasher = FxHasher::default();
+        current_slice_index.hash(&mut hasher);
+        capture_rect.min.x.to_bits().hash(&mut hasher);
+        capture_rect.min.y.to_bits().hash(&mut hasher);
+        capture_rect.max.x.to_bits().hash(&mut hasher);
+        capture_rect.max.y.to_bits().hash(&mut hasher);
+        entry_hashes.hash(&mut hasher);
+
+        BackdropInputSignature {
+            hash: hasher.finish(),
+            has_dirty_source,
+        }
+    }
+
+    fn get_cross_slice_resolve_sources(
+        &self,
+        current_slice_index: usize,
+        current_pic_to_device: ScaleOffset,
+        resolve_task_id: RenderTaskId,
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) -> Vec<ResolveSource> {
+        let dest_task = rg_builder.get_task(resolve_task_id);
+        let dest_info = match dest_task.kind {
+            RenderTaskKind::Picture(ref info) => info,
+            _ => return Vec::new(),
+        };
+        let dest_content_origin = dest_info.content_origin;
+        let dest_content_size = dest_info.content_size;
+        let dest_device_pixel_scale = dest_info.device_pixel_scale;
+        let dest_content_rect = DeviceRect::from_origin_and_size(
+            dest_content_origin,
+            dest_content_size.to_f32(),
+        );
+        let wanted_pic_rect: PictureRect =
+            (dest_content_rect.cast_unit() * dest_device_pixel_scale.inverse()).cast_unit();
+        let wanted_device_rect: DeviceRect = current_pic_to_device
+            .map_rect::<PicturePixel, DevicePixel>(&wanted_pic_rect);
+        let device_to_current_pic = current_pic_to_device.inverse();
+        let mut sources = Vec::new();
+        let mut backdrop_sources: Vec<_> = self.backdrop_sources.iter().collect();
+        backdrop_sources.sort_by_key(|source| source.slice_index);
+
+        for source in backdrop_sources {
+            if source.slice_index >= current_slice_index {
+                continue;
+            }
+
+            let Some(device_rect) = wanted_device_rect.intersection(&source.device_rect) else {
+                continue;
+            };
+            let dest_pic_rect: PictureRect = device_to_current_pic
+                .map_rect::<DevicePixel, PicturePixel>(&device_rect);
+            let dest_scaled_rect = dest_pic_rect.cast_unit() * dest_device_pixel_scale;
+            let dest_origin = dest_scaled_rect.min - dest_content_origin.to_vector();
+            let dest_rect = DeviceRect::from_origin_and_size(
+                dest_origin,
+                dest_scaled_rect.size(),
+            ).round().to_i32();
+            if dest_rect.is_empty() {
+                continue;
+            }
+
+            if let Some(producer_task_id) = source.producer_task_id {
+                rg_builder.add_dependency(resolve_task_id, producer_task_id);
+            }
+
+            match source.kind {
+                BackdropSourceKind::Texture(texture_source) => {
+                    if let Some(src_rect) = Self::map_device_rect_between(
+                        device_rect,
+                        source.device_rect,
+                        source.surface_rect,
+                    ) {
+                        sources.push(ResolveSource::Texture {
+                            source: texture_source,
+                            src_rect,
+                            dest_rect,
+                        });
+                    }
+                }
+                BackdropSourceKind::Color(color) => {
+                    sources.push(ResolveSource::Color {
+                        color,
+                        dest_rect,
+                    });
+                }
+            }
+        }
+
+        sources
     }
 
     /// Register the current surface as the source of a resolve for the task sub-graph that
@@ -963,6 +1169,8 @@ impl SurfaceBuilder {
                         //  (c) Make the old parent surface tasks input dependencies of the resolve target
                         //  (d) Make the sub-graph output an input dependency of the new task(s).
 
+                        let mut cross_slice_context = None;
+
                         match self.builder_stack.last_mut().unwrap().kind {
                             CommandBufferBuilderKind::Tiled { ref mut tiles } => {
                                 let keys: Vec<TileKey> = tiles.keys().cloned().collect();
@@ -971,6 +1179,12 @@ impl SurfaceBuilder {
                                 // For each tile in parent surface
                                 for key in keys {
                                     let mut descriptor = tiles.remove(&key).unwrap();
+
+                                    if cross_slice_context.is_none() {
+                                        cross_slice_context = descriptor.pic_to_device.map(|pic_to_device| {
+                                            (descriptor.slice_index, pic_to_device)
+                                        });
+                                    }
 
                                     if !descriptor.dirty_rect.intersects(&resolve_rect) {
                                         tiles.insert(key, descriptor);
@@ -1144,6 +1358,45 @@ impl SurfaceBuilder {
                             resolve_task_id,
                             &src_task_ids,
                         );
+                        if let Some((slice_index, pic_to_device)) = cross_slice_context {
+                            let mut initialized_tasks = FastHashSet::default();
+                            for task_id in &src_task_ids {
+                                if !initialized_tasks.insert(*task_id) {
+                                    continue;
+                                }
+
+                                let should_initialize = match rg_builder.get_task(*task_id).kind {
+                                    RenderTaskKind::Picture(ref info) => {
+                                        info.clear_color.is_some() && info.resolve_op.is_none()
+                                    }
+                                    _ => false,
+                                };
+                                if !should_initialize {
+                                    continue;
+                                }
+
+                                let sources = self.get_cross_slice_resolve_sources(
+                                    slice_index,
+                                    pic_to_device,
+                                    *task_id,
+                                    rg_builder,
+                                );
+                                if sources.is_empty() {
+                                    continue;
+                                }
+
+                                let task = rg_builder.get_task_mut(*task_id);
+                                let RenderTaskKind::Picture(ref mut info) = task.kind else {
+                                    unreachable!();
+                                };
+                                info.resolve_op = Some(ResolveOp {
+                                    src_task_ids: Vec::new(),
+                                    sources,
+                                    dest_task_id: *task_id,
+                                    dest_to_src_raster: ScaleOffset::identity(),
+                                });
+                            }
+                        }
 
                         let dest_task = rg_builder.get_task_mut(resolve_task_id);
 
@@ -1152,6 +1405,7 @@ impl SurfaceBuilder {
                                 assert!(dest_task_info.resolve_op.is_none());
                                 dest_task_info.resolve_op = Some(ResolveOp {
                                     src_task_ids,
+                                    sources: Vec::new(),
                                     dest_task_id: resolve_task_id,
                                     dest_to_src_raster,
                                 })

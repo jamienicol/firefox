@@ -198,6 +198,10 @@ impl SliceId {
     pub fn new(index: usize) -> Self {
         SliceId(index)
     }
+
+    pub fn index(&self) -> usize {
+        self.0
+    }
 }
 
 /// Information that is required to reuse or create a new tile cache. Created
@@ -1665,6 +1669,10 @@ impl TileCacheInstance {
         // complex effect (such as a filter, mix-blend-mode or 3d transform).
         if !is_root_tile_cache {
             return Err(NotRootTileCache);
+        }
+
+        if self.slice_flags.contains(SliceFlags::HAS_CROSS_SLICE_BACKDROP) {
+            return Err(CrossSliceBackdrop);
         }
 
         let mapper : SpaceMapper<PicturePixel, DevicePixel> = SpaceMapper::new_with_target(
@@ -3351,6 +3359,7 @@ enum SurfacePromotionFailure {
     UnderlayLowQualityZoom,
     NotRootTileCache,
     ComplexTransform,
+    CrossSliceBackdrop,
     SliceAtomic,
     SizeTooLarge,
 }
@@ -3371,6 +3380,7 @@ impl Display for SurfacePromotionFailure {
                 SurfacePromotionFailure::UnderlayLowQualityZoom => "underlay not allowed during low-quality pinch zoom",
                 SurfacePromotionFailure::NotRootTileCache => "is not on a root tile cache",
                 SurfacePromotionFailure::ComplexTransform => "has a complex transform",
+                SurfacePromotionFailure::CrossSliceBackdrop => "slice is sampled by a backdrop filter",
                 SurfacePromotionFailure::SliceAtomic => "slice is atomic",
                 SurfacePromotionFailure::SizeTooLarge => "surface is too large for compositor",
             }.to_owned()

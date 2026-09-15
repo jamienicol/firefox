@@ -164,6 +164,25 @@ impl TileCacheBuilder {
             .merge();
     }
 
+    pub fn mark_current_slice_has_cross_slice_backdrop(&mut self) {
+        self.primary_slices
+            .last_mut()
+            .unwrap()
+            .slice_flags |= SliceFlags::HAS_CROSS_SLICE_BACKDROP;
+    }
+
+    pub fn backdrop_filter_may_sample_cross_slice(
+        &self,
+        filter_scroll_root: SpatialNodeIndex,
+    ) -> bool {
+        match self.primary_slices.last().unwrap().kind {
+            SliceKind::Default { ref secondary_slices } => secondary_slices
+                .iter()
+                .any(|slice| slice.scroll_root != filter_scroll_root),
+            SliceKind::Atomic { .. } => false,
+        }
+    }
+
     /// Returns true if the current slice has no primitives added yet
     pub fn is_current_slice_empty(&self) -> bool {
         match self.primary_slices.last() {

@@ -69,6 +69,7 @@ scale(*) == filter-blur-scaled.yaml filter-blur-scaled-ref.yaml
 skip_on(android,device) skip_on(win) fuzzy(1,104) fuzzy-if(platform(swgl),4,18484) == filter-blur-scaled-xonly.yaml filter-blur-scaled-xonly.png  # fails on  Pixel2
 scale(*) == svg-filter-flood.yaml svg-filter-flood-ref.yaml
 scale(*) == backdrop-filter-basic.yaml backdrop-filter-basic-ref.yaml
+scale(*) == backdrop-filter-cross-slice.yaml backdrop-filter-cross-slice-ref.yaml
 platform(linux,mac) == backdrop-filter-perspective.yaml backdrop-filter-perspective.png
 scale(*) == backdrop-filter-on-child-surface.yaml backdrop-filter-on-child-surface-ref.yaml
 scale(*) == backdrop-filter-clip-mask.yaml backdrop-filter-clip-mask-ref.yaml

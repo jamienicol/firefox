@@ -259,14 +259,13 @@ impl<'a> TestHarness<'a> {
     fn test_backdrop_filter_scroll(&mut self) {
         self.render_yaml("backdrop_filter_scroll_1");
         let results = self.render_yaml("backdrop_filter_scroll_2");
-        let slice = results.pc_debug.slice(0);
 
         assert!(
-            slice.tile(1, 1).is_valid(),
+            results.pc_debug.slice(0).tile(1, 1).is_valid(),
             "Expected scrolling content to remain valid",
         );
         assert!(
-            matches!(slice.tile(0, 0), TileDebugInfo::Dirty(..)),
+            matches!(results.pc_debug.slice(1).tile(0, 0), TileDebugInfo::Dirty(..)),
             "Expected the fixed backdrop filter to invalidate",
         );
     }
