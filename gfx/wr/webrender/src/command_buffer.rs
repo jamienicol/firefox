@@ -505,7 +505,7 @@ pub struct CommandBufferBuilder {
 
     /// If this surface builds a sub-graph, it will mark a task in the filter sub-graph
     /// as a resolve source for the input from the parent surface.
-    pub resolve_source: Option<RenderTaskId>,
+    pub resolve_source: Option<(RenderTaskId, PictureRect)>,
 
     /// List of render tasks that depend on the task that will be created for this builder.
     pub extra_dependencies: Vec<RenderTaskId>,
