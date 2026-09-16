@@ -1,0 +1,36 @@
+root:
+  items:
+    - type: stacking-context
+      backdrop-root: true
+      items:
+        - type: scroll-frame
+          id: 2
+          bounds: [0, 0, 1600, 1200]
+          content-size: [1600, 3000]
+          scroll-offset: [0, 100]
+          clip-to-frame: true
+          items:
+            - type: rect
+              bounds: [0, 0, 1600, 3000]
+              color: red
+            - type: backdrop-filter
+              bounds: [100, 200, 100, 40]
+              filters: [invert(1)]
+            - type: rect
+              bounds: [0, 300, 1600, 100]
+              color: green
+            - type: backdrop-filter
+              bounds: [100, 500, 100, 40]
+              filters: [invert(1)]
+            - type: rect
+              bounds: [0, 600, 1600, 100]
+              color: blue
+            - type: backdrop-filter
+              bounds: [100, 800, 100, 40]
+              filters: [invert(1)]
+        - type: rect
+          bounds: [0, 0, 1600, 80]
+          color: [0, 0, 255, 0.5]
+        - type: backdrop-filter
+          bounds: [0, 0, 1600, 80]
+          filters: ["blur(8,8)"]

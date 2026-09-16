@@ -1,0 +1,35 @@
+---
+root:
+  items:
+    - type: stacking-context
+      backdrop-root: true
+      items:
+        - type: scroll-frame
+          id: 2
+          bounds: [0, 0, 400, 400]
+          content-size: [400, 800]
+          scroll-offset: [0, 0]
+          clip-to-frame: true
+          items:
+            - type: rect
+              bounds: [0, 0, 400, 800]
+              color: red
+            - type: rect
+              bounds: [50, 50, 50, 50]
+              color: magenta
+        - type: scroll-frame
+          id: 3
+          bounds: [0, 0, 400, 400]
+          content-size: [400, 800]
+          scroll-offset: [0, 0]
+          clip-to-frame: true
+          items:
+            - type: rect
+              bounds: [150, 50, 50, 50]
+              color: white
+        - type: rect
+          bounds: [100, 100, 50, 50]
+          color: blue
+        - type: backdrop-filter
+          bounds: [0, 0, 200, 200]
+          filters: invert(1)

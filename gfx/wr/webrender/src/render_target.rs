@@ -618,11 +618,38 @@ impl RenderTarget {
     }
 }
 
+/// A persistent picture-cache source that must be composited into a resolve
+/// target before its render-task sources are copied.
+#[cfg_attr(feature = "capture", derive(Serialize))]
+#[cfg_attr(feature = "replay", derive(Deserialize))]
+#[derive(Debug, PartialEq, Clone)]
+pub enum ResolveSource {
+    /// A region of a cached picture tile.
+    Texture {
+        /// Texture containing the cached tile contents.
+        source: TextureSource,
+        /// Region to sample in the texture's coordinate system.
+        src_rect: DeviceIntRect,
+        /// Region to fill relative to the resolve target.
+        dest_rect: DeviceIntRect,
+    },
+    /// A cached tile represented without allocating a texture.
+    Color {
+        /// Color that represents the tile contents.
+        color: ColorF,
+        /// Region to fill relative to the resolve target.
+        dest_rect: DeviceIntRect,
+    },
+}
+
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 #[derive(Debug, PartialEq, Clone)]
 pub struct ResolveOp {
     pub src_task_ids: Vec<RenderTaskId>,
+    /// Cached textures and colors that are not represented by render tasks in
+    /// this frame, used to reconstruct backdrop content from earlier slices.
+    pub sources: Vec<ResolveSource>,
     pub dest_task_id: RenderTaskId,
     /// Maps a rect from the dest (resolve target) surface's raster space into
     /// the src (parent) surface's raster space. Identity unless the resolve

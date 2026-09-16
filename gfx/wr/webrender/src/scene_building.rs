@@ -56,6 +56,7 @@ use crate::box_shadow::BLUR_SAMPLE_SCALE;
 use crate::clip::{ClipIntern, ClipItemKey, ClipItemKeyKind, ClipStore};
 use crate::clip::{ClipInternData, ClipNodeId};
 use crate::clip::{PolygonDataHandle, ClipTreeBuilder};
+use crate::composite::CompositorKind;
 use crate::gpu_types::BlurEdgeMode;
 use crate::segment::EdgeMask;
 use crate::spatial_tree::{SceneSpatialTree, SpatialNodeContainer, SpatialNodeIndex};
@@ -401,6 +402,8 @@ bitflags! {
         const IS_SCROLLBAR = 1;
         /// Represents an atomic container (can't split out compositor surfaces in this slice)
         const IS_ATOMIC = 2;
+        /// Backdrop-filter resolves in this slice may sample earlier picture cache slices.
+        const HAS_CROSS_SLICE_BACKDROP = 4;
     }
 }
 
@@ -3028,12 +3031,26 @@ impl<'a> SceneBuilder<'a> {
         filters: Vec<Filter>,
         filter_datas: Vec<FilterData>,
     ) {
-        // We don't know the spatial node for a backdrop filter, as it's whatever is the
-        // backdrop root, but we can't know this if the root is a picture cache slice
-        // (which is the common case). It will get resolved later during `finalize_picture`.
-        let filter_spatial_node_index = SpatialNodeIndex::UNKNOWN;
-
-        self.make_current_slice_atomic_if_required();
+        let is_tile_cache_backdrop = !self.sc_stack.iter().any(|sc| {
+            !sc.flags.contains(StackingContextFlags::WRAPS_BACKDROP_FILTER)
+        });
+        let supports_cross_slice_backdrop = is_tile_cache_backdrop
+            && !matches!(self.config.compositor_kind, CompositorKind::Native { .. })
+            && self.spatial_tree.is_root_coord_system(spatial_node_index);
+        let filter_scroll_root = self.spatial_tree.find_scroll_root(spatial_node_index, true);
+        if !supports_cross_slice_backdrop {
+            self.make_current_slice_atomic_if_required();
+        } else if self
+            .tile_cache_builder
+            .backdrop_filter_may_sample_cross_slice(filter_scroll_root)
+        {
+            self.tile_cache_builder.mark_current_slice_has_cross_slice_backdrop();
+        }
+        let filter_spatial_node_index = if supports_cross_slice_backdrop {
+            filter_scroll_root
+        } else {
+            SpatialNodeIndex::UNKNOWN
+        };
 
         // Ensure we create a clip-chain for the capture primitive that matches
         // the render primitive, otherwise one might get culled while the other
