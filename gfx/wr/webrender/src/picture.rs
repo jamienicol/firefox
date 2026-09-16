@@ -818,7 +818,7 @@ impl PictureInstance {
                     }
                 }
 
-                let can_use_shared_surface = !self.flags.contains(PictureFlags::IS_RESOLVE_TARGET);
+                let can_use_shared_surface = true;
                 let (surface_descriptor, render_tasks) = prepare_composite_mode(
                     &raster_config.composite_mode,
                     surface_index,
