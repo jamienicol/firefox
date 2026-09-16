@@ -17,6 +17,7 @@ use crate::intern::ItemUid;
 use crate::invalidation::vert_buffer::VertRange;
 use peek_poke::{PeekPoke, peek_from_slice};
 
+const COMPARE_RASTER_GEOMETRY: bool = false;
 
 /// Information about the state of a binding.
 #[derive(Debug)]
@@ -158,7 +159,7 @@ impl<'a> PrimitiveComparer<'a> {
         let curr_end = (curr_range.offset + curr_range.count) as usize;
         let curr_verts = &self.curr.vert_data[curr_range.offset as usize .. curr_end];
 
-        if prev_verts != curr_verts {
+        if COMPARE_RASTER_GEOMETRY && prev_verts != curr_verts {
             return PrimitiveCompareResult::Descriptor;
         }
 
@@ -170,7 +171,7 @@ impl<'a> PrimitiveComparer<'a> {
         let curr_end = (curr_range.offset + curr_range.count) as usize;
         let curr_verts = &self.curr.vert_data[curr_range.offset as usize .. curr_end];
 
-        if prev_verts != curr_verts {
+        if COMPARE_RASTER_GEOMETRY && prev_verts != curr_verts {
             return PrimitiveCompareResult::Descriptor;
         }
 
