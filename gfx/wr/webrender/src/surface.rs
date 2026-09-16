@@ -14,8 +14,8 @@ use crate::picture_composite_mode::PictureCompositeMode;
 use crate::tile_cache::{TileKey, SubSliceIndex, MAX_COMPOSITOR_SURFACES};
 use crate::prim_store::PictureIndex;
 use crate::render_task_graph::{RenderTaskId, RenderTaskGraphBuilder};
-use crate::render_target::{ResolveOp, ResolveSource};
-use crate::render_task::{RenderTask, RenderTaskKind, RenderTaskLocation};
+use crate::render_target::{RenderTargetKind, ResolveOp, ResolveSource};
+use crate::render_task::{CachedTask, RenderTask, RenderTaskKind, RenderTaskLocation};
 use crate::space::SpaceMapper;
 use crate::spatial_tree::{CoordinateSpaceMapping, CoordinateSystemId, SpatialTree, SpatialNodeIndex};
 use crate::util::{MaxRect, ScaleOffset};
@@ -609,6 +609,77 @@ impl SurfaceTileDescriptor {
 
     fn final_task_id(&self) -> RenderTaskId {
         self.deferred_task_id.unwrap_or(self.current_task_id)
+    }
+
+    fn promote_final_task_to_picture_cache(
+        &self,
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) -> bool {
+        let (Some(composite_task_id), Some(final_task_id)) =
+            (self.composite_task_id, self.deferred_task_id)
+        else {
+            return false;
+        };
+
+        let (surface, scissor_rect, valid_rect, sub_rect_offset) = {
+            let composite_task = rg_builder.get_task(composite_task_id);
+            let RenderTaskLocation::Static { ref surface, .. } = composite_task.location else {
+                return false;
+            };
+            let RenderTaskKind::TileComposite(ref info) = composite_task.kind else {
+                return false;
+            };
+
+            (
+                surface.clone(),
+                info.scissor_rect,
+                info.valid_rect,
+                info.sub_rect_offset,
+            )
+        };
+
+        let (parent_task_id, final_task_size) =
+            match rg_builder.get_task(final_task_id).location {
+                RenderTaskLocation::Existing {
+                    parent_task_id,
+                    size,
+                } => (parent_task_id, size),
+                _ => return false,
+            };
+
+        if sub_rect_offset != DeviceIntVector2D::zero()
+            || final_task_size != scissor_rect.size()
+        {
+            return false;
+        }
+
+        {
+            let final_task = rg_builder.get_task_mut(final_task_id);
+            final_task.location = RenderTaskLocation::Static {
+                surface,
+                rect: scissor_rect,
+            };
+            let RenderTaskKind::Picture(ref mut pic_task) = final_task.kind else {
+                unreachable!("bug: final tile task is not a picture");
+            };
+            pic_task.scissor_rect = Some(scissor_rect);
+            pic_task.valid_rect = Some(valid_rect);
+            pic_task.resolve_op = Some(ResolveOp {
+                src_task_ids: vec![parent_task_id],
+                sources: Vec::new(),
+                dest_task_id: final_task_id,
+                dest_to_src_raster: ScaleOffset::identity(),
+            });
+        }
+
+        let composite_task = rg_builder.get_task_mut(composite_task_id);
+        // Cross-slice backdrop sources may already use this task as their producer.
+        composite_task.kind = RenderTaskKind::Cached(CachedTask {
+            target_kind: RenderTargetKind::Color,
+        });
+        rg_builder.add_dependency(composite_task_id, final_task_id);
+
+        true
     }
 }
 
@@ -1547,6 +1618,10 @@ impl SurfaceBuilder {
                 CommandBufferBuilderKind::Tiled { ref tiles } => {
                     for (_, descriptor) in tiles {
                         if let Some(composite_task_id) = descriptor.composite_task_id {
+                            if descriptor.promote_final_task_to_picture_cache(rg_builder) {
+                                continue;
+                            }
+
                             let final_task_id = descriptor.final_task_id();
                             rg_builder.add_dependency(
                                 composite_task_id,

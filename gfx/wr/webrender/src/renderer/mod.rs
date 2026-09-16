@@ -2971,6 +2971,17 @@ impl Renderer {
             self.device.set_depth_write(false);
         }
 
+        if let Some(ref resolve_op) = target.resolve_op {
+            self.handle_resolve(
+                resolve_op,
+                render_tasks,
+                draw_target,
+                projection,
+                stats,
+            );
+            self.device.reset_read_target();
+        }
+
         match target.kind {
             PictureCacheTargetKind::Draw { ref alpha_batch_container } => {
                 self.draw_alpha_batch_container(

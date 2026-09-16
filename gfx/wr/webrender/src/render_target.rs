@@ -670,6 +670,7 @@ pub struct PictureCacheTarget {
     pub clear_color: Option<ColorF>,
     pub dirty_rect: DeviceIntRect,
     pub valid_rect: DeviceIntRect,
+    pub resolve_op: Option<ResolveOp>,
 }
 
 fn add_blur_instances(

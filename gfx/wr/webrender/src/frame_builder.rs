@@ -1273,6 +1273,7 @@ pub fn build_render_pass(
                             },
                             dirty_rect,
                             valid_rect,
+                            resolve_op: pic_task.resolve_op.clone(),
                         };
 
                         pass.picture_cache.push(target);
@@ -1298,6 +1299,7 @@ pub fn build_render_pass(
                             },
                             dirty_rect,
                             valid_rect,
+                            resolve_op: None,
                         };
 
                         pass.picture_cache.push(target);
