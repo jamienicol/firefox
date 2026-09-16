@@ -194,17 +194,24 @@ fn prepare_primitives(
                 continue;
             };
 
+            let is_backdrop_render = matches!(
+                prim_instances[prim_instance_index].kind,
+                PrimitiveKind::BackdropRender { .. }
+            );
             let tracks_parent_write = match prim_instances[prim_instance_index].kind {
                 PrimitiveKind::Picture { pic_index, .. } => !store.pictures[pic_index.0 as usize]
                     .flags
                     .contains(PictureFlags::IS_SUB_GRAPH),
-                PrimitiveKind::BackdropCapture { .. } => false,
+                PrimitiveKind::BackdropCapture { .. } |
+                PrimitiveKind::BackdropRender { .. } => false,
                 _ => true,
             };
 
             if frame_state.surface_builder.get_cmd_buffer_targets_for_prim(
                 scratch.frame.draw(draw_index),
                 tracks_parent_write,
+                is_backdrop_render,
+                frame_state.rg_builder,
                 &mut cmd_buffer_targets,
             ) {
                 let plane_split_anchor = PlaneSplitAnchor::new(

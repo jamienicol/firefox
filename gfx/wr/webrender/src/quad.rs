@@ -762,7 +762,11 @@ fn prepare_quad_impl(
             if task_id != RenderTaskId::INVALID {
                 frame_state
                     .surface_builder
-                    .add_child_render_task(task_id, frame_state.rg_builder);
+                    .add_child_render_task_to_targets(
+                        task_id,
+                        targets,
+                        frame_state.rg_builder,
+                    );
             }
         }
 
