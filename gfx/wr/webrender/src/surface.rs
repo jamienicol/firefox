@@ -1127,6 +1127,54 @@ impl SurfaceBuilder {
         }
     }
 
+    /// Add a child task only to the surface render tasks whose command buffers
+    /// consume its output.
+    ///
+    /// A simple surface has a single render task, so any non-empty target list
+    /// necessarily refers to that task. A tiled surface has one picture task and
+    /// one command buffer per dirty tile. In that case, attaching the child to all
+    /// tiles would introduce false graph edges: tiles which never sample the child
+    /// would still be forced to render after it. Those false edges can prevent
+    /// otherwise independent tasks from sharing a render pass.
+    ///
+    /// `targets` is the same list used when the consuming primitive's command is
+    /// emitted, so matching command-buffer indices gives us the exact set of tile
+    /// tasks which need the dependency.
+    pub fn add_child_render_task_to_targets(
+        &mut self,
+        child_task_id: RenderTaskId,
+        targets: &[CommandBufferIndex],
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) {
+        let builder = self.builder_stack.last().unwrap();
+        let task_ids: Vec<RenderTaskId> = match builder.kind {
+            CommandBufferBuilderKind::Tiled { ref tiles } => tiles
+                .values()
+                .filter_map(|descriptor| {
+                    let task = rg_builder.get_task(descriptor.current_task_id);
+                    let RenderTaskKind::Picture(ref info) = task.kind else {
+                        unreachable!("bug: tile task is not a picture");
+                    };
+
+                    targets
+                        .iter()
+                        .any(|target| target.0 == info.cmd_buffer_index.0)
+                        .then_some(descriptor.current_task_id)
+                })
+                .collect(),
+            CommandBufferBuilderKind::Simple { render_task_id, .. } => {
+                vec![render_task_id]
+            }
+            CommandBufferBuilderKind::Invalid => Vec::new(),
+        };
+
+        // Collect before mutating the graph because discovering the targets above
+        // requires immutable access to the picture tasks stored in the same graph.
+        for task_id in task_ids {
+            rg_builder.add_dependency(task_id, child_task_id);
+        }
+    }
+
     // Add a picture render task as a dependency of the parent surface. This is a
     // special case with extra complexity as the root of the surface may change
     // when inside a sub-graph. It's currently only needed for drop-shadow effects.

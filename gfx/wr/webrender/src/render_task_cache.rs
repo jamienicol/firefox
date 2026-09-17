@@ -229,20 +229,19 @@ impl RenderTaskCache {
         surface_builder: &mut SurfaceBuilder,
         f: &mut dyn FnMut(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF) -> RenderTaskId,
     ) -> RenderTaskId {
-        // If this render task cache is being drawn this frame, ensure we hook up the
-        // render task for it as a dependency of any render task that uses this as
-        // an input source.
-        let (task_id, rendered_this_frame) = match key {
-            None => (f(rg_builder, gpu_buffer_builder), true),
-            Some(key) => self.request_render_task_impl(
-                key,
-                is_opaque,
-                texture_cache,
-                gpu_buffer_builder,
-                rg_builder,
-                f
-            )
-        };
+        // Most callers know only that the task is consumed somewhere by the parent
+        // surface, so preserve the existing behavior of attaching it to that entire
+        // surface. Callers which know the exact command buffers that consume the
+        // result use request_render_task_no_parent instead and attach the dependency
+        // themselves with that more precise information.
+        let (task_id, rendered_this_frame) = self.request_render_task_no_parent(
+            key,
+            texture_cache,
+            is_opaque,
+            gpu_buffer_builder,
+            rg_builder,
+            f,
+        );
 
         if rendered_this_frame {
             match parent {
@@ -267,6 +266,40 @@ impl RenderTaskCache {
         }
 
         task_id
+    }
+
+    /// Request an optionally cached render task without choosing its parent.
+    ///
+    /// This separates creation or lookup of the task from insertion of the edge
+    /// which makes a surface depend on it. That distinction matters for tiled
+    /// surfaces: [`Self::request_render_task`] treats every tile as a consumer,
+    /// whereas a caller may know that only a few tile command buffers sample the
+    /// result.
+    ///
+    /// The boolean is true when the returned task was created for this frame and
+    /// therefore must be attached to each real consumer in the render-task graph.
+    /// It is false for a texture-cache hit, where the returned task represents an
+    /// already available allocation and no producer task needs scheduling.
+    pub fn request_render_task_no_parent(
+        &mut self,
+        key: Option<RenderTaskCacheKey>,
+        texture_cache: &mut TextureCache,
+        is_opaque: bool,
+        gpu_buffer_builder: &mut GpuBufferBuilderF,
+        rg_builder: &mut RenderTaskGraphBuilder,
+        f: &mut dyn FnMut(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF) -> RenderTaskId,
+    ) -> (RenderTaskId, bool) {
+        match key {
+            None => (f(rg_builder, gpu_buffer_builder), true),
+            Some(key) => self.request_render_task_impl(
+                key,
+                is_opaque,
+                texture_cache,
+                gpu_buffer_builder,
+                rg_builder,
+                f
+            )
+        }
     }
 
     /// Returns the render task id and a boolean indicating whether the
