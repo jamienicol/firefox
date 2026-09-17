@@ -66,7 +66,7 @@ use crate::frame_builder::{FrameBuildingContext, FrameBuildingState, PictureCont
 use crate::gpu_types::UvRectKind;
 
 use crate::internal_types::{FastHashMap, PlaneSplitAnchor};
-use crate::picture::{ClusterFlags, PictureScratch};
+use crate::picture::{ClusterFlags, PictureFlags, PictureScratch};
 use crate::picture::{PrimitiveList, PrimitiveCluster};
 use crate::surface::{SubpixelMode, SurfaceIndex};
 use crate::tile_cache::{SliceId, TileCacheInstance};
@@ -196,8 +196,30 @@ fn prepare_primitives(
                 continue;
             };
 
+            // Most primitives are writes to the parent surface. A sub-graph is
+            // different: preparing the contents of the filter surface does not
+            // itself paint the parent. The later BackdropRender primitive is the
+            // operation which composites that sub-graph output into the parent.
+            // Keeping those two events separate is essential when deciding whether
+            // ordinary content has crossed a deferred-backdrop wave boundary.
+            let is_backdrop_render = matches!(
+                prim_instances[prim_instance_index].kind,
+                PrimitiveKind::BackdropRender { .. }
+            );
+            let tracks_parent_write = match prim_instances[prim_instance_index].kind {
+                PrimitiveKind::Picture { pic_index, .. } => !store.pictures[pic_index.0 as usize]
+                    .flags
+                    .contains(PictureFlags::IS_SUB_GRAPH),
+                PrimitiveKind::BackdropCapture { .. } |
+                PrimitiveKind::BackdropRender { .. } => false,
+                _ => true,
+            };
+
             if frame_state.surface_builder.get_cmd_buffer_targets_for_prim(
                 scratch.frame.draw(draw_index),
+                tracks_parent_write,
+                is_backdrop_render,
+                frame_state.rg_builder,
                 &mut cmd_buffer_targets,
             ) {
                 let plane_split_anchor = PlaneSplitAnchor::new(
@@ -1109,7 +1131,9 @@ fn prepare_prim_for_render(
         PrimitiveKind::BackdropCapture { .. } => {
             // Register the owner picture of this backdrop primitive as the
             // target for resolve of the sub-graph
-            frame_state.surface_builder.register_resolve_source();
+            frame_state.surface_builder.register_resolve_source(
+                prim_info.clip_chain.pic_coverage_rect,
+            );
 
             if frame_context.debug_flags.contains(DebugFlags::HIGHLIGHT_BACKDROP_FILTERS) {
                 if let Some(device_rect) = pic_state.map_pic_to_device.map(&prim_info.clip_chain.pic_coverage_rect) {
@@ -1125,8 +1149,9 @@ fn prepare_prim_for_render(
         PrimitiveKind::BackdropRender { pic_index, data_handle, .. } => {
             match frame_state.surface_builder.sub_graph_output_map.get(pic_index).cloned() {
                 Some(sub_graph_output_id) => {
-                    frame_state.surface_builder.add_child_render_task(
+                    frame_state.surface_builder.add_child_render_task_to_targets(
                         sub_graph_output_id,
+                        targets,
                         frame_state.rg_builder,
                     );
 

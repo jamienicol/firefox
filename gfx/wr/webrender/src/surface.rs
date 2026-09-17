@@ -634,20 +634,96 @@ impl SurfaceInfo {
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct SurfaceTileDescriptor {
-    /// Target render task for commands added to this tile. This is changed
-    /// each time a sub-graph is encountered on this tile
+    /// The committed contents of this tile and the source used by new backdrop
+    /// captures in the current wave.
+    ///
+    /// This intentionally does not immediately advance when a backdrop-filter
+    /// output is produced. Independent backdrop filters can continue capturing
+    /// this same task while their outputs are accumulated in `deferred_task_id`.
+    /// It advances only when an ordering barrier requires those deferred outputs
+    /// to become visible to a later capture.
     pub current_task_id: RenderTaskId,
     /// The compositing task for this tile, if required. This is only needed
     /// when a tile contains one or more sub-graphs.
     pub composite_task_id: Option<RenderTaskId>,
     /// Dirty rect for this tile
     pub dirty_rect: PictureRect,
+    /// Continuation which paints backdrop-filter outputs after
+    /// `current_task_id`, without immediately making them part of the backdrop
+    /// seen by other filters in the same wave.
+    ///
+    /// The continuation reuses the tile's existing render-task location. Its
+    /// picture task has a separate command buffer and depends on
+    /// `current_task_id`, so it is both the destination for deferred filtered
+    /// output and, if a barrier is encountered, the starting point of the next
+    /// wave.
+    pub deferred_task_id: Option<RenderTaskId>,
+    /// Parent-surface coverage written into `deferred_task_id`.
+    ///
+    /// This includes backdrop-filter outputs and ordinary content that had to be
+    /// ordered after one of those outputs. A later backdrop capture only needs to
+    /// start a new wave when its resolve rectangle intersects one of these areas.
+    /// Keeping separate rectangles instead of a single union avoids false
+    /// intersections across empty space between unrelated filters.
+    pub deferred_output_rects: Vec<PictureRect>,
     /// Picture-cache stacking index, used to select only slices below a
     /// backdrop filter when reconstructing its input.
     pub slice_index: usize,
     /// Mapping from this tile's picture space to the device space shared by
     /// independently scrolling picture-cache slices.
     pub pic_to_device: Option<ScaleOffset>,
+}
+
+impl SurfaceTileDescriptor {
+    /// Commit all deferred output as the tile's new backdrop-capture source.
+    ///
+    /// This ends the current wave. Subsequent captures depend on the old deferred
+    /// continuation, while any newly deferred filters will be collected in a new
+    /// continuation allocated from that committed state.
+    fn flush_deferred_backdrops(&mut self) -> bool {
+        let Some(task_id) = self.deferred_task_id.take() else {
+            return false;
+        };
+
+        self.current_task_id = task_id;
+        self.deferred_output_rects.clear();
+        true
+    }
+
+    /// Return whether drawing or capturing `rect` observes output which is still
+    /// deferred in the current wave.
+    fn deferred_output_intersects(&self, rect: &PictureRect) -> bool {
+        self.deferred_output_rects
+            .iter()
+            .any(|output_rect| output_rect.intersects(rect))
+    }
+
+    /// Record an area whose final pixels live in the deferred continuation.
+    ///
+    /// Remove contained rectangles and avoid inserting redundant ones. This is
+    /// not required for correctness, but keeps intersection checks proportional
+    /// to the meaningful output regions rather than the number of primitives
+    /// which happened to write them.
+    fn add_deferred_output_rect(&mut self, rect: PictureRect) {
+        if self.deferred_output_rects
+            .iter()
+            .any(|output_rect| output_rect.contains_box(&rect))
+        {
+            return;
+        }
+
+        self.deferred_output_rects
+            .retain(|output_rect| !rect.contains_box(output_rect));
+        self.deferred_output_rects.push(rect);
+    }
+
+    /// The task containing the tile's complete pixels at the end of preparation.
+    ///
+    /// An unflushed deferred continuation is still part of the final tile even
+    /// though it was deliberately excluded from backdrop captures in its wave.
+    fn final_task_id(&self) -> RenderTaskId {
+        self.deferred_task_id.unwrap_or(self.current_task_id)
+    }
 }
 
 // Details of how a surface is rendered
@@ -719,7 +795,13 @@ impl SurfaceDescriptor {
 // for a given surface. These are created from a command buffer builder
 // as an optimization - skipping the indirection pic_task -> cmd_buffer_index
 struct CommandBufferTargets {
-    available_cmd_buffers: Vec<Vec<(PictureRect, CommandBufferIndex)>>,
+    /// Initial command buffer and tile identity for every drawable dirty area.
+    ///
+    /// The command buffer can change as deferred continuations are created, but
+    /// the tile key remains stable. Target selection first uses this table to find
+    /// spatially affected tiles, then consults each tile descriptor to choose the
+    /// command buffer belonging to the correct wave.
+    available_cmd_buffers: Vec<Vec<(PictureRect, CommandBufferIndex, Option<TileKey>)>>,
 }
 
 impl CommandBufferTargets {
@@ -745,7 +827,11 @@ impl CommandBufferTargets {
                     match task.kind {
                         RenderTaskKind::Picture(ref info) => {
                             let available_cmd_buffers = &mut self.available_cmd_buffers[key.sub_slice_index.as_usize()];
-                            available_cmd_buffers.push((desc.dirty_rect, info.cmd_buffer_index));
+                            available_cmd_buffers.push((
+                                desc.dirty_rect,
+                                info.cmd_buffer_index,
+                                Some(*key),
+                            ));
                         }
                         _ => unreachable!("bug: not a picture"),
                     }
@@ -756,7 +842,7 @@ impl CommandBufferTargets {
                 match task.kind {
                     RenderTaskKind::Picture(ref info) => {
                         for sub_slice_buffer in &mut self.available_cmd_buffers {
-                            sub_slice_buffer.push((dirty_rect, info.cmd_buffer_index));
+                            sub_slice_buffer.push((dirty_rect, info.cmd_buffer_index, None));
                         }
                     }
                     _ => unreachable!("bug: not a picture"),
@@ -772,11 +858,15 @@ impl CommandBufferTargets {
         rect: &PictureRect,
         sub_slice_index: SubSliceIndex,
         targets: &mut Vec<CommandBufferIndex>,
+        tile_keys: &mut Vec<TileKey>,
     ) -> bool {
 
-        for (dirty_rect, cmd_buffer_index) in &self.available_cmd_buffers[sub_slice_index.as_usize()] {
+        for (dirty_rect, cmd_buffer_index, tile_key) in &self.available_cmd_buffers[sub_slice_index.as_usize()] {
             if dirty_rect.intersects(rect) {
                 targets.push(*cmd_buffer_index);
+                if let Some(tile_key) = tile_key {
+                    tile_keys.push(*tile_key);
+                }
             }
         }
 
@@ -1036,6 +1126,7 @@ impl SurfaceBuilder {
     /// is currently on the surface builder stack.
     pub fn register_resolve_source(
         &mut self,
+        resolve_rect: PictureRect,
     ) {
         let surface_task_id = match self.builder_stack.last().unwrap().kind {
             CommandBufferBuilderKind::Tiled { .. } | CommandBufferBuilderKind::Invalid => {
@@ -1047,7 +1138,11 @@ impl SurfaceBuilder {
         for builder in self.builder_stack.iter_mut().rev() {
             if builder.establishes_sub_graph {
                 assert_eq!(builder.resolve_source, None);
-                builder.resolve_source = Some(surface_task_id);
+                // Retain the capture footprint until the sub-graph is popped.
+                // At that point the parent tiled surface is available again and
+                // can decide independently for each tile whether this capture can
+                // join the current backdrop wave or must begin a later one.
+                builder.resolve_source = Some((surface_task_id, resolve_rect));
                 return;
             }
         }
@@ -1148,20 +1243,61 @@ impl SurfaceBuilder {
     ) {
         let builder = self.builder_stack.last().unwrap();
         let task_ids: Vec<RenderTaskId> = match builder.kind {
-            CommandBufferBuilderKind::Tiled { ref tiles } => tiles
-                .values()
-                .filter_map(|descriptor| {
-                    let task = rg_builder.get_task(descriptor.current_task_id);
-                    let RenderTaskKind::Picture(ref info) = task.kind else {
-                        unreachable!("bug: tile task is not a picture");
+            CommandBufferBuilderKind::Tiled { ref tiles } => {
+                let mut task_ids = Vec::new();
+
+                for descriptor in tiles.values() {
+                    let current_is_target = {
+                        let task = rg_builder.get_task(descriptor.current_task_id);
+                        let RenderTaskKind::Picture(ref info) = task.kind else {
+                            unreachable!("bug: tile task is not a picture");
+                        };
+
+                        targets
+                            .iter()
+                            .any(|target| target.0 == info.cmd_buffer_index.0)
                     };
 
-                    targets
-                        .iter()
-                        .any(|target| target.0 == info.cmd_buffer_index.0)
-                        .then_some(descriptor.current_task_id)
-                })
-                .collect(),
+                    if current_is_target {
+                        task_ids.push(descriptor.current_task_id);
+                    }
+
+                    if let Some(deferred_task_id) = descriptor.deferred_task_id {
+                        let task = rg_builder.get_task(deferred_task_id);
+                        let RenderTaskKind::Picture(ref info) = task.kind else {
+                            unreachable!("bug: deferred tile task is not a picture");
+                        };
+
+                        let deferred_is_target = targets
+                            .iter()
+                            .any(|target| target.0 == info.cmd_buffer_index.0);
+                        if deferred_is_target {
+                            // Some resource preparation paths conservatively attach
+                            // a dependency to the current tile before the primitive
+                            // is redirected into its deferred continuation. Remove
+                            // that stale edge so it does not pull the producer into
+                            // the capture side of the wave as well as its real
+                            // consumer. Remove only the last matching edge because
+                            // duplicate edges may represent other consumers.
+                            if !current_is_target {
+                                let current_task = rg_builder
+                                    .get_task_mut(descriptor.current_task_id);
+                                if let Some(index) = current_task
+                                    .children
+                                    .iter()
+                                    .rposition(|id| *id == child_task_id)
+                                {
+                                    current_task.children.remove(index);
+                                }
+                            }
+
+                            task_ids.push(deferred_task_id);
+                        }
+                    }
+                }
+
+                task_ids
+            }
             CommandBufferBuilderKind::Simple { render_task_id, .. } => {
                 vec![render_task_id]
             }
@@ -1194,11 +1330,15 @@ impl SurfaceBuilder {
     pub fn get_cmd_buffer_targets_for_prim(
         &mut self,
         vis: &PrimitiveDrawHeader,
+        tracks_parent_write: bool,
+        is_backdrop_render: bool,
+        rg_builder: &RenderTaskGraphBuilder,
         targets: &mut Vec<CommandBufferIndex>,
     ) -> bool {
         targets.clear();
+        let mut tile_keys = Vec::new();
 
-        match vis.state {
+        let has_targets = match vis.state {
             DrawState::Unset => {
                 panic!("bug: invalid vis state");
             }
@@ -1210,12 +1350,86 @@ impl SurfaceBuilder {
                     &vis.clip_chain.pic_coverage_rect,
                     sub_slice_index,
                     targets,
+                    &mut tile_keys,
                 )
             }
             DrawState::PassThrough => {
                 true
             }
+        };
+
+        if is_backdrop_render && !tile_keys.is_empty() {
+            // A BackdropRender primitive is the operation which composites a
+            // completed filter chain into the parent tile. It must be written to
+            // the deferred continuation so that another independent filter can
+            // still capture `current_task_id` and run in parallel with it.
+            targets.clear();
+            let CommandBufferBuilderKind::Tiled { ref mut tiles } =
+                self.builder_stack.last_mut().unwrap().kind
+            else {
+                unreachable!("bug: tile targets on non-tiled surface");
+            };
+
+            for tile_key in tile_keys {
+                let descriptor = tiles.get_mut(&tile_key).unwrap();
+                let task_id = match descriptor.deferred_task_id {
+                    Some(task_id) => {
+                        descriptor.add_deferred_output_rect(
+                            vis.clip_chain.pic_coverage_rect,
+                        );
+                        task_id
+                    }
+                    // Static tile targets cannot be continued through an
+                    // Existing render-task location, so they retain the normal
+                    // direct-to-current behavior.
+                    None => descriptor.current_task_id,
+                };
+                let task = rg_builder.get_task(task_id);
+                let RenderTaskKind::Picture(ref info) = task.kind else {
+                    unreachable!("bug: tile target is not a picture");
+                };
+                targets.push(info.cmd_buffer_index);
+            }
+
+            return !targets.is_empty();
         }
+
+        if tracks_parent_write && !tile_keys.is_empty() {
+            // Ordinary content after a deferred backdrop output does not always
+            // require a barrier. If it is disjoint from every deferred output,
+            // it can be appended to the base task: earlier filters do not cover
+            // it, while later filters still need to see it in their backdrop.
+            // Intersecting content, however, must remain after the filtered
+            // pixels, so route it into the deferred continuation and expand the
+            // area which future captures must treat as a wave barrier.
+            targets.clear();
+            let CommandBufferBuilderKind::Tiled { ref mut tiles } =
+                self.builder_stack.last_mut().unwrap().kind
+            else {
+                unreachable!("bug: tile targets on non-tiled surface");
+            };
+
+            for tile_key in tile_keys {
+                let descriptor = tiles.get_mut(&tile_key).unwrap();
+                let task_id = if descriptor.deferred_output_intersects(
+                    &vis.clip_chain.pic_coverage_rect,
+                ) {
+                    descriptor.add_deferred_output_rect(
+                        vis.clip_chain.pic_coverage_rect,
+                    );
+                    descriptor.deferred_task_id.unwrap()
+                } else {
+                    descriptor.current_task_id
+                };
+                let task = rg_builder.get_task(task_id);
+                let RenderTaskKind::Picture(ref info) = task.kind else {
+                    unreachable!("bug: tile target is not a picture");
+                };
+                targets.push(info.cmd_buffer_index);
+            }
+        }
+
+        has_targets
     }
 
     pub fn pop_empty_surface(&mut self) {
@@ -1240,8 +1454,14 @@ impl SurfaceBuilder {
                     unreachable!("bug: sub-graphs can only be simple surfaces");
                 }
                 CommandBufferBuilderKind::Simple { render_task_id: child_render_task_id, root_task_id: child_root_task_id, .. } => {
+                    // When a backdrop capture affects a tiled parent, only those
+                    // tile continuations receive the sub-graph output. Remember
+                    // them so the safety dependency below does not reconnect the
+                    // filter chain to every tile and undo the wave separation.
+                    let mut affected_parent_task_ids = None;
+
                     // Get info about the resolve operation to copy from parent surface or tiles to the picture cache task
-                    if let Some(resolve_task_id) = builder.resolve_source {
+                    if let Some((resolve_task_id, resolve_rect)) = builder.resolve_source {
                         let mut src_task_ids = Vec::new();
 
                         // Make the output of the sub-graph a dependency of the new replacement tile task
@@ -1263,10 +1483,12 @@ impl SurfaceBuilder {
                         match self.builder_stack.last_mut().unwrap().kind {
                             CommandBufferBuilderKind::Tiled { ref mut tiles } => {
                                 let keys: Vec<TileKey> = tiles.keys().cloned().collect();
+                                let mut affected_task_ids = Vec::new();
 
-                                // For each tile in parent surface
+                                // Resolve and schedule this capture independently
+                                // for each dirty parent tile it actually intersects.
                                 for key in keys {
-                                    let descriptor = tiles.remove(&key).unwrap();
+                                    let mut descriptor = tiles.remove(&key).unwrap();
 
                                     if cross_slice_context.is_none() {
                                         cross_slice_context = descriptor.pic_to_device.map(|pic_to_device| {
@@ -1274,60 +1496,102 @@ impl SurfaceBuilder {
                                         });
                                     }
 
+                                    if !descriptor.dirty_rect.intersects(&resolve_rect) {
+                                        tiles.insert(key, descriptor);
+                                        continue;
+                                    }
+
+                                    // If this capture overlaps output accumulated
+                                    // by an earlier filter in the wave, it must see
+                                    // those pixels. Commit the old deferred
+                                    // continuation and use it as the capture source
+                                    // for a new wave. Disjoint captures deliberately
+                                    // leave current_task_id unchanged and therefore
+                                    // share the old backdrop.
+                                    if descriptor.deferred_output_intersects(&resolve_rect) {
+                                        descriptor.flush_deferred_backdrops();
+                                    }
+
                                     let parent_task_id = descriptor.current_task_id;
-                                    let parent_task = rg_builder.get_task_mut(parent_task_id);
+                                    let parent_location = rg_builder
+                                        .get_task(parent_task_id)
+                                        .location
+                                        .clone();
 
-                                    match parent_task.location {
+                                    match parent_location {
                                         RenderTaskLocation::Unallocated { .. } | RenderTaskLocation::Existing { .. } => {
-                                            // Get info about the parent tile task location and params
-                                            let location = RenderTaskLocation::Existing {
-                                                parent_task_id,
-                                                size: parent_task.location.size(),
-                                            };
+                                            let child_output_task_id = child_root_task_id
+                                                .unwrap_or(child_render_task_id);
 
-                                            let pic_task = match parent_task.kind {
-                                                RenderTaskKind::Picture(ref mut pic_task) => {
-                                                    let cmd_buffer_index = cmd_buffers.create_cmd_buffer();
-                                                    let new_pic_task = pic_task.duplicate(cmd_buffer_index);
+                                            // The generic sub-graph path may already
+                                            // have attached the filter output to the
+                                            // parent capture task. In the deferred
+                                            // model that edge belongs on the
+                                            // continuation instead; keeping it here
+                                            // would make the capture depend on its
+                                            // own result and would also serialize
+                                            // filters intended to share the wave.
+                                            rg_builder
+                                                .get_task_mut(parent_task_id)
+                                                .children
+                                                .retain(|task_id| *task_id != child_output_task_id);
 
-                                                    // Add the resolve src to copy from tile -> picture input task
-                                                    src_task_ids.push(parent_task_id);
-
-                                                    new_pic_task
-                                                }
-                                                _ => panic!("bug: not a picture"),
-                                            };
-
-                                            // Make the existing tile an input dependency of the resolve target
+                                            // The resolve target snapshots the
+                                            // committed tile state, not the deferred
+                                            // output currently being accumulated.
+                                            src_task_ids.push(parent_task_id);
                                             rg_builder.add_dependency(
                                                 resolve_task_id,
                                                 parent_task_id,
                                             );
 
-                                            // Create the new task to replace the tile task
-                                            let new_task_id = rg_builder.add().init(
-                                                RenderTask::new(
-                                                    location,          // draw to same place
-                                                    RenderTaskKind::Picture(pic_task),
-                                                ),
-                                            );
+                                            // All captures in one wave share a
+                                            // single continuation. Allocate it on
+                                            // the first filter and reuse it for
+                                            // later disjoint filters. Its dependency
+                                            // on parent_task_id orders the eventual
+                                            // writes after the captured backdrop
+                                            // while still allowing all filter chains
+                                            // to run alongside one another.
+                                            let deferred_task_id = match descriptor.deferred_task_id {
+                                                Some(task_id) => task_id,
+                                                None => {
+                                                    let (size, pic_task) = {
+                                                        let parent_task = rg_builder
+                                                            .get_task_mut(parent_task_id);
+                                                        let size = parent_task.location.size();
+                                                        let pic_task = match parent_task.kind {
+                                                            RenderTaskKind::Picture(ref mut pic_task) => {
+                                                                let cmd_buffer_index =
+                                                                    cmd_buffers.create_cmd_buffer();
+                                                                pic_task.duplicate(cmd_buffer_index)
+                                                            }
+                                                            _ => panic!("bug: not a picture"),
+                                                        };
+                                                        (size, pic_task)
+                                                    };
 
-                                            // Ensure that the parent task will get scheduled earlier during
-                                            // pass assignment since we are reusing the existing surface,
-                                            // even though it's not technically needed for rendering order.
-                                            rg_builder.add_dependency(
-                                                new_task_id,
-                                                parent_task_id,
-                                            );
+                                                    let task_id = rg_builder.add().init(
+                                                        RenderTask::new(
+                                                            RenderTaskLocation::Existing {
+                                                                parent_task_id,
+                                                                size,
+                                                            },
+                                                            RenderTaskKind::Picture(pic_task),
+                                                        ),
+                                                    );
+                                                    rg_builder.add_dependency(
+                                                        task_id,
+                                                        parent_task_id,
+                                                    );
+                                                    descriptor.deferred_task_id = Some(task_id);
+                                                    task_id
+                                                }
+                                            };
 
-                                            // Update the surface builder with the now current target for future primitives
-                                            tiles.insert(
-                                                key,
-                                                SurfaceTileDescriptor {
-                                                    current_task_id: new_task_id,
-                                                    ..descriptor
-                                                },
-                                            );
+                                            descriptor.add_deferred_output_rect(resolve_rect);
+                                            affected_task_ids.push(deferred_task_id);
+                                            tiles.insert(key, descriptor);
                                         }
                                         RenderTaskLocation::Static { .. } => {
                                             // Update the surface builder with the now current target for future primitives
@@ -1341,6 +1605,8 @@ impl SurfaceBuilder {
                                         }
                                     }
                                 }
+
+                                affected_parent_task_ids = Some(affected_task_ids);
                             }
                             CommandBufferBuilderKind::Simple { render_task_id: ref mut parent_task_id, root_task_id: ref parent_root_task_id, .. } => {
                                 let parent_task = rg_builder.get_task_mut(*parent_task_id);
@@ -1488,12 +1754,28 @@ impl SurfaceBuilder {
                     // as early as possible.
                     match self.builder_stack.last().unwrap().kind {
                         CommandBufferBuilderKind::Tiled { ref tiles } => {
-                            // For a tiled render task, add as a dependency to every tile.
-                            for (_, descriptor) in tiles {
-                                rg_builder.add_dependency(
-                                    descriptor.current_task_id,
-                                    child_root_task_id.unwrap_or(child_render_task_id),
-                                );
+                            if let Some(ref task_ids) = affected_parent_task_ids {
+                                // The resolve path identified the exact tile
+                                // continuations which will composite this
+                                // sub-graph. Keep the fallback dependency on that
+                                // same set so unrelated tiles and independent
+                                // backdrop waves remain uncoupled.
+                                for task_id in task_ids {
+                                    rg_builder.add_dependency(
+                                        *task_id,
+                                        child_root_task_id.unwrap_or(child_render_task_id),
+                                    );
+                                }
+                            } else {
+                                // Non-resolve sub-graphs do not provide a capture
+                                // rectangle from which a narrower set can be
+                                // derived, so retain the conservative behavior.
+                                for (_, descriptor) in tiles {
+                                    rg_builder.add_dependency(
+                                        descriptor.current_task_id,
+                                        child_root_task_id.unwrap_or(child_render_task_id),
+                                    );
+                                }
                             }
                         }
                         CommandBufferBuilderKind::Simple { render_task_id: parent_task_id, .. } => {
@@ -1513,15 +1795,20 @@ impl SurfaceBuilder {
                 CommandBufferBuilderKind::Tiled { ref tiles } => {
                     for (_, descriptor) in tiles {
                         if let Some(composite_task_id) = descriptor.composite_task_id {
+                            // A deferred continuation is excluded from captures
+                            // in its wave, but it still contains the final pixels
+                            // that must be copied into the persistent picture-cache
+                            // tile at the end of frame building.
+                            let final_task_id = descriptor.final_task_id();
                             rg_builder.add_dependency(
                                 composite_task_id,
-                                descriptor.current_task_id,
+                                final_task_id,
                             );
 
                             let composite_task = rg_builder.get_task_mut(composite_task_id);
                             match composite_task.kind {
                                 RenderTaskKind::TileComposite(ref mut info) => {
-                                    info.task_id = Some(descriptor.current_task_id);
+                                    info.task_id = Some(final_task_id);
                                 }
                                 _ => unreachable!("bug: not a tile composite"),
                             }
@@ -1561,7 +1848,7 @@ impl SurfaceBuilder {
                 for (_, descriptor) in tiles {
                     for task_id in &builder.extra_dependencies {
                         rg_builder.add_dependency(
-                            descriptor.current_task_id,
+                            descriptor.final_task_id(),
                             *task_id,
                         );
                     }

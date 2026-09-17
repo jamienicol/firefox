@@ -503,9 +503,16 @@ pub struct CommandBufferBuilder {
     /// with the sub-graph output as an input dependency.
     pub establishes_sub_graph: bool,
 
-    /// If this surface builds a sub-graph, it will mark a task in the filter sub-graph
-    /// as a resolve source for the input from the parent surface.
-    pub resolve_source: Option<RenderTaskId>,
+    /// If this surface builds a sub-graph, this identifies the task in the
+    /// sub-graph which must be initialized from the parent surface, together
+    /// with the area of the parent that the sub-graph captures.
+    ///
+    /// The captured rectangle is retained here because tiled parent surfaces
+    /// can keep several non-overlapping backdrop filters in one render-task
+    /// wave. Only tiles intersecting this rectangle participate in the capture,
+    /// and only earlier deferred output intersecting this rectangle forces a
+    /// barrier before the capture.
+    pub resolve_source: Option<(RenderTaskId, PictureRect)>,
 
     /// List of render tasks that depend on the task that will be created for this builder.
     pub extra_dependencies: Vec<RenderTaskId>,

@@ -928,6 +928,9 @@ impl PictureInstance {
                 let draw = scratch.frame.draw(child.anchor.draw_index);
                 if frame_state.surface_builder.get_cmd_buffer_targets_for_prim(
                     draw,
+                    true,
+                    false,
+                    frame_state.rg_builder,
                     &mut cmd_buffer_targets,
                 ) {
                     // The picture content this plane samples. Missing when the
@@ -2132,6 +2135,8 @@ fn prepare_tiled_picture_surface(
                                 current_task_id: render_task_id,
                                 composite_task_id: Some(composite_task_id),
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                deferred_task_id: None,
+                                deferred_output_rects: Vec::new(),
                                 slice_index: slice_id.index(),
                                 pic_to_device,
                             },
@@ -2170,6 +2175,8 @@ fn prepare_tiled_picture_surface(
                                 current_task_id: render_task_id,
                                 composite_task_id: None,
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                deferred_task_id: None,
+                                deferred_output_rects: Vec::new(),
                                 slice_index: slice_id.index(),
                                 pic_to_device,
                             },
