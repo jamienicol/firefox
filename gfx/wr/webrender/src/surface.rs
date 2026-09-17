@@ -14,8 +14,8 @@ use crate::picture_composite_mode::PictureCompositeMode;
 use crate::tile_cache::{TileKey, SubSliceIndex, MAX_COMPOSITOR_SURFACES};
 use crate::prim_store::PictureIndex;
 use crate::render_task_graph::{RenderTaskId, RenderTaskGraphBuilder};
-use crate::render_target::{ResolveOp, ResolveSource};
-use crate::render_task::{RenderTask, RenderTaskKind, RenderTaskLocation};
+use crate::render_target::{RenderTargetKind, ResolveOp, ResolveSource};
+use crate::render_task::{CachedTask, RenderTask, RenderTaskKind, RenderTaskLocation};
 use crate::space::SpaceMapper;
 use crate::spatial_tree::{CoordinateSpaceMapping, CoordinateSystemId, SpatialTree, SpatialNodeIndex};
 use crate::util::{MaxRect, ScaleOffset};
@@ -723,6 +723,119 @@ impl SurfaceTileDescriptor {
     /// though it was deliberately excluded from backdrop captures in its wave.
     fn final_task_id(&self) -> RenderTaskId {
         self.deferred_task_id.unwrap_or(self.current_task_id)
+    }
+
+    /// Make the final deferred continuation update the persistent picture-cache
+    /// tile directly when it covers exactly the region that the tile composite
+    /// would otherwise copy.
+    ///
+    /// A tile with sub-graphs is normally rendered in two stages. Its picture
+    /// tasks write into an intermediate color target, then `composite_task_id`
+    /// blits the final intermediate pixels into the persistent picture-cache
+    /// surface. Backdrop-filter waves add a final continuation which already
+    /// consists of a resolve of the previous tile contents followed by drawing
+    /// the deferred filter outputs. When that continuation and the tile update
+    /// have identical geometry, it can perform those operations in the
+    /// persistent surface and the final blit is redundant.
+    ///
+    /// Returns true when the composite task has been replaced by a dependency
+    /// placeholder and must not be configured as a `TileComposite` by the
+    /// caller. Any geometry or task shape which this prototype does not
+    /// understand keeps the established intermediate-and-blit path.
+    fn promote_final_task_to_picture_cache(
+        &self,
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) -> bool {
+        // This optimization is specific to the continuation created by the
+        // deferred-wave implementation. Without one, there is no final picture
+        // task which can first restore the old pixels and then draw the new
+        // output directly into the cache tile.
+        let (Some(composite_task_id), Some(final_task_id)) =
+            (self.composite_task_id, self.deferred_task_id)
+        else {
+            return false;
+        };
+
+        // The composite task owns both the persistent destination and the exact
+        // update geometry selected by picture caching. Preserve all of those
+        // values rather than reconstructing them from the continuation.
+        let (surface, scissor_rect, valid_rect, sub_rect_offset) = {
+            let composite_task = rg_builder.get_task(composite_task_id);
+            let RenderTaskLocation::Static { ref surface, .. } = composite_task.location else {
+                return false;
+            };
+            let RenderTaskKind::TileComposite(ref info) = composite_task.kind else {
+                return false;
+            };
+
+            (
+                surface.clone(),
+                info.scissor_rect,
+                info.valid_rect,
+                info.sub_rect_offset,
+            )
+        };
+
+        // A deferred continuation normally aliases its parent task's allocation.
+        // Once promoted it can no longer alias that intermediate allocation, so
+        // remember the parent and explicitly resolve its pixels into the cache
+        // tile before drawing the continuation's command buffer.
+        let (parent_task_id, final_task_size) =
+            match rg_builder.get_task(final_task_id).location {
+                RenderTaskLocation::Existing {
+                    parent_task_id,
+                    size,
+                } => (parent_task_id, size),
+                _ => return false,
+            };
+
+        // The direct path currently assumes a one-to-one copy between the
+        // continuation and the dirty cache region. A non-zero source offset or
+        // a size mismatch means the TileComposite performs cropping or placement
+        // which cannot be reproduced merely by changing the task location.
+        if sub_rect_offset != DeviceIntVector2D::zero()
+            || final_task_size != scissor_rect.size()
+        {
+            return false;
+        }
+
+        {
+            let final_task = rg_builder.get_task_mut(final_task_id);
+            final_task.location = RenderTaskLocation::Static {
+                surface,
+                rect: scissor_rect,
+            };
+            let RenderTaskKind::Picture(ref mut pic_task) = final_task.kind else {
+                unreachable!("bug: final tile task is not a picture");
+            };
+
+            // The continuation now begins a picture-cache render pass. Restore
+            // the pixels produced by its parent into that pass, then let its
+            // command buffer draw the deferred backdrop-filter output on top.
+            // `valid_rect` and `scissor_rect` retain the same partial-update
+            // semantics that the removed TileComposite supplied.
+            pic_task.scissor_rect = Some(scissor_rect);
+            pic_task.valid_rect = Some(valid_rect);
+            pic_task.resolve_op = Some(ResolveOp {
+                src_task_ids: vec![parent_task_id],
+                sources: Vec::new(),
+                dest_task_id: final_task_id,
+                dest_to_src_raster: ScaleOffset::identity(),
+            });
+        }
+
+        // The composite task may already be named as the producer for a
+        // cross-slice backdrop source. Keep its ID and persistent location alive
+        // for those consumers, but turn it into a no-draw placeholder whose
+        // dependency guarantees the promoted continuation has updated the tile
+        // before anyone samples it.
+        let composite_task = rg_builder.get_task_mut(composite_task_id);
+        composite_task.kind = RenderTaskKind::Cached(CachedTask {
+            target_kind: RenderTargetKind::Color,
+        });
+        rg_builder.add_dependency(composite_task_id, final_task_id);
+
+        true
     }
 }
 
@@ -1795,6 +1908,13 @@ impl SurfaceBuilder {
                 CommandBufferBuilderKind::Tiled { ref tiles } => {
                     for (_, descriptor) in tiles {
                         if let Some(composite_task_id) = descriptor.composite_task_id {
+                            // Prefer to make the final deferred continuation the
+                            // cache update itself. If its geometry is not an exact
+                            // match, retain the general TileComposite below.
+                            if descriptor.promote_final_task_to_picture_cache(rg_builder) {
+                                continue;
+                            }
+
                             // A deferred continuation is excluded from captures
                             // in its wave, but it still contains the final pixels
                             // that must be copied into the persistent picture-cache

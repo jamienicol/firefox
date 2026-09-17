@@ -681,6 +681,14 @@ pub struct PictureCacheTarget {
     pub clear_color: Option<ColorF>,
     pub dirty_rect: DeviceIntRect,
     pub valid_rect: DeviceIntRect,
+    /// Optional copy of the previous intermediate tile contents which must run
+    /// before drawing directly into this persistent picture-cache target.
+    ///
+    /// Ordinary picture-cache tasks either draw a complete tile update or blit
+    /// one from an intermediate target, so their resolve is handled by a color
+    /// render target. A promoted backdrop continuation is itself a picture-cache
+    /// task and therefore carries the equivalent resolve into this target type.
+    pub resolve_op: Option<ResolveOp>,
 }
 
 fn add_blur_instances(
