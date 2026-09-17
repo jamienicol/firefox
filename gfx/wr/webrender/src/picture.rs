@@ -819,7 +819,25 @@ impl PictureInstance {
                     }
                 }
 
-                let can_use_shared_surface = !self.flags.contains(PictureFlags::IS_RESOLVE_TARGET);
+                // Resolve targets were historically forced onto dedicated render
+                // surfaces. The original backdrop-filter sub-graph implementation
+                // treated the resolve destination as one isolated surface, which was
+                // a useful simplifying invariant while copying a tiled parent into a
+                // single filter input.
+                //
+                // The current resolve path addresses the destination through the
+                // render task's allocated target rect: clears are restricted to that
+                // rect, and handle_resolve offsets both explicit ResolveSource draws
+                // and parent-surface blits by the destination task's target origin.
+                // A resolve target can therefore occupy a sub-rectangle of an atlas
+                // without overwriting or sampling neighboring tasks.
+                //
+                // Allowing these tasks onto shared surfaces is especially valuable
+                // with deferred backdrop waves. Resolve and filter tasks belonging to
+                // independent filters frequently occupy the same dependency pass, so
+                // they can now be packed into one color target instead of allocating
+                // a dedicated target for every filter chain.
+                let can_use_shared_surface = true;
                 let (surface_descriptor, render_tasks) = prepare_composite_mode(
                     &raster_config.composite_mode,
                     surface_index,
