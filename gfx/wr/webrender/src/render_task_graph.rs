@@ -22,6 +22,7 @@ use crate::texture_pack::GuillotineAllocator;
 use crate::prim_store::DeferredResolve;
 use crate::image_source::{resolve_image, resolve_cached_render_task};
 use smallvec::SmallVec;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use topological_sort::TopologicalSort;
 
 use crate::render_target::{RenderTargetList, PictureCacheTarget, RenderTarget};
@@ -544,6 +545,19 @@ impl RenderTaskGraphBuilder {
                         let can_use_shared_surface =
                             task.kind.can_use_shared_surface();
 
+                        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                            if let RenderTaskKind::Picture(ref info) = task.kind {
+                                println!(
+                                    "BF_ALLOC task={} pass={} location=unallocated can_shared={} resolve={} children={:?}",
+                                    task_id.index,
+                                    pass_id,
+                                    can_use_shared_surface,
+                                    info.resolve_op.is_some(),
+                                    task.children,
+                                );
+                            }
+                        }
+
                         if can_use_shared_surface {
                             // If we can use a shared surface, step through the existing shared
                             // surfaces for this subpass, and see if we can allocate the task
@@ -659,6 +673,15 @@ impl RenderTaskGraphBuilder {
                         };
                     }
                     RenderTaskLocation::Existing { parent_task_id, size: existing_size, .. } => {
+                        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                            println!(
+                                "BF_ALLOC task={} pass={} location=existing parent={} children={:?}",
+                                task_id.index,
+                                pass_id,
+                                parent_task_id.index,
+                                graph.tasks[task_id.index as usize].children,
+                            );
+                        }
                         let parent_task_location = graph.tasks[parent_task_id.index as usize].location.clone();
 
                         match parent_task_location {
@@ -854,11 +877,112 @@ impl RenderTaskGraphBuilder {
             });
         }
 
+        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+            graph.print_backdrop_debug_summary();
+        }
+
         graph
     }
 }
 
 impl RenderTaskGraph {
+    fn print_backdrop_debug_summary(&self) {
+        static MAX_LOGGED_PASSES: AtomicUsize = AtomicUsize::new(0);
+
+        let mut pictures = 0;
+        let mut tile_composites = 0;
+        let mut scaling = 0;
+        let mut horizontal_blurs = 0;
+        let mut vertical_blurs = 0;
+        for task in &self.tasks {
+            match task.kind {
+                RenderTaskKind::Picture(..) => pictures += 1,
+                RenderTaskKind::TileComposite(..) => tile_composites += 1,
+                RenderTaskKind::Scaling(..) => scaling += 1,
+                RenderTaskKind::HorizontalBlur(..) => horizontal_blurs += 1,
+                RenderTaskKind::VerticalBlur(..) => vertical_blurs += 1,
+                _ => {}
+            }
+        }
+
+        let mut dynamic_color_subpasses = 0;
+        let mut picture_cache_passes = 0;
+        let mut picture_cache_subpasses = 0;
+        let mut texture_cache_color_subpasses = 0;
+        for pass in &self.passes {
+            let mut has_picture_cache = false;
+            for sub_pass in &pass.sub_passes {
+                match sub_pass.surface {
+                    SubPassSurface::Dynamic { target_kind: RenderTargetKind::Color, .. } => {
+                        dynamic_color_subpasses += 1;
+                    }
+                    SubPassSurface::Persistent {
+                        surface: StaticRenderTaskSurface::PictureCache { .. },
+                    } => {
+                        has_picture_cache = true;
+                        picture_cache_subpasses += 1;
+                    }
+                    SubPassSurface::Persistent {
+                        surface: StaticRenderTaskSurface::TextureCache {
+                            target_kind: RenderTargetKind::Color,
+                            ..
+                        },
+                    } => {
+                        texture_cache_color_subpasses += 1;
+                    }
+                    _ => {}
+                }
+            }
+            if has_picture_cache {
+                picture_cache_passes += 1;
+            }
+        }
+
+        println!(
+            "BF_GRAPH tasks={} passes={} pictures={} tile_composites={} scaling={} hblur={} vblur={} dynamic_color={} picture_cache_passes={} picture_cache_subpasses={} texture_cache_color={}",
+            self.tasks.len(),
+            self.passes.len(),
+            pictures,
+            tile_composites,
+            scaling,
+            horizontal_blurs,
+            vertical_blurs,
+            dynamic_color_subpasses,
+            picture_cache_passes,
+            picture_cache_subpasses,
+            texture_cache_color_subpasses,
+        );
+
+        let pass_count = self.passes.len();
+        if pass_count <= MAX_LOGGED_PASSES.fetch_max(pass_count, Ordering::Relaxed) {
+            return;
+        }
+
+        for (index, task) in self.tasks.iter().enumerate() {
+            println!(
+                "BF_TASK id={} kind={} render_on={} free_after={} children={:?} location={:?}",
+                index,
+                task.kind.as_str(),
+                task.render_on.0,
+                task.free_after.0,
+                task.children,
+                task.location,
+            );
+        }
+        for (pass_index, pass) in self.passes.iter().enumerate() {
+            for (subpass_index, subpass) in pass.sub_passes.iter().enumerate() {
+                println!(
+                    "BF_SUBPASS pass={} subpass={} shared={} surface={:?} tasks={:?}",
+                    pass_index,
+                    subpass_index,
+                    subpass.is_shared,
+                    subpass.surface,
+                    subpass.task_ids,
+                );
+            }
+        }
+    }
+
     /// Print the render task graph to console
     #[allow(dead_code)]
     pub fn print(

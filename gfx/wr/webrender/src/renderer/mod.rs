@@ -4097,6 +4097,104 @@ impl Renderer {
             }
         }
 
+        let backdrop_debug = std::env::var_os("WR_BACKDROP_DEBUG").is_some();
+        let mut debug_texture_cache_draw_calls = 0;
+        let mut debug_picture_cache_draw_calls = 0;
+        let mut debug_alpha_draw_calls = 0;
+        let mut debug_color_draw_calls = 0;
+
+        if backdrop_debug {
+            let rect_area = |rect: DeviceIntRect| {
+                let size = rect.size();
+                i64::from(size.width.max(0)) * i64::from(size.height.max(0))
+            };
+            let mut color_targets = 0;
+            let mut color_used_pixels = 0;
+            let mut color_unknown_area = 0;
+            let mut picture_targets = 0;
+            let mut picture_draw_targets = 0;
+            let mut picture_blit_targets = 0;
+            let mut picture_dirty_pixels = 0;
+            let mut picture_valid_pixels = 0;
+            let mut resolve_ops = 0;
+            let mut resolve_sources = 0;
+            let mut resolve_source_pixels = 0;
+            let mut resolve_task_copies = 0;
+            let mut resolve_task_copy_pixels = 0;
+
+            for pass in &frame.passes {
+                for target in &pass.color.targets {
+                    color_targets += 1;
+                    if let Some(rect) = target.used_rect {
+                        color_used_pixels += rect_area(rect);
+                    } else {
+                        color_unknown_area += 1;
+                    }
+                    for resolve_op in &target.resolve_ops {
+                        resolve_ops += 1;
+                        resolve_sources += resolve_op.sources.len();
+                        for source in &resolve_op.sources {
+                            let dest_rect = match *source {
+                                ResolveSource::Texture { dest_rect, .. } |
+                                ResolveSource::Color { dest_rect, .. } => dest_rect,
+                            };
+                            resolve_source_pixels += rect_area(dest_rect);
+                        }
+                        resolve_task_copies += resolve_op.src_task_ids.len();
+                        for task_id in &resolve_op.src_task_ids {
+                            let size = frame.render_tasks[*task_id].location.size();
+                            resolve_task_copy_pixels +=
+                                i64::from(size.width.max(0)) * i64::from(size.height.max(0));
+                        }
+                    }
+                }
+
+                for target in &pass.picture_cache {
+                    picture_targets += 1;
+                    picture_dirty_pixels += rect_area(target.dirty_rect);
+                    picture_valid_pixels += rect_area(target.valid_rect);
+                    match target.kind {
+                        PictureCacheTargetKind::Draw { .. } => picture_draw_targets += 1,
+                        PictureCacheTargetKind::Blit { .. } => picture_blit_targets += 1,
+                    }
+                    if let Some(ref resolve_op) = target.resolve_op {
+                        resolve_ops += 1;
+                        resolve_sources += resolve_op.sources.len();
+                        for source in &resolve_op.sources {
+                            let dest_rect = match *source {
+                                ResolveSource::Texture { dest_rect, .. } |
+                                ResolveSource::Color { dest_rect, .. } => dest_rect,
+                            };
+                            resolve_source_pixels += rect_area(dest_rect);
+                        }
+                        resolve_task_copies += resolve_op.src_task_ids.len();
+                        for task_id in &resolve_op.src_task_ids {
+                            let size = frame.render_tasks[*task_id].location.size();
+                            resolve_task_copy_pixels +=
+                                i64::from(size.width.max(0)) * i64::from(size.height.max(0));
+                        }
+                    }
+                }
+            }
+
+            println!(
+                "BF_WORK color_targets={} color_used_pixels={} color_unknown_area={} picture_targets={} picture_draw={} picture_blit={} picture_dirty_pixels={} picture_valid_pixels={} resolve_ops={} resolve_sources={} resolve_source_pixels={} resolve_task_copies={} resolve_task_copy_pixels={}",
+                color_targets,
+                color_used_pixels,
+                color_unknown_area,
+                picture_targets,
+                picture_draw_targets,
+                picture_blit_targets,
+                picture_dirty_pixels,
+                picture_valid_pixels,
+                resolve_ops,
+                resolve_sources,
+                resolve_source_pixels,
+                resolve_task_copies,
+                resolve_task_copy_pixels,
+            );
+        }
+
         for (_pass_index, pass) in frame.passes.iter_mut().enumerate() {
             #[cfg(not(target_os = "android"))]
             let _gm = self.gpu_profiler.start_marker(&format!("pass {}", _pass_index));
@@ -4108,12 +4206,15 @@ impl Renderer {
             // skipped this time.
             if !frame.has_been_rendered {
                 for (&texture_id, target) in &pass.texture_cache {
+                    let old_draw_calls = results.stats.total_draw_calls;
                     self.draw_render_target(
                         texture_id,
                         target,
                         &frame.render_tasks,
                         &mut results.stats,
                     );
+                    debug_texture_cache_draw_calls +=
+                        results.stats.total_draw_calls - old_draw_calls;
                 }
 
                 if !pass.picture_cache.is_empty() {
@@ -4123,6 +4224,7 @@ impl Renderer {
                 // Draw picture caching tiles for this pass.
                 for picture_target in &pass.picture_cache {
                     results.stats.color_target_count += 1;
+                    let old_draw_calls = results.stats.total_draw_calls;
 
                     let draw_target = match picture_target.surface {
                         ResolvedSurfaceTexture::TextureCache { ref texture } => {
@@ -4174,6 +4276,8 @@ impl Renderer {
                         &frame.render_tasks,
                         &mut results.stats,
                     );
+                    debug_picture_cache_draw_calls +=
+                        results.stats.total_draw_calls - old_draw_calls;
 
                     // Native OS surfaces must be unbound at the end of drawing to them
                     if let ResolvedSurfaceTexture::Native { .. } = picture_target.surface {
@@ -4192,22 +4296,26 @@ impl Renderer {
 
             for target in &pass.alpha.targets {
                 results.stats.alpha_target_count += 1;
+                let old_draw_calls = results.stats.total_draw_calls;
                 self.draw_render_target(
                     target.texture_id(),
                     target,
                     &frame.render_tasks,
                     &mut results.stats,
                 );
+                debug_alpha_draw_calls += results.stats.total_draw_calls - old_draw_calls;
             }
 
             for target in &pass.color.targets {
                 results.stats.color_target_count += 1;
+                let old_draw_calls = results.stats.total_draw_calls;
                 self.draw_render_target(
                     target.texture_id(),
                     target,
                     &frame.render_tasks,
                     &mut results.stats,
                 );
+                debug_color_draw_calls += results.stats.total_draw_calls - old_draw_calls;
             }
 
             // Only end the pass here and invalidate previous textures for
@@ -4221,12 +4329,27 @@ impl Renderer {
             );
         }
 
+        let offscreen_draw_calls = results.stats.total_draw_calls;
         self.composite_frame(
             frame,
             device_size,
             results,
             present_mode,
         );
+
+        if backdrop_debug {
+            println!(
+                "BF_DRAW draw_calls={} texture_cache_draw_calls={} picture_cache_draw_calls={} alpha_draw_calls={} color_draw_calls={} composite_draw_calls={} color_targets={} alpha_targets={}",
+                results.stats.total_draw_calls,
+                debug_texture_cache_draw_calls,
+                debug_picture_cache_draw_calls,
+                debug_alpha_draw_calls,
+                debug_color_draw_calls,
+                results.stats.total_draw_calls - offscreen_draw_calls,
+                results.stats.color_target_count,
+                results.stats.alpha_target_count,
+            );
+        }
 
         frame.has_been_rendered = true;
 

@@ -350,6 +350,8 @@ pub fn prepare_composite_mode(
             unreachable!("handled above");
         }
         PictureCompositeMode::Filter(Filter::Blur { width, height, edge_mode, .. }) => {
+            let authored_width = width;
+            let authored_height = height;
             let (width, height) = surface.clamp_blur_radius(width, height);
 
             let width_std_deviation = width * surface.local_scale.0 * device_pixel_scale.0;
@@ -358,6 +360,23 @@ pub fn prepare_composite_mode(
                 width_std_deviation,
                 height_std_deviation,
             );
+
+            if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                println!(
+                    "BF_BLUR_SETUP surface={:?} parent={:?} authored={}x{} clamped={}x{} local_scale={:?} device_scale={} stddev={:?} surface_spatial={:?} raster_spatial={:?}",
+                    surface_index,
+                    parent_surface_index,
+                    authored_width,
+                    authored_height,
+                    width,
+                    height,
+                    surface.local_scale,
+                    device_pixel_scale.0,
+                    blur_std_deviation,
+                    surface_spatial_node_index,
+                    raster_spatial_node_index,
+                );
+            }
 
             let original_size = surface_rects.clipped.size();
 

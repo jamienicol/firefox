@@ -10,11 +10,11 @@ use crate::internal_types::FastHashMap;
 use crate::picture::{PrimitiveList, PictureInstance, Picture3DContext, PictureFlags};
 use crate::picture_composite_mode::PictureCompositeMode;
 use crate::tile_cache::{SliceId, TileCacheParams};
-use crate::prim_store::{PrimitiveInstance, PrimitiveStore, PictureIndex};
+use crate::prim_store::{PrimitiveInstance, PrimitiveKind, PrimitiveStore, PictureIndex};
 use crate::scene_building::SliceFlags;
 use crate::scene_builder_thread::Interners;
 use crate::spatial_tree::{SpatialNodeIndex, SceneSpatialTree};
-use crate::util::VecHelper;
+use crate::util::{MaxRect, VecHelper};
 use std::mem;
 
 /*
@@ -35,6 +35,14 @@ const MAX_CACHE_SLICES: usize = 16;
 struct SliceDescriptor {
     prim_list: PrimitiveList,
     scroll_root: SpatialNodeIndex,
+}
+
+struct SliceCoverage {
+    spatial_node_index: SpatialNodeIndex,
+    rect: LayoutRect,
+    debug_primitive: Option<String>,
+    prim_rect: LayoutRect,
+    prim_local_clip_rect: LayoutRect,
 }
 
 enum SliceKind {
@@ -63,6 +71,10 @@ struct PrimarySlice {
     iframe_clip: Option<ClipId>,
     /// Information about how to draw and composite this slice
     slice_flags: SliceFlags,
+    coverage: Vec<SliceCoverage>,
+    /// This slice contains active backdrop filters and must remain isolated
+    /// from ordinary content which overlaps it.
+    is_active_backdrop: bool,
 }
 
 impl PrimarySlice {
@@ -76,7 +88,24 @@ impl PrimarySlice {
             background_color,
             iframe_clip,
             slice_flags,
+            coverage: Vec::new(),
+            is_active_backdrop: false,
         }
+    }
+
+    fn intersects_coverage(
+        &self,
+        spatial_node_index: SpatialNodeIndex,
+        rect: &LayoutRect,
+    ) -> bool {
+        if rect.is_empty() {
+            return false;
+        }
+
+        self.coverage.iter().any(|coverage| {
+            coverage.spatial_node_index != spatial_node_index ||
+                coverage.rect.intersects(rect)
+        })
     }
 
     fn has_too_many_slices(&self) -> bool {
@@ -121,6 +150,15 @@ pub struct TileCacheBuilder {
     root_spatial_node_index: SpatialNodeIndex,
     /// Debug flags to provide to our TileCacheInstances.
     debug_flags: DebugFlags,
+    /// First primary slice in the current hard-barrier group. Active backdrop
+    /// layerization may reorder non-overlapping items within this group, but must
+    /// never move content across iframe, scrollbar, or other explicit barriers.
+    current_group_start: usize,
+    /// While a backdrop filter is being constructed, both its hidden filtered
+    /// picture and its BackdropRender primitive are forced into this slice.
+    active_backdrop_slice: Option<usize>,
+    active_backdrop_coverage: Option<(SpatialNodeIndex, LayoutRect)>,
+    pending_backdrop_foreground_coverage: Option<(SpatialNodeIndex, LayoutRect)>,
 }
 
 /// The output of a tile cache builder, containing all details needed to construct the
@@ -154,6 +192,10 @@ impl TileCacheBuilder {
             prev_scroll_root_cache: (SpatialNodeIndex::INVALID, SpatialNodeIndex::INVALID),
             root_spatial_node_index,
             debug_flags,
+            current_group_start: 0,
+            active_backdrop_slice: None,
+            active_backdrop_coverage: None,
+            pending_backdrop_foreground_coverage: None,
         }
     }
 
@@ -174,6 +216,129 @@ impl TileCacheBuilder {
             .slice_flags |= SliceFlags::HAS_CROSS_SLICE_BACKDROP;
     }
 
+    /// Start or reuse an isolated picture-cache slice for a top-level backdrop filter.
+    ///
+    /// Filters reuse the foremost active slice when it is already above their
+    /// backdrop content. Otherwise a new active slice preserves earlier filter
+    /// foregrounds while allowing the later filter to sample them.
+    pub fn begin_active_backdrop(
+        &mut self,
+        spatial_node_index: SpatialNodeIndex,
+        rect: LayoutRect,
+    ) {
+        debug_assert!(self.active_backdrop_slice.is_none());
+        debug_assert!(self.active_backdrop_coverage.is_none());
+        self.active_backdrop_coverage = Some((spatial_node_index, rect));
+
+        let mut highest_intersection = self.current_group_start;
+        for index in self.current_group_start + 1..self.primary_slices.len() {
+            if let Some(coverage) = self.primary_slices[index]
+                .coverage
+                .iter()
+                .find(|coverage| {
+                    coverage.spatial_node_index != spatial_node_index ||
+                        coverage.rect.intersects(&rect)
+                })
+            {
+                if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                    println!(
+                        "BF_INTERSECTION filter_spatial={:?} filter_rect={:?} slice={} reason={} coverage_spatial={:?} coverage_rect={:?} prim_rect={:?} prim_clip={:?} prim={}",
+                        spatial_node_index,
+                        rect,
+                        index,
+                        if coverage.spatial_node_index != spatial_node_index {
+                            "spatial"
+                        } else {
+                            "rect"
+                        },
+                        coverage.spatial_node_index,
+                        coverage.rect,
+                        coverage.prim_rect,
+                        coverage.prim_local_clip_rect,
+                        coverage.debug_primitive.as_deref().unwrap_or("unknown"),
+                    );
+                }
+                highest_intersection = index;
+            }
+        }
+        let insertion_index = highest_intersection + 1;
+        let reusable_slice_index = self.primary_slices[self.current_group_start..]
+            .iter()
+            .rposition(|slice| slice.is_active_backdrop)
+            .map(|index| self.current_group_start + index);
+        let (backdrop_slice_index, reuse_slice) = match reusable_slice_index {
+            Some(index) if index >= insertion_index => (index, true),
+            Some(_) | None => (insertion_index, false),
+        };
+
+        // Any earlier slice may become a resolve source for this filter. Retain
+        // those tiles even when the compositor would otherwise consider them
+        // hidden behind the active filter or another higher slice.
+        for slice in &mut self.primary_slices[..backdrop_slice_index] {
+            slice.slice_flags |= SliceFlags::HAS_CROSS_SLICE_BACKDROP;
+        }
+
+        if reuse_slice {
+            if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                println!(
+                    "BF_SLICE reuse={} insertion={} spatial={:?} rect={:?}",
+                    backdrop_slice_index,
+                    insertion_index,
+                    spatial_node_index,
+                    rect,
+                );
+            }
+            self.primary_slices[backdrop_slice_index]
+                .coverage
+                .push(SliceCoverage {
+                    spatial_node_index,
+                    rect,
+                    debug_primitive: None,
+                    prim_rect: rect,
+                    prim_local_clip_rect: rect,
+                });
+            self.active_backdrop_slice = Some(backdrop_slice_index);
+            return;
+        }
+
+        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+            println!(
+                "BF_SLICE create={} spatial={:?} rect={:?}",
+                insertion_index,
+                spatial_node_index,
+                rect,
+            );
+        }
+
+        let iframe_clip = self.primary_slices[self.current_group_start]
+            .iframe_clip
+            .clone();
+        let mut slice = PrimarySlice::new(
+            SliceFlags::IS_ATOMIC | SliceFlags::HAS_CROSS_SLICE_BACKDROP,
+            iframe_clip,
+            None,
+        );
+        slice.merge();
+        slice.is_active_backdrop = true;
+        slice.coverage.push(SliceCoverage {
+            spatial_node_index,
+            rect,
+            debug_primitive: None,
+            prim_rect: rect,
+            prim_local_clip_rect: rect,
+        });
+        self.primary_slices.insert(insertion_index, slice);
+        self.active_backdrop_slice = Some(insertion_index);
+    }
+
+    /// Finish adding the two internal primitives which represent an active
+    /// backdrop filter and resume overlap-based placement of ordinary content.
+    pub fn end_active_backdrop(&mut self) {
+        debug_assert!(self.active_backdrop_slice.is_some());
+        self.active_backdrop_slice = None;
+        self.pending_backdrop_foreground_coverage = self.active_backdrop_coverage.take();
+    }
+
     /// Returns whether content already added to the current primary slice has
     /// a different scroll root and therefore lives in a cache separate from
     /// the backdrop filter.
@@ -191,8 +356,9 @@ impl TileCacheBuilder {
 
     /// Returns true if the current slice has no primitives added yet
     pub fn is_current_slice_empty(&self) -> bool {
-        match self.primary_slices.last() {
-            Some(slice) => {
+        self.primary_slices[self.current_group_start..]
+            .iter()
+            .all(|slice| {
                 match slice.kind {
                     SliceKind::Default { ref secondary_slices } => {
                         secondary_slices.is_empty()
@@ -201,11 +367,7 @@ impl TileCacheBuilder {
                         prim_list.is_empty()
                     }
                 }
-            }
-            None => {
-                true
-            }
-        }
+            })
     }
 
     /// Set a barrier that forces a new tile cache next time a prim is added.
@@ -214,6 +376,7 @@ impl TileCacheBuilder {
         slice_flags: SliceFlags,
         iframe_clip: Option<ClipId>,
     ) {
+        debug_assert!(self.active_backdrop_slice.is_none());
         let new_slice = PrimarySlice::new(
             slice_flags,
             iframe_clip,
@@ -221,6 +384,7 @@ impl TileCacheBuilder {
         );
 
         self.primary_slices.push(new_slice);
+        self.current_group_start = self.primary_slices.len() - 1;
     }
 
     /// Create a new tile cache for an existing prim_list
@@ -293,9 +457,10 @@ impl TileCacheBuilder {
         })
     }
 
-    /// Add a primitive, either to the current tile cache, or a new one, depending on various conditions.
-    pub fn add_prim(
-        &mut self,
+    fn add_prim_to_primary_slice(
+        primary_slice: &mut PrimarySlice,
+        prev_scroll_root_cache: &mut (SpatialNodeIndex, SpatialNodeIndex),
+        root_spatial_node_index: SpatialNodeIndex,
         prim_instance: PrimitiveInstance,
         prim_rect: LayoutRect,
         prim_local_clip_rect: LayoutRect,
@@ -306,8 +471,6 @@ impl TileCacheBuilder {
         prim_instances: &mut Vec<PrimitiveInstance>,
         clip_tree_builder: &ClipTreeBuilder,
     ) {
-        let primary_slice = self.primary_slices.last_mut().unwrap();
-
         match primary_slice.kind {
             SliceKind::Atomic { ref mut prim_list } => {
                 prim_list.add_prim(
@@ -325,7 +488,7 @@ impl TileCacheBuilder {
                 // Check if we want to create a new slice based on the current / next scroll root
                 let scroll_root = find_scroll_root(
                     spatial_node_index,
-                    &mut self.prev_scroll_root_cache,
+                    prev_scroll_root_cache,
                     spatial_tree,
                     // Allow sticky frames as scroll roots, unless our quality settings prefer
                     // subpixel AA over performance.
@@ -340,15 +503,15 @@ impl TileCacheBuilder {
 
                 if let Some(current_scroll_root) = current_scroll_root {
                     want_new_tile_cache |= match (current_scroll_root, scroll_root) {
-                        (_, _) if current_scroll_root == self.root_spatial_node_index && scroll_root == self.root_spatial_node_index => {
+                        (_, _) if current_scroll_root == root_spatial_node_index && scroll_root == root_spatial_node_index => {
                             // Both current slice and this cluster are fixed position, no need to cut
                             false
                         }
-                        (_, _) if current_scroll_root == self.root_spatial_node_index => {
+                        (_, _) if current_scroll_root == root_spatial_node_index => {
                             // A real scroll root is being established, so create a cache slice
                             true
                         }
-                        (_, _) if scroll_root == self.root_spatial_node_index => {
+                        (_, _) if scroll_root == root_spatial_node_index => {
                             // If quality settings force subpixel AA over performance, skip creating
                             // a slice for the fixed position element(s) here.
                             if quality_settings.force_subpixel_aa_where_possible {
@@ -370,12 +533,12 @@ impl TileCacheBuilder {
 
                                     let spatial_root = find_scroll_root(
                                         node.spatial_node_index,
-                                        &mut self.prev_scroll_root_cache,
+                                        prev_scroll_root_cache,
                                         spatial_tree,
                                         true,
                                     );
 
-                                    if spatial_root != self.root_spatial_node_index {
+                                    if spatial_root != root_spatial_node_index {
                                         create_slice = false;
                                         break;
                                     }
@@ -416,6 +579,142 @@ impl TileCacheBuilder {
         }
     }
 
+    /// Place ordinary content in the lowest slice that preserves the order of
+    /// overlapping content.
+    fn select_prim_slice(
+        &mut self,
+        spatial_node_index: SpatialNodeIndex,
+        rect: LayoutRect,
+    ) -> usize {
+        if let Some(index) = self.active_backdrop_slice {
+            return index;
+        }
+
+        let mut highest_intersection = None;
+        for index in self.current_group_start..self.primary_slices.len() {
+            if self.primary_slices[index].intersects_coverage(spatial_node_index, &rect) {
+                highest_intersection = Some(index);
+            }
+        }
+
+        let Some(index) = highest_intersection else {
+            return self.current_group_start;
+        };
+
+        if !self.primary_slices[index].is_active_backdrop {
+            return index;
+        }
+
+        let destination = index + 1;
+        if destination == self.primary_slices.len() ||
+            self.primary_slices[destination].is_active_backdrop
+        {
+            let iframe_clip = self.primary_slices[index].iframe_clip.clone();
+            self.primary_slices.insert(
+                destination,
+                PrimarySlice::new(SliceFlags::empty(), iframe_clip, None),
+            );
+        }
+
+        destination
+    }
+
+    /// Add a primitive to a picture-cache layer selected by `select_prim_slice`.
+    pub fn add_prim(
+        &mut self,
+        prim_instance: PrimitiveInstance,
+        prim_rect: LayoutRect,
+        prim_local_clip_rect: LayoutRect,
+        spatial_node_index: SpatialNodeIndex,
+        prim_flags: PrimitiveFlags,
+        spatial_tree: &SceneSpatialTree,
+        quality_settings: &QualitySettings,
+        prim_instances: &mut Vec<PrimitiveInstance>,
+        clip_tree_builder: &ClipTreeBuilder,
+    ) {
+        let mut coverage_rect = prim_rect
+            .intersection(&prim_local_clip_rect)
+            .unwrap_or_default();
+        if coverage_rect.is_empty() && matches!(prim_instance.kind, PrimitiveKind::Picture { .. }) {
+            // Flattened stacking contexts are inserted into their parent with a
+            // zero culling rect because their bounds are propagated later during
+            // frame building. Until this prototype carries child-picture bounds
+            // into the slice builder, treat such a picture as covering the whole
+            // coordinate space. Moving it below an active filter could otherwise
+            // make the filter sample its own foreground.
+            coverage_rect = match self.pending_backdrop_foreground_coverage.take() {
+                Some((coverage_spatial_node_index, coverage_rect))
+                    if coverage_spatial_node_index == spatial_node_index => coverage_rect,
+                Some(_) | None => LayoutRect::max_rect(),
+            };
+        }
+
+        self.add_prim_with_coverage(
+            prim_instance,
+            prim_rect,
+            prim_local_clip_rect,
+            spatial_node_index,
+            prim_flags,
+            coverage_rect,
+            spatial_tree,
+            quality_settings,
+            prim_instances,
+            clip_tree_builder,
+        );
+    }
+
+    pub fn add_prim_with_coverage(
+        &mut self,
+        prim_instance: PrimitiveInstance,
+        prim_rect: LayoutRect,
+        prim_local_clip_rect: LayoutRect,
+        spatial_node_index: SpatialNodeIndex,
+        prim_flags: PrimitiveFlags,
+        coverage_rect: LayoutRect,
+        spatial_tree: &SceneSpatialTree,
+        quality_settings: &QualitySettings,
+        prim_instances: &mut Vec<PrimitiveInstance>,
+        clip_tree_builder: &ClipTreeBuilder,
+    ) {
+        let debug_primitive = if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+            Some(format!("{:?}", prim_instance.kind))
+        } else {
+            None
+        };
+        let primary_slice_index = self.select_prim_slice(
+            spatial_node_index,
+            coverage_rect,
+        );
+
+        if self.active_backdrop_slice.is_none() && !coverage_rect.is_empty() {
+            self.primary_slices[primary_slice_index]
+                .coverage
+                .push(SliceCoverage {
+                    spatial_node_index,
+                    rect: coverage_rect,
+                    debug_primitive,
+                    prim_rect,
+                    prim_local_clip_rect,
+                });
+        }
+
+        let root_spatial_node_index = self.root_spatial_node_index;
+        Self::add_prim_to_primary_slice(
+            &mut self.primary_slices[primary_slice_index],
+            &mut self.prev_scroll_root_cache,
+            root_spatial_node_index,
+            prim_instance,
+            prim_rect,
+            prim_local_clip_rect,
+            spatial_node_index,
+            prim_flags,
+            spatial_tree,
+            quality_settings,
+            prim_instances,
+            clip_tree_builder,
+        );
+    }
+
     /// Consume this object and build the list of tile cache primitives
     pub fn build(
         mut self,
@@ -426,6 +725,13 @@ impl TileCacheBuilder {
         clip_tree_builder: &mut ClipTreeBuilder,
         interners: &Interners,
     ) -> (TileCacheConfig, Vec<PictureIndex>) {
+        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+            println!(
+                "BF_SLICE_SUMMARY total={} active={}",
+                self.primary_slices.len(),
+                self.primary_slices.iter().filter(|slice| slice.is_active_backdrop).count(),
+            );
+        }
         let mut result = TileCacheConfig::new(self.primary_slices.len());
         let mut tile_cache_pictures = Vec::new();
         let primary_slices = std::mem::replace(&mut self.primary_slices, Vec::new());

@@ -990,6 +990,17 @@ impl RenderTask {
             n_downscales += 1;
         }
 
+        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+            println!(
+                "BF_BLUR_TASK source_size={:?} input_stddev={:?} adjusted_size={:?} adjusted_stddev={:?} downscales={}",
+                blur_target_size,
+                blur_std_deviation,
+                adjusted_blur_target_size,
+                adjusted_blur_std_deviation,
+                n_downscales - 1,
+            );
+        }
+
 
         let blur_key = BlurTaskKey::downscale_and_blur(n_downscales, adjusted_blur_std_deviation);
 

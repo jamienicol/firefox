@@ -2182,6 +2182,7 @@ impl<'a> SceneBuilder<'a> {
                 context_3d,
                 flags,
                 raster_space,
+                active_backdrop_foreground_coverage: None,
             });
         }
 
@@ -2214,6 +2215,14 @@ impl<'a> SceneBuilder<'a> {
         }
 
         let stacking_context = self.sc_stack.pop().unwrap();
+        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+            println!(
+                "BF_POP spatial={:?} wraps_backdrop={} coverage={:?}",
+                stacking_context.spatial_node_index,
+                stacking_context.flags.contains(StackingContextFlags::WRAPS_BACKDROP_FILTER),
+                stacking_context.active_backdrop_foreground_coverage,
+            );
+        }
 
         let mut source = match stacking_context.context_3d {
             // TODO(gw): For now, as soon as this picture is in
@@ -2470,6 +2479,14 @@ impl<'a> SceneBuilder<'a> {
             }
             // Regular parenting path
             Some(ref mut parent_sc) => {
+                if parent_sc.spatial_node_index == stacking_context.spatial_node_index {
+                    if let Some(coverage_rect) = stacking_context.active_backdrop_foreground_coverage {
+                        parent_sc.active_backdrop_foreground_coverage = Some(
+                            parent_sc.active_backdrop_foreground_coverage
+                                .map_or(coverage_rect, |rect| rect.union(&coverage_rect)),
+                        );
+                    }
+                }
                 parent_sc.prim_list.add_prim(
                     cur_instance,
                     LayoutRect::zero(),
@@ -2483,14 +2500,29 @@ impl<'a> SceneBuilder<'a> {
             }
             // This must be the root stacking context
             None => {
-                self.add_primitive_to_draw_list(
-                    cur_instance,
-                    LayoutRect::zero(),
-                    // A picture has no local clip rect of its own.
-                    LayoutRect::max_rect(),
-                    stacking_context.spatial_node_index,
-                    stacking_context.prim_flags,
-                );
+                if let Some(coverage_rect) = stacking_context.active_backdrop_foreground_coverage {
+                    self.tile_cache_builder.add_prim_with_coverage(
+                        cur_instance,
+                        LayoutRect::zero(),
+                        LayoutRect::max_rect(),
+                        stacking_context.spatial_node_index,
+                        stacking_context.prim_flags,
+                        coverage_rect,
+                        self.spatial_tree,
+                        &self.quality_settings,
+                        &mut self.prim_instances,
+                        &self.clip_tree_builder,
+                    );
+                } else {
+                    self.add_primitive_to_draw_list(
+                        cur_instance,
+                        LayoutRect::zero(),
+                        // A picture has no local clip rect of its own.
+                        LayoutRect::max_rect(),
+                        stacking_context.spatial_node_index,
+                        stacking_context.prim_flags,
+                    );
+                }
 
                 None
             }
@@ -3034,9 +3066,19 @@ impl<'a> SceneBuilder<'a> {
         let is_tile_cache_backdrop = !self.sc_stack.iter().any(|sc| {
             !sc.flags.contains(StackingContextFlags::WRAPS_BACKDROP_FILTER)
         });
+        let native_compositor = matches!(self.config.compositor_kind, CompositorKind::Native { .. });
         let supports_cross_slice_backdrop = is_tile_cache_backdrop
-            && !matches!(self.config.compositor_kind, CompositorKind::Native { .. })
+            && (!native_compositor || std::env::var_os("WR_BACKDROP_FORCE_ACTIVE").is_some())
             && self.spatial_tree.is_root_coord_system(spatial_node_index);
+        if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+            println!(
+                "BF_SUPPORT tile_cache={} native_compositor={} root_coord={} spatial={:?}",
+                is_tile_cache_backdrop,
+                native_compositor,
+                self.spatial_tree.is_root_coord_system(spatial_node_index),
+                spatial_node_index,
+            );
+        }
         let filter_scroll_root = self.spatial_tree.find_scroll_root(spatial_node_index, true);
         if !supports_cross_slice_backdrop {
             self.make_current_slice_atomic_if_required();
@@ -3132,6 +3174,36 @@ impl<'a> SceneBuilder<'a> {
                 !sc.flags.contains(StackingContextFlags::WRAPS_BACKDROP_FILTER)
             });
 
+            let use_active_backdrop = supports_cross_slice_backdrop
+                && sc_index.is_none()
+                && std::env::var_os("WR_BACKDROP_USE_WAVES").is_none();
+            if use_active_backdrop {
+                let coverage_rect = info.rect
+                    .intersection(&info.clip_rect)
+                    .unwrap_or_default();
+                if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                    println!(
+                        "BF_MARK filter_spatial={:?} stack_len={} stack_spatial={:?} coverage={:?}",
+                        spatial_node_index,
+                        self.sc_stack.len(),
+                        self.sc_stack.last().map(|stacking_context| stacking_context.spatial_node_index),
+                        coverage_rect,
+                    );
+                }
+                if let Some(stacking_context) = self.sc_stack.last_mut() {
+                    if stacking_context.spatial_node_index == spatial_node_index {
+                        stacking_context.active_backdrop_foreground_coverage = Some(
+                            stacking_context.active_backdrop_foreground_coverage
+                                .map_or(coverage_rect, |rect| rect.union(&coverage_rect)),
+                        );
+                    }
+                }
+                self.tile_cache_builder.begin_active_backdrop(
+                    spatial_node_index,
+                    coverage_rect,
+                );
+            }
+
             match sc_index {
                 Some(sc_index) => {
                     self.sc_stack[sc_index].prim_list.add_prim(
@@ -3178,13 +3250,35 @@ impl<'a> SceneBuilder<'a> {
                 _ => panic!("bug: unexpected prim kind"),
             }
 
-            self.add_primitive_to_draw_list(
-                backdrop_render_instance,
-                info.rect,
-                info.clip_rect,
-                spatial_node_index,
-                info.flags,
-            );
+            if use_active_backdrop {
+                // The WRAPS_BACKDROP_FILTER stacking contexts contain the
+                // element's foreground as well as the BackdropRender marker.
+                // Put only the marker in the active slice: keeping the wrapper
+                // selected would make the backdrop sample the element's own
+                // background and text. The marker already carries the authored
+                // clip and spatial node, so it can be attached directly beside
+                // the hidden filtered picture.
+                self.tile_cache_builder.add_prim(
+                    backdrop_render_instance,
+                    info.rect,
+                    info.clip_rect,
+                    spatial_node_index,
+                    info.flags,
+                    self.spatial_tree,
+                    &self.quality_settings,
+                    &mut self.prim_instances,
+                    &self.clip_tree_builder,
+                );
+                self.tile_cache_builder.end_active_backdrop();
+            } else {
+                self.add_primitive_to_draw_list(
+                    backdrop_render_instance,
+                    info.rect,
+                    info.clip_rect,
+                    spatial_node_index,
+                    info.flags,
+                );
+            }
         }
     }
 
@@ -3822,6 +3916,8 @@ struct FlattenedStackingContext {
 
     /// Requested raster space for this stacking context
     raster_space: RasterSpace,
+
+    active_backdrop_foreground_coverage: Option<LayoutRect>,
 }
 
 impl FlattenedStackingContext {

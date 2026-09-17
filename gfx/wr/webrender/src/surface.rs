@@ -1205,6 +1205,19 @@ impl SurfaceBuilder {
                 continue;
             }
 
+            if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                println!(
+                    "BF_DEP resolve={} current_slice={} source_slice={} producer={:?} wanted={:?} source={:?} intersection={:?}",
+                    resolve_task_id.index,
+                    current_slice_index,
+                    source.slice_index,
+                    source.producer_task_id.map(|task_id| task_id.index),
+                    wanted_device_rect,
+                    source.device_rect,
+                    device_rect,
+                );
+            }
+
             if let Some(producer_task_id) = source.producer_task_id {
                 rg_builder.add_dependency(resolve_task_id, producer_task_id);
             }
