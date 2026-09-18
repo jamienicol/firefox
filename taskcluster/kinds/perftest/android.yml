@@ -1160,3 +1160,120 @@ hw-a55-foreground-resource-chrome:
             --android
             --output $MOZ_FETCHES_DIR/../artifacts
             --hooks testing/performance/android-resource/hooks_android_resource.py
+
+hw-a55-aarch64-shippable-scroll:
+    worker-type: t-lambda-perf-a55
+    description: Measure scroll performance on GeckoView on a Samsung A55
+    treeherder:
+        symbol: perftest({symbol})
+        tier: 2
+    platform: android-hw-a55-14-0-aarch64-shippable/opt
+    attributes:
+        batch: false
+        cron: false
+    run-on-projects: [trunk-only]
+    fetches:
+        build:
+            - artifact: geckoview_example.apk
+              extract: false
+    require-build:
+        android-hw-a55-14-0-aarch64-shippable/opt: build-android-aarch64-shippable/opt
+    perftest:
+        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
+    perftest-extra-options:
+        by-perftest:
+            backdrop-filter-scroll:
+                - --browsertime-extra-options
+                - browsertime.page=backdrop-filter-scroll
+    run:
+        command: >-
+            mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
+            cd $MOZ_FETCHES_DIR &&
+            python3 python/mozperftest/mozperftest/runner.py
+            {perftest_testname}
+            --flavor mobile-browser
+            --app geckoview
+            --android
+            --android-app-name org.mozilla.geckoview_example
+            --android-activity org.mozilla.geckoview_example.GeckoViewActivity
+            --android-install-apk $MOZ_FETCHES_DIR/geckoview_example.apk
+            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
+            --output $MOZ_FETCHES_DIR/../artifacts
+
+hw-p6-aarch64-shippable-scroll:
+    worker-type: t-bitbar-gw-perf-p6
+    description: Measure scroll performance on GeckoView on a Google Pixel 6
+    treeherder:
+        symbol: perftest({symbol})
+        tier: 2
+    platform: android-hw-p6-13-0-aarch64-shippable/opt
+    attributes:
+        batch: false
+        cron: false
+    run-on-projects: [trunk-only]
+    fetches:
+        build:
+            - artifact: geckoview_example.apk
+              extract: false
+    require-build:
+        android-hw-p6-13-0-aarch64-shippable/opt: build-android-aarch64-shippable/opt
+    perftest:
+        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
+    perftest-extra-options:
+        by-perftest:
+            backdrop-filter-scroll:
+                - --browsertime-extra-options
+                - browsertime.page=backdrop-filter-scroll
+    run:
+        command: >-
+            mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
+            cd $MOZ_FETCHES_DIR &&
+            python3 python/mozperftest/mozperftest/runner.py
+            {perftest_testname}
+            --flavor mobile-browser
+            --app geckoview
+            --android
+            --android-app-name org.mozilla.geckoview_example
+            --android-activity org.mozilla.geckoview_example.GeckoViewActivity
+            --android-install-apk $MOZ_FETCHES_DIR/geckoview_example.apk
+            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
+            --output $MOZ_FETCHES_DIR/../artifacts
+
+hw-s24-aarch64-shippable-scroll:
+    worker-type: t-bitbar-gw-perf-s24
+    description: Measure scroll performance on GeckoView on a Samsung S24
+    treeherder:
+        symbol: perftest({symbol})
+        tier: 2
+    platform: android-hw-s24-14-0-aarch64-shippable/opt
+    attributes:
+        batch: false
+        cron: false
+    run-on-projects: [trunk-only]
+    fetches:
+        build:
+            - artifact: geckoview_example.apk
+              extract: false
+    require-build:
+        android-hw-s24-14-0-aarch64-shippable/opt: build-android-aarch64-shippable/opt
+    perftest:
+        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
+    perftest-extra-options:
+        by-perftest:
+            backdrop-filter-scroll:
+                - --browsertime-extra-options
+                - browsertime.page=backdrop-filter-scroll
+    run:
+        command: >-
+            mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
+            cd $MOZ_FETCHES_DIR &&
+            python3 python/mozperftest/mozperftest/runner.py
+            {perftest_testname}
+            --flavor mobile-browser
+            --app geckoview
+            --android
+            --android-app-name org.mozilla.geckoview_example
+            --android-activity org.mozilla.geckoview_example.GeckoViewActivity
+            --android-install-apk $MOZ_FETCHES_DIR/geckoview_example.apk
+            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
+            --output $MOZ_FETCHES_DIR/../artifacts

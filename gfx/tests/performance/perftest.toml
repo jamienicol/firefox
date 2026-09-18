@@ -1,0 +1,4 @@
+[DEFAULT]
+support-files = ["perftest_backdrop_filter_scroll.html"]
+
+["perftest_scroll.js"]

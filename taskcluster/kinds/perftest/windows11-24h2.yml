@@ -21,6 +21,34 @@ task-defaults:
     scopes:
         - secrets:get:project/releng/gecko/build/level-{level}/conditioned-profiles
 
+scroll:
+    description: Measure scroll performance on Windows
+    treeherder:
+        symbol: perftest({symbol})
+        tier: 2
+    attributes:
+        batch: false
+        cron: false
+    run-on-projects: [trunk-only]
+    perftest:
+        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
+    perftest-extra-options:
+        by-perftest:
+            backdrop-filter-scroll:
+                - --browsertime-extra-options
+                - browsertime.page=backdrop-filter-scroll
+    run:
+        command: >-
+            mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
+            cd $MOZ_FETCHES_DIR &&
+            python3.exe python/mozperftest/mozperftest/runner.py
+            {perftest_testname}
+            --browsertime-binary ${MOZ_FETCHES_DIR}/firefox/firefox.exe
+            --browsertime-node ${MOZ_FETCHES_DIR}/node/node.exe
+            --flavor desktop-browser
+            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver.exe
+            --output $MOZ_FETCHES_DIR/../artifacts
+
 try-browsertime:
     description: Run ./mach perftest on windows
     treeherder:

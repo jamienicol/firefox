@@ -340,22 +340,32 @@ def test_build_test_list_on_try_mapping():
     # A source directory can hold tests of several mochitest flavors, which
     # land in different subdirectories of the test package.
     with tempfile.TemporaryDirectory() as tmp:
-        packaged = Path(
-            tmp, "mochitest", "browser", "dom", "media", "test", "browser_perf.js"
-        )
-        packaged.parent.mkdir(parents=True)
-        packaged.touch()
+        source_paths = ["dom/media/test/browser_perf.js"]
+        packaged_paths = [
+            Path(
+                tmp,
+                "mochitest",
+                "browser",
+                "dom",
+                "media",
+                "test",
+                "browser_perf.js",
+            ),
+        ]
+        for packaged in packaged_paths:
+            packaged.parent.mkdir(parents=True, exist_ok=True)
+            packaged.touch()
 
         cwd = os.getcwd()
         os.chdir(tmp)
         try:
             with mock.patch("mozperftest.utils.ON_TRY", True):
-                files, tmp_dir = build_test_list(["dom/media/test/browser_perf.js"])
+                files, tmp_dir = build_test_list(source_paths)
         finally:
             os.chdir(cwd)
 
         assert tmp_dir is None
-        assert files == [str(packaged.resolve())]
+        assert files == sorted(str(packaged.resolve()) for packaged in packaged_paths)
 
 
 def test_convert_day():

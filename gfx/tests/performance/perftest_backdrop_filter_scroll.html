@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Backdrop filter scroll performance test</title>
+    <style>
+      h1,
+      p {
+        margin: 0;
+      }
+
+      body {
+        margin: 0;
+        font-family: sans-serif;
+        background: #15202b;
+        color: #e7e9ea;
+      }
+
+      body > header {
+        position: fixed;
+        inset: 0 0 auto;
+        height: 53px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        backdrop-filter: blur(10px) saturate(180%) contrast(75%) brightness(70%);
+        background: rgba(21, 32, 43, 0.75);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        z-index: 100;
+      }
+
+      body > header h1 {
+        font-size: 20px;
+      }
+
+      .feed {
+        margin: 53px auto 0;
+        max-width: 600px;
+        border-inline: 1px solid #2f3336;
+      }
+
+      .post {
+        padding: 12px 16px;
+        border-bottom: 1px solid #2f3336;
+        display: flex;
+        gap: 12px;
+      }
+
+      .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: grid;
+        place-items: center;
+        color: white;
+        font-weight: 700;
+      }
+
+      .avatar-0 {
+        background: #1d9bf0;
+      }
+      .avatar-1 {
+        background: #ff6b6b;
+      }
+      .avatar-2 {
+        background: #4ecdc4;
+      }
+      .avatar-3 {
+        background: #45b7d1;
+      }
+      .avatar-4 {
+        background: #96ceb4;
+      }
+      .avatar-5 {
+        background: #ffeaa7;
+      }
+      .avatar-6 {
+        background: #dfe6e9;
+      }
+      .avatar-7 {
+        background: #fd79a8;
+      }
+
+      .post-body {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .post-header {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 4px;
+      }
+
+      .display-name {
+        font-weight: 700;
+      }
+
+      .handle,
+      .post-actions {
+        color: #8b98a5;
+      }
+
+      .post-text {
+        line-height: 1.5;
+      }
+
+      .post-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        font-size: 13px;
+      }
+
+      .post-action {
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px) saturate(180%) contrast(75%) brightness(70%);
+      }
+    </style>
+  </head>
+  <body>
+    <header><h1>Foxtodon</h1></header>
+    <main class="feed"></main>
+    <template id="post-template">
+      <article class="post">
+        <span class="avatar" aria-hidden="true"></span>
+        <div class="post-body">
+          <header class="post-header">
+            <span class="display-name"></span>
+            <span class="handle"></span>
+          </header>
+          <p class="post-text"></p>
+          <div class="post-actions">
+            <span class="post-action">Reply <span class="action-count"></span></span>
+            <span class="post-action">Boost <span class="action-count"></span></span>
+            <span class="post-action">Like <span class="action-count"></span></span>
+          </div>
+        </div>
+      </article>
+    </template>
+    <script>
+      "use strict";
+
+      const names = [
+        ["Alice Martin", "@alice"],
+        ["Bob Chen", "@bobchen"],
+        ["Carol White", "@carolw"],
+        ["David Kim", "@dkim"],
+        ["Eva Torres", "@evat"],
+        ["Frank Lee", "@frankl"],
+        ["Grace Patel", "@gracep"],
+        ["Henry Muller", "@hmuller"],
+      ];
+      const texts = [
+        "Just pushed a fix for that rendering bug. It took longer than expected, but it is finally done.",
+        "Most performance problems are caused by doing too much work per frame. Profile first, optimize second.",
+        "The CSS backdrop-filter specification has edge cases around stacking contexts.",
+        "Spent the morning reviewing patches. There is some good work landing this week.",
+        "Scrolling feels much smoother on sites that avoid unnecessary compositing work.",
+        "A fixed header with backdrop-filter is a common pattern, so it should remain fast.",
+        "Working on a new testcase for scroll performance with a long synthetic feed.",
+        "The difficult part of fixed blur is recompositing the backdrop while the page scrolls.",
+        "Tile-based rendering optimizations can make a difference on this workload.",
+        "Coffee is ready, and so are the performance profiles.",
+        "The regression was caused by an unexpected display-list invalidation.",
+        "Sometimes the best optimization is removing work entirely, but not today.",
+      ];
+      const feed = document.querySelector(".feed");
+      const template = document.getElementById("post-template");
+      const maximums = [20, 50, 200];
+
+      for (let i = 0; i < 80; i++) {
+        const [name, handle] = names[i % names.length];
+        const post = template.content.cloneNode(true);
+        const avatar = post.querySelector(".avatar");
+        avatar.classList.add(`avatar-${i % 8}`);
+        avatar.textContent = name[0];
+        post.querySelector(".display-name").textContent = name;
+        post.querySelector(".handle").textContent = handle;
+        post.querySelector(".post-text").textContent = texts[i % texts.length];
+        post.querySelectorAll(".action-count").forEach((count, index) => {
+          count.textContent = (i * 17 + index * 31) % maximums[index];
+        });
+        feed.appendChild(post);
+      }
+    </script>
+  </body>
+</html>
