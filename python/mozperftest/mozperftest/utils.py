@@ -328,6 +328,7 @@ def install_requirements_file(
 _TRY_MAPPING = {
     Path("accessible"): [Path("mochitest", "browser", "accessible")],
     Path("browser"): [Path("mochitest", "browser", "browser")],
+    Path("gfx"): [Path("mochitest", "tests", "gfx")],
     Path("netwerk"): [Path("xpcshell", "tests", "netwerk")],
     Path("dom"): [
         Path("mochitest", "tests", "dom"),

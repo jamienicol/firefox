@@ -1160,3 +1160,39 @@ hw-a55-foreground-resource-chrome:
             --android
             --output $MOZ_FETCHES_DIR/../artifacts
             --hooks testing/performance/android-resource/hooks_android_resource.py
+
+hw-a55-aarch64-shippable-backdrop-filter-scroll:
+    worker-type: t-lambda-perf-a55
+    description: Measure backdrop-filter scroll performance on GeckoView on a Samsung A55
+    treeherder:
+        symbol: perftest(backdrop-filter-scroll)
+        tier: 2
+    platform: android-hw-a55-14-0-aarch64-shippable/opt
+    attributes:
+        batch: false
+        cron: false
+    run-on-projects: [trunk-only]
+    fetches:
+        build:
+            - artifact: geckoview_example.apk
+              extract: false
+            - artifact: target.common.tests.tar.zst
+            - artifact: target.condprof.tests.tar.zst
+            - artifact: target.mochitest.tests.tar.zst
+        toolchain:
+            - linux64-hostutils
+    require-build:
+        android-hw-a55-14-0-aarch64-shippable/opt: build-android-aarch64-shippable/opt
+    run:
+        command: >-
+            mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
+            cd $MOZ_FETCHES_DIR &&
+            python3 python/mozperftest/mozperftest/runner.py
+            gfx/tests/performance/test_backdrop_filter_scroll.html
+            --flavor mochitest
+            --app geckoview
+            --android
+            --android-app-name org.mozilla.geckoview_example
+            --android-activity org.mozilla.geckoview_example.GeckoViewActivity
+            --android-install-apk $MOZ_FETCHES_DIR/geckoview_example.apk
+            --output $MOZ_FETCHES_DIR/../artifacts

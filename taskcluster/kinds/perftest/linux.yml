@@ -107,6 +107,28 @@ try-browsertime:
             --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
             --output $MOZ_FETCHES_DIR/../artifacts
 
+backdrop-filter-scroll:
+    description: Measure backdrop-filter scroll performance on Linux
+    platform: linux2404-64-shippable/opt
+    require-build:
+        linux2404-64-shippable/opt: build-linux64-shippable/opt
+    treeherder:
+        symbol: perftest(backdrop-filter-scroll)
+        tier: 2
+    attributes:
+        batch: false
+        cron: false
+    run-on-projects: [trunk-only]
+    run:
+        command: >-
+            mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
+            cd $MOZ_FETCHES_DIR &&
+            python3 python/mozperftest/mozperftest/runner.py
+            gfx/tests/performance/test_backdrop_filter_scroll.html
+            --mochitest-binary ${MOZ_FETCHES_DIR}/firefox/firefox-bin
+            --flavor mochitest
+            --output $MOZ_FETCHES_DIR/../artifacts
+
 browsertime-sample:
     description: Run the sample browsertime sample test in CI
     treeherder:
