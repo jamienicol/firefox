@@ -35,6 +35,8 @@ pub struct CachedSurface {
     pub background_color: Option<ColorF>,
     pub invalidation_reason: Option<InvalidationReason>,
     pub sub_graphs: Vec<(PictureRect, Vec<(PictureCompositeMode, SurfaceIndex)>)>,
+    /// Exact backdrop sampling regions, without filter-inflated sub-graph coverage.
+    pub backdrop_rects: Vec<PictureRect>,
     /// Signature of the preceding picture-cache content sampled by backdrop
     /// filters in this tile during the previous frame.
     pub prev_backdrop_input_hash: Option<u64>,
@@ -56,6 +58,7 @@ impl CachedSurface {
             background_color: None,
             invalidation_reason: None,
             sub_graphs: Vec::new(),
+            backdrop_rects: Vec::new(),
             prev_backdrop_input_hash: None,
             current_backdrop_input_hash: None,
         }
@@ -84,6 +87,7 @@ impl CachedSurface {
         );
         self.invalidation_reason  = None;
         self.sub_graphs.clear();
+        self.backdrop_rects.clear();
         self.prev_backdrop_input_hash = self.current_backdrop_input_hash.take();
 
         // If the tile isn't visible, early exit, skipping the normal set up to

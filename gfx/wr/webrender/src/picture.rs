@@ -138,8 +138,6 @@ use crate::surface::{BackdropSource, BackdropSourceKind, SurfaceDescriptor};
 use crate::surface::{SurfaceTileDescriptor, get_surface_rects};
 use crate::surface::{SurfaceIndex, SurfaceInfo, SubpixelMode};
 use smallvec::SmallVec;
-use rustc_hash::FxHasher;
-use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::Range;
 use crate::picture_textures::PictureCacheTextureHandle;
@@ -1868,44 +1866,33 @@ fn prepare_tiled_picture_surface(
                 .intersection(&tile.cached_surface.current_descriptor.local_valid_rect)
                 .unwrap_or_else(|| { tile.cached_surface.is_valid = true; PictureRect::zero() });
 
-            if let Some(pic_to_device) = pic_to_device {
-                let mut backdrop_input_hash = FxHasher::default();
-                let mut backdrop_input_changed = false;
-                let mut has_backdrop_input = false;
+            let backdrop_rects: Vec<_> = tile.cached_surface.backdrop_rects
+                .iter()
+                .filter_map(|backdrop_rect| {
+                    backdrop_rect.intersection(&tile.cached_surface.local_rect)
+                })
+                .collect();
 
-                for (sub_graph_rect, _) in &tile.cached_surface.sub_graphs {
-                    let capture_rect = sub_graph_rect
-                        .intersection(&tile.cached_surface.local_rect)
-                        .unwrap_or_default();
-                    if capture_rect.is_empty() {
-                        continue;
-                    }
+            if let Some(pic_to_device) = pic_to_device.filter(|_| !backdrop_rects.is_empty()) {
+                let input_signature = frame_state
+                    .surface_builder
+                    .get_backdrop_input_signature(
+                        slice_id.index(),
+                        tile_cache.spatial_node_index,
+                        pic_to_device,
+                        &backdrop_rects,
+                    );
+                let current_backdrop_input_hash = Some(input_signature.hash);
+                let backdrop_input_changed = input_signature.has_dirty_source ||
+                    tile.cached_surface.prev_backdrop_input_hash != current_backdrop_input_hash;
+                tile.cached_surface.current_backdrop_input_hash = current_backdrop_input_hash;
 
-                    has_backdrop_input = true;
-                    let input_signature = frame_state
-                        .surface_builder
-                        .get_backdrop_input_signature(
-                            slice_id.index(),
-                            pic_to_device,
-                            capture_rect,
-                        );
-                    input_signature.hash.hash(&mut backdrop_input_hash);
-                    backdrop_input_changed |= input_signature.has_dirty_source;
-                }
-
-                if has_backdrop_input {
-                    let current_backdrop_input_hash = Some(backdrop_input_hash.finish());
-                    backdrop_input_changed |=
-                        tile.cached_surface.prev_backdrop_input_hash != current_backdrop_input_hash;
-                    tile.cached_surface.current_backdrop_input_hash = current_backdrop_input_hash;
-
-                    let dirty_rect = tile.cached_surface.current_descriptor.local_valid_rect;
-                    if backdrop_input_changed && !dirty_rect.is_empty() {
-                        tile.invalidate(
-                            Some(dirty_rect),
-                            InvalidationReason::SurfaceContentChanged,
-                        );
-                    }
+                let dirty_rect = tile.cached_surface.current_descriptor.local_valid_rect;
+                if backdrop_input_changed && !dirty_rect.is_empty() {
+                    tile.invalidate(
+                        Some(dirty_rect),
+                        InvalidationReason::SurfaceContentChanged,
+                    );
                 }
             }
 
@@ -2153,6 +2140,7 @@ fn prepare_tiled_picture_surface(
                                 current_task_id: render_task_id,
                                 composite_task_id: Some(composite_task_id),
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                backdrop_rects,
                                 deferred_task_id: None,
                                 deferred_output_rects: Vec::new(),
                                 slice_index: slice_id.index(),
@@ -2193,6 +2181,7 @@ fn prepare_tiled_picture_surface(
                                 current_task_id: render_task_id,
                                 composite_task_id: None,
                                 dirty_rect: tile.cached_surface.local_dirty_rect,
+                                backdrop_rects,
                                 deferred_task_id: None,
                                 deferred_output_rects: Vec::new(),
                                 slice_index: slice_id.index(),
@@ -2241,13 +2230,17 @@ fn prepare_tiled_picture_surface(
                 _ => None,
             };
 
-            if let (Some(kind), Some(_)) = (backdrop_source_kind, pic_to_device) {
+            if let (Some(kind), Some(pic_to_device)) = (backdrop_source_kind, pic_to_device) {
                 if !tile.device_valid_rect.is_empty() && !valid_rect.is_empty() {
                     frame_state.surface_builder.register_backdrop_source(BackdropSource {
                         slice_index: slice_id.index(),
                         kind,
                         device_rect: tile.device_valid_rect,
                         surface_rect: valid_rect.to_f32(),
+                        local_dirty_rect: tile.cached_surface.local_dirty_rect,
+                        pic_to_device,
+                        spatial_node_index: tile_cache.spatial_node_index,
+                        is_opaque,
                         producer_task_id: backdrop_source_producer,
                     });
                 }

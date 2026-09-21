@@ -2662,6 +2662,16 @@ impl TileCacheInstance {
             }
             PrimitiveKind::BackdropCapture { .. } => {}
             PrimitiveKind::BackdropRender { pic_index, .. } => {
+                let capture_rect = SpaceMapper::new_with_target(
+                    self.spatial_node_index,
+                    prim_spatial_node_index,
+                    self.local_rect,
+                    frame_context.spatial_tree,
+                )
+                .map(&local_prim_rect)
+                .and_then(|rect| rect.intersection(&pic_coverage_rect))
+                .unwrap_or(pic_coverage_rect);
+
                 // If the area that the backdrop covers in the space of the surface it draws on
                 // is empty, skip any sub-graph processing. This is not just a performance win,
                 // it also ensures that we don't do a deferred dirty test that invalidates a tile
@@ -2674,6 +2684,7 @@ impl TileCacheInstance {
 
                     // If this is a sub-graph, register the bounds on any affected tiles
                     // so we know how much to expand the content tile by.
+                    let (capture_p0, capture_p1) = self.get_tile_coords_for_rect(&capture_rect);
                     let sub_slice = &mut self.sub_slices[sub_slice_index];
 
                     let mut surface_info = Vec::new();
@@ -2690,11 +2701,19 @@ impl TileCacheInstance {
                         }
                     }
 
+                    for y in capture_p0.y .. capture_p1.y {
+                        for x in capture_p0.x .. capture_p1.x {
+                            let key = TileOffset::new(x, y);
+                            let tile = sub_slice.tiles.get_mut(&key).expect("bug: no tile");
+                            tile.cached_surface.backdrop_rects.push(capture_rect);
+                        }
+                    }
+
                     // For backdrop-filter, we need to check if any of the dirty rects
                     // in tiles that are affected by the filter primitive are dirty.
                     self.deferred_dirty_tests.push(DeferredDirtyTest {
-                        tile_rect: TileRect::new(p0, p1),
-                        prim_rect: pic_coverage_rect,
+                        tile_rect: TileRect::new(capture_p0, capture_p1),
+                        prim_rect: capture_rect,
                     });
                 }
             }

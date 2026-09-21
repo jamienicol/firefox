@@ -648,6 +648,8 @@ pub struct SurfaceTileDescriptor {
     pub composite_task_id: Option<RenderTaskId>,
     /// Dirty rect for this tile
     pub dirty_rect: PictureRect,
+    /// Areas of this tile that sample preceding picture-cache slices.
+    pub backdrop_rects: Vec<PictureRect>,
     /// Continuation which paints backdrop-filter outputs after
     /// `current_task_id`, without immediately making them part of the backdrop
     /// seen by other filters in the same wave.
@@ -1023,6 +1025,14 @@ pub struct BackdropSource {
     pub device_rect: DeviceRect,
     /// Area in the source surface corresponding to `device_rect`.
     pub surface_rect: DeviceRect,
+    /// Dirty portion of this source in its picture space.
+    pub local_dirty_rect: PictureRect,
+    /// Transform used to recognize backdrop sources that move with the filter.
+    pub pic_to_device: ScaleOffset,
+    /// Spatial node that determines whether source and filter scroll together.
+    pub spatial_node_index: SpatialNodeIndex,
+    /// Whether this source hides all earlier slices within `device_rect`.
+    pub is_opaque: bool,
     /// Task updating the cached source this frame. Consumers depend on it so
     /// they cannot sample the source before its new contents are available.
     pub producer_task_id: Option<RenderTaskId>,
@@ -1036,6 +1046,11 @@ pub struct BackdropInputSignature {
     /// Whether any contributing source is being updated in place this frame.
     /// Such an update changes pixels without necessarily changing `hash`.
     pub has_dirty_source: bool,
+}
+
+struct BackdropSourceIntersection<'a> {
+    source: &'a BackdropSource,
+    device_rect: DeviceIntRect,
 }
 
 impl SurfaceBuilder {
@@ -1080,74 +1095,134 @@ impl SurfaceBuilder {
         (!mapped.is_empty()).then_some(mapped)
     }
 
-    /// Describes the earlier cached content sampled by `capture_rect`, so a
+    fn get_visible_backdrop_sources(
+        &self,
+        current_slice_index: usize,
+        wanted_device_rect: DeviceRect,
+    ) -> Vec<BackdropSourceIntersection<'_>> {
+        let first_visible_slice = self.backdrop_sources
+            .iter()
+            .filter(|source| {
+                source.slice_index < current_slice_index &&
+                    source.is_opaque &&
+                    source.device_rect.contains_box(&wanted_device_rect)
+            })
+            .map(|source| source.slice_index)
+            .max()
+            .unwrap_or(0);
+        let mut intersections = Vec::new();
+
+        for source in &self.backdrop_sources {
+            if source.slice_index < first_visible_slice ||
+                source.slice_index >= current_slice_index
+            {
+                continue;
+            }
+
+            let Some(device_rect) = wanted_device_rect.intersection(&source.device_rect) else {
+                continue;
+            };
+            let device_rect = device_rect.round().to_i32();
+            if !device_rect.is_empty() {
+                intersections.push(BackdropSourceIntersection {
+                    source,
+                    device_rect,
+                });
+            }
+        }
+
+        intersections
+    }
+
+    /// Describes the earlier cached content sampled by `capture_rects`, so a
     /// filtered tile is invalidated when its backdrop changes independently.
     pub fn get_backdrop_input_signature(
         &self,
         current_slice_index: usize,
+        current_spatial_node_index: SpatialNodeIndex,
         current_pic_to_device: ScaleOffset,
-        capture_rect: PictureRect,
+        capture_rects: &[PictureRect],
     ) -> BackdropInputSignature {
-        let capture_device_rect: DeviceRect = current_pic_to_device
-            .map_rect::<PicturePixel, DevicePixel>(&capture_rect);
+        let device_to_current_pic = current_pic_to_device.inverse();
         let mut has_dirty_source = false;
-        let mut entry_hashes = Vec::new();
+        let mut capture_hashes = Vec::with_capacity(capture_rects.len());
 
-        for source in &self.backdrop_sources {
-            if source.slice_index >= current_slice_index {
-                continue;
-            }
+        for capture_rect in capture_rects {
+            let capture_device_rect: DeviceRect = current_pic_to_device
+                .map_rect::<PicturePixel, DevicePixel>(capture_rect);
+            let mut entry_hashes = Vec::new();
 
-            let Some(device_rect) = capture_device_rect.intersection(&source.device_rect) else {
-                continue;
-            };
-            let device_rect = device_rect.round().to_i32();
-            if device_rect.is_empty() {
-                continue;
-            }
+            for intersection in self.get_visible_backdrop_sources(
+                current_slice_index,
+                capture_device_rect,
+            ) {
+                let source = intersection.source;
+                let device_rect = intersection.device_rect;
 
-            let mut entry_hasher = FxHasher::default();
-            source.slice_index.hash(&mut entry_hasher);
-            device_rect.min.x.hash(&mut entry_hasher);
-            device_rect.min.y.hash(&mut entry_hasher);
-            device_rect.max.x.hash(&mut entry_hasher);
-            device_rect.max.y.hash(&mut entry_hasher);
-
-            match source.kind {
-                BackdropSourceKind::Texture(texture_source) => {
-                    let Some(src_rect) = Self::map_device_rect_between(
-                        device_rect.to_f32(),
-                        source.device_rect,
-                        source.surface_rect,
-                    ) else {
-                        continue;
-                    };
-                    texture_source.hash(&mut entry_hasher);
-                    src_rect.min.x.hash(&mut entry_hasher);
-                    src_rect.min.y.hash(&mut entry_hasher);
-                    src_rect.max.x.hash(&mut entry_hasher);
-                    src_rect.max.y.hash(&mut entry_hasher);
+                let is_co_scrolling =
+                    source.spatial_node_index == current_spatial_node_index;
+                let mut entry_hasher = FxHasher::default();
+                source.slice_index.hash(&mut entry_hasher);
+                if is_co_scrolling {
+                    let local_rect = device_to_current_pic
+                        .map_rect::<DevicePixel, PicturePixel>(&device_rect.to_f32());
+                    local_rect.min.x.to_bits().hash(&mut entry_hasher);
+                    local_rect.min.y.to_bits().hash(&mut entry_hasher);
+                    local_rect.max.x.to_bits().hash(&mut entry_hasher);
+                    local_rect.max.y.to_bits().hash(&mut entry_hasher);
+                } else {
+                    device_rect.min.x.hash(&mut entry_hasher);
+                    device_rect.min.y.hash(&mut entry_hasher);
+                    device_rect.max.x.hash(&mut entry_hasher);
+                    device_rect.max.y.hash(&mut entry_hasher);
                 }
-                BackdropSourceKind::Color(color) => {
-                    color.r.to_bits().hash(&mut entry_hasher);
-                    color.g.to_bits().hash(&mut entry_hasher);
-                    color.b.to_bits().hash(&mut entry_hasher);
-                    color.a.to_bits().hash(&mut entry_hasher);
+
+                match source.kind {
+                    BackdropSourceKind::Texture(texture_source) => {
+                        let Some(src_rect) = Self::map_device_rect_between(
+                            device_rect.to_f32(),
+                            source.device_rect,
+                            source.surface_rect,
+                        ) else {
+                            continue;
+                        };
+                        texture_source.hash(&mut entry_hasher);
+                        src_rect.min.x.hash(&mut entry_hasher);
+                        src_rect.min.y.hash(&mut entry_hasher);
+                        src_rect.max.x.hash(&mut entry_hasher);
+                        src_rect.max.y.hash(&mut entry_hasher);
+                    }
+                    BackdropSourceKind::Color(color) => {
+                        color.r.to_bits().hash(&mut entry_hasher);
+                        color.g.to_bits().hash(&mut entry_hasher);
+                        color.b.to_bits().hash(&mut entry_hasher);
+                        color.a.to_bits().hash(&mut entry_hasher);
+                    }
                 }
+
+                let source_pic_rect = source.pic_to_device
+                    .inverse()
+                    .map_rect::<DevicePixel, PicturePixel>(&device_rect.to_f32());
+                let dirty_intersects = source.producer_task_id.is_some()
+                    && source.local_dirty_rect.intersects(&source_pic_rect);
+                has_dirty_source |= dirty_intersects;
+                entry_hashes.push(entry_hasher.finish());
             }
 
-            has_dirty_source |= source.producer_task_id.is_some();
-            entry_hashes.push(entry_hasher.finish());
+            entry_hashes.sort_unstable();
+            let mut capture_hasher = FxHasher::default();
+            capture_rect.min.x.to_bits().hash(&mut capture_hasher);
+            capture_rect.min.y.to_bits().hash(&mut capture_hasher);
+            capture_rect.max.x.to_bits().hash(&mut capture_hasher);
+            capture_rect.max.y.to_bits().hash(&mut capture_hasher);
+            entry_hashes.hash(&mut capture_hasher);
+            capture_hashes.push(capture_hasher.finish());
         }
 
-        entry_hashes.sort_unstable();
+        capture_hashes.sort_unstable();
         let mut hasher = FxHasher::default();
         current_slice_index.hash(&mut hasher);
-        capture_rect.min.x.to_bits().hash(&mut hasher);
-        capture_rect.min.y.to_bits().hash(&mut hasher);
-        capture_rect.max.x.to_bits().hash(&mut hasher);
-        capture_rect.max.y.to_bits().hash(&mut hasher);
-        entry_hashes.hash(&mut hasher);
+        capture_hashes.hash(&mut hasher);
 
         BackdropInputSignature {
             hash: hasher.finish(),
@@ -1161,6 +1236,7 @@ impl SurfaceBuilder {
         &self,
         current_slice_index: usize,
         current_pic_to_device: ScaleOffset,
+        backdrop_rects: &[PictureRect],
         resolve_task_id: RenderTaskId,
         rg_builder: &mut RenderTaskGraphBuilder,
     ) -> Vec<ResolveSource> {
@@ -1178,69 +1254,80 @@ impl SurfaceBuilder {
         );
         let wanted_pic_rect: PictureRect =
             (dest_content_rect.cast_unit() * dest_device_pixel_scale.inverse()).cast_unit();
-        let wanted_device_rect: DeviceRect = current_pic_to_device
+        let task_device_rect: DeviceRect = current_pic_to_device
             .map_rect::<PicturePixel, DevicePixel>(&wanted_pic_rect);
         let device_to_current_pic = current_pic_to_device.inverse();
         let mut sources = Vec::new();
-        let mut backdrop_sources: Vec<_> = self.backdrop_sources.iter().collect();
-        backdrop_sources.sort_by_key(|source| source.slice_index);
+        let mut producer_task_ids = FastHashSet::default();
 
-        for source in backdrop_sources {
-            if source.slice_index >= current_slice_index {
-                continue;
-            }
-
-            let Some(device_rect) = wanted_device_rect.intersection(&source.device_rect) else {
+        for backdrop_rect in backdrop_rects {
+            let backdrop_device_rect: DeviceRect = current_pic_to_device
+                .map_rect::<PicturePixel, DevicePixel>(backdrop_rect);
+            let Some(wanted_device_rect) = task_device_rect
+                .intersection(&backdrop_device_rect)
+            else {
                 continue;
             };
-            let dest_pic_rect: PictureRect = device_to_current_pic
-                .map_rect::<DevicePixel, PicturePixel>(&device_rect);
-            let dest_scaled_rect = dest_pic_rect.cast_unit() * dest_device_pixel_scale;
-            let dest_origin = dest_scaled_rect.min - dest_content_origin.to_vector();
-            let dest_rect = DeviceRect::from_origin_and_size(
-                dest_origin,
-                dest_scaled_rect.size(),
-            ).round().to_i32();
-            if dest_rect.is_empty() {
-                continue;
-            }
+            let mut backdrop_sources = self.get_visible_backdrop_sources(
+                current_slice_index,
+                wanted_device_rect,
+            );
+            backdrop_sources.sort_by_key(|intersection| intersection.source.slice_index);
 
-            if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
-                println!(
-                    "BF_DEP resolve={} current_slice={} source_slice={} producer={:?} wanted={:?} source={:?} intersection={:?}",
-                    resolve_task_id.index,
-                    current_slice_index,
-                    source.slice_index,
-                    source.producer_task_id.map(|task_id| task_id.index),
-                    wanted_device_rect,
-                    source.device_rect,
-                    device_rect,
-                );
-            }
+            for intersection in backdrop_sources {
+                let source = intersection.source;
+                let device_rect = intersection.device_rect.to_f32();
+                let dest_pic_rect: PictureRect = device_to_current_pic
+                    .map_rect::<DevicePixel, PicturePixel>(&device_rect);
+                let dest_scaled_rect = dest_pic_rect.cast_unit() * dest_device_pixel_scale;
+                let dest_origin = dest_scaled_rect.min - dest_content_origin.to_vector();
+                let dest_rect = DeviceRect::from_origin_and_size(
+                    dest_origin,
+                    dest_scaled_rect.size(),
+                ).round().to_i32();
+                if dest_rect.is_empty() {
+                    continue;
+                }
 
-            if let Some(producer_task_id) = source.producer_task_id {
-                rg_builder.add_dependency(resolve_task_id, producer_task_id);
-            }
-
-            match source.kind {
-                BackdropSourceKind::Texture(texture_source) => {
-                    if let Some(src_rect) = Self::map_device_rect_between(
-                        device_rect,
+                if std::env::var_os("WR_BACKDROP_DEBUG").is_some() {
+                    println!(
+                        "BF_DEP resolve={} current_slice={} source_slice={} producer={:?} wanted={:?} source={:?} intersection={:?}",
+                        resolve_task_id.index,
+                        current_slice_index,
+                        source.slice_index,
+                        source.producer_task_id.map(|task_id| task_id.index),
+                        wanted_device_rect,
                         source.device_rect,
-                        source.surface_rect,
-                    ) {
-                        sources.push(ResolveSource::Texture {
-                            source: texture_source,
-                            src_rect,
+                        device_rect,
+                    );
+                }
+
+                if let Some(producer_task_id) = source.producer_task_id {
+                    if producer_task_ids.insert(producer_task_id) {
+                        rg_builder.add_dependency(resolve_task_id, producer_task_id);
+                    }
+                }
+
+                match source.kind {
+                    BackdropSourceKind::Texture(texture_source) => {
+                        if let Some(src_rect) = Self::map_device_rect_between(
+                            device_rect,
+                            source.device_rect,
+                            source.surface_rect,
+                        ) {
+                            sources.push(ResolveSource::Texture {
+                                source: texture_source,
+                                src_rect,
+                                dest_rect,
+                            });
+                        }
+                    }
+                    BackdropSourceKind::Color(color) => {
+                        sources.push(ResolveSource::Color {
+                            color,
                             dest_rect,
                         });
                     }
-                }
-                BackdropSourceKind::Color(color) => {
-                    sources.push(ResolveSource::Color {
-                        color,
-                        dest_rect,
-                    });
                 }
             }
         }
@@ -1605,6 +1692,7 @@ impl SurfaceBuilder {
                         //  (d) Make the sub-graph output an input dependency of the new task(s).
 
                         let mut cross_slice_context = None;
+                        let mut cross_slice_backdrop_rects = FastHashMap::default();
 
                         match self.builder_stack.last_mut().unwrap().kind {
                             CommandBufferBuilderKind::Tiled { ref mut tiles } => {
@@ -1646,6 +1734,10 @@ impl SurfaceBuilder {
 
                                     match parent_location {
                                         RenderTaskLocation::Unallocated { .. } | RenderTaskLocation::Existing { .. } => {
+                                            cross_slice_backdrop_rects
+                                                .entry(parent_task_id)
+                                                .or_insert_with(Vec::new)
+                                                .extend_from_slice(&descriptor.backdrop_rects);
                                             let child_output_task_id = child_root_task_id
                                                 .unwrap_or(child_render_task_id);
 
@@ -1834,6 +1926,9 @@ impl SurfaceBuilder {
                                 let sources = self.get_cross_slice_resolve_sources(
                                     slice_index,
                                     pic_to_device,
+                                    cross_slice_backdrop_rects
+                                        .get(task_id)
+                                        .expect("missing backdrop rect for tiled task"),
                                     *task_id,
                                     rg_builder,
                                 );
