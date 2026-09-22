@@ -199,12 +199,7 @@ class _Mochitest(Layer):
             f"--activity={activity}",
         ]
 
-        if not ON_TRY:
-            os.environ["MOZ_HOST_BIN"] = self.mach_cmd.bindir
-            mochitest_android_args.extend([
-                f"--setenv=MOZ_HOST_BIN={os.environ['MOZ_HOST_BIN']}",
-            ])
-        else:
+        if ON_TRY:
             os.environ["MOZ_HOST_BIN"] = str(
                 Path(os.getenv("MOZ_FETCHES_DIR"), "hostutils")
             )

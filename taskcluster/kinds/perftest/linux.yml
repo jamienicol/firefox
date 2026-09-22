@@ -120,21 +120,15 @@ scroll:
         cron: false
     run-on-projects: [trunk-only]
     perftest:
-        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
-    perftest-extra-options:
-        by-perftest:
-            backdrop-filter-scroll:
-                - --browsertime-extra-options
-                - browsertime.page=backdrop-filter-scroll
+        - [backdrop-filter-scroll, gfx/tests/performance/test_backdrop_filter_scroll.html]
     run:
         command: >-
             mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
             cd $MOZ_FETCHES_DIR &&
             python3 python/mozperftest/mozperftest/runner.py
             {perftest_testname}
-            --browsertime-binary ${MOZ_FETCHES_DIR}/firefox/firefox-bin
-            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
-            --flavor desktop-browser
+            --mochitest-binary ${MOZ_FETCHES_DIR}/firefox/firefox-bin
+            --flavor mochitest
             --output $MOZ_FETCHES_DIR/../artifacts
 
 browsertime-sample:

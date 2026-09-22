@@ -448,7 +448,6 @@ ARCHIVE_FILES = {
         {"source": buildconfig.topsrcdir, "pattern": "third_party/python/**"},
         {"source": buildconfig.topsrcdir, "pattern": "tools/lint/eslint/**"},
         {"source": buildconfig.topsrcdir, "pattern": "**/perftest_*.js"},
-        {"source": buildconfig.topsrcdir, "pattern": "**/perftest_*.html"},
         {"source": buildconfig.topsrcdir, "pattern": "**/hooks_*py"},
         {"source": buildconfig.topsrcdir, "pattern": "build/autoconf/**"},
         {"source": buildconfig.topsrcdir, "pattern": "build/moz.configure/**"},

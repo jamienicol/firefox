@@ -35,12 +35,7 @@ scroll:
         cron: false
     run-on-projects: [trunk-only]
     perftest:
-        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
-    perftest-extra-options:
-        by-perftest:
-            backdrop-filter-scroll:
-                - --browsertime-extra-options
-                - browsertime.page=backdrop-filter-scroll
+        - [backdrop-filter-scroll, gfx/tests/performance/test_backdrop_filter_scroll.html]
     run:
         command: >-
             mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
@@ -48,10 +43,8 @@ scroll:
             python3 -m venv . &&
             bin/python3 python/mozperftest/mozperftest/runner.py
             {perftest_testname}
-            --browsertime-binary ${MOZ_FETCHES_DIR}/target.dmg
-            --browsertime-node ${MOZ_FETCHES_DIR}/node/bin/node
-            --flavor desktop-browser
-            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
+            --mochitest-binary ${MOZ_FETCHES_DIR}/target.dmg
+            --flavor mochitest
             --output $MOZ_FETCHES_DIR/../artifacts
 
 try-xpcshell:

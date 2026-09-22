@@ -340,7 +340,10 @@ def test_build_test_list_on_try_mapping():
     # A source directory can hold tests of several mochitest flavors, which
     # land in different subdirectories of the test package.
     with tempfile.TemporaryDirectory() as tmp:
-        source_paths = ["dom/media/test/browser_perf.js"]
+        source_paths = [
+            "dom/media/test/browser_perf.js",
+            "gfx/tests/performance/test_backdrop_filter_scroll.html",
+        ]
         packaged_paths = [
             Path(
                 tmp,
@@ -350,6 +353,15 @@ def test_build_test_list_on_try_mapping():
                 "media",
                 "test",
                 "browser_perf.js",
+            ),
+            Path(
+                tmp,
+                "mochitest",
+                "tests",
+                "gfx",
+                "tests",
+                "performance",
+                "test_backdrop_filter_scroll.html",
             ),
         ]
         for packaged in packaged_paths:

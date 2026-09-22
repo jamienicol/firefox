@@ -1,4 +1,14 @@
 [DEFAULT]
-support-files = ["perftest_backdrop_filter_scroll.html"]
+prefs = [
+  "apz.paint_skipping.enabled=false",
+  "docshell.event_starvation_delay_hint=1",
+  "dom.send_after_paint_to_content=true",
+  "layout.css.scroll-behavior.same-physics-as-user-input=false",
+  "layout.css.scroll-snap.spring-constant='10'",
+  "layout.frame_rate=0",
+  "toolkit.framesRecording.bufferSize=10000",
+]
+support-files = ["scroll_test.js"]
 
-["perftest_scroll.js"]
+["test_backdrop_filter_scroll.html"]
+disabled = "This test is only run as a performance test"

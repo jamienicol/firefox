@@ -121,6 +121,30 @@ def test_mochitest_android_metrics(*mocked):
     assert results[0]["values"] == [0]
 
 
+@mock.patch("mozperftest.test.mochitest.ON_TRY", new=False)
+def test_mochitest_android_args_preserve_local_host_bin():
+    mach_cmd, metadata, env = running_env(
+        tests=[str(EXAMPLE_MOCHITEST_TEST)],
+        android=True,
+        android_activity="GeckoViewActivity",
+    )
+    metadata.binary = "org.mozilla.geckoview_example"
+    mochitest = env.layers[TEST].get_layer("mochitest")
+
+    try:
+        with mock.patch.dict(os.environ, {"MOZ_HOST_BIN": "host-utils"}):
+            args = mochitest._setup_mochitest_android_args(metadata)
+            assert os.environ["MOZ_HOST_BIN"] == "host-utils"
+    finally:
+        shutil.rmtree(mach_cmd._mach_context.state_dir)
+
+    assert args == [
+        "--android",
+        "--app=org.mozilla.geckoview_example",
+        "--activity=GeckoViewActivity",
+    ]
+
+
 @pytest.mark.parametrize(
     "multimetrics_output",
     [

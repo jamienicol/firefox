@@ -4,6 +4,9 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Backdrop filter scroll performance test</title>
+    <script src="/tests/SimpleTest/SimpleTest.js"></script>
+    <script src="/tests/SimpleTest/ChromeTask.js"></script>
+    <link rel="stylesheet" href="/tests/SimpleTest/test.css" />
     <style>
       h1,
       p {
@@ -145,6 +148,32 @@
     <script>
       "use strict";
 
+      var perfMetadata = {
+        owner: "Graphics Team",
+        name: "Backdrop Filter Scroll",
+        description:
+          "Measure presented frame intervals while scrolling a page with many backdrop filters.",
+        options: {
+          default: {
+            mochitest_extra_args: ["repeat=9"],
+            perfherder: true,
+            perfherder_metrics: [
+              {
+                name: "mean_presented_frame_interval",
+                unit: "ms",
+                shouldAlert: true,
+                lowerIsBetter: true,
+              },
+            ],
+            manifest: "perftest.toml",
+            manifest_flavor: "plain",
+          },
+        },
+        supportedBrowsers: ["Firefox", "Geckoview_example"],
+        supportedPlatforms: ["Desktop", "Android"],
+        tags: ["gfx", "scrolling", "backdrop-filter"],
+      };
+
       const names = [
         ["Alice Martin", "@alice"],
         ["Bob Chen", "@bobchen"],
@@ -169,24 +198,27 @@
         "The regression was caused by an unexpected display-list invalidation.",
         "Sometimes the best optimization is removing work entirely, but not today.",
       ];
-      const feed = document.querySelector(".feed");
-      const template = document.getElementById("post-template");
-      const maximums = [20, 50, 200];
+      function prepareScrollTest() {
+        const feed = document.querySelector(".feed");
+        const template = document.getElementById("post-template");
+        const maximums = [20, 50, 200];
 
-      for (let i = 0; i < 80; i++) {
-        const [name, handle] = names[i % names.length];
-        const post = template.content.cloneNode(true);
-        const avatar = post.querySelector(".avatar");
-        avatar.classList.add(`avatar-${i % 8}`);
-        avatar.textContent = name[0];
-        post.querySelector(".display-name").textContent = name;
-        post.querySelector(".handle").textContent = handle;
-        post.querySelector(".post-text").textContent = texts[i % texts.length];
-        post.querySelectorAll(".action-count").forEach((count, index) => {
-          count.textContent = (i * 17 + index * 31) % maximums[index];
-        });
-        feed.appendChild(post);
+        for (let i = 0; i < 80; i++) {
+          const [name, handle] = names[i % names.length];
+          const post = template.content.cloneNode(true);
+          const avatar = post.querySelector(".avatar");
+          avatar.classList.add(`avatar-${i % 8}`);
+          avatar.textContent = name[0];
+          post.querySelector(".display-name").textContent = name;
+          post.querySelector(".handle").textContent = handle;
+          post.querySelector(".post-text").textContent = texts[i % texts.length];
+          post.querySelectorAll(".action-count").forEach((count, index) => {
+            count.textContent = (i * 17 + index * 31) % maximums[index];
+          });
+          feed.appendChild(post);
+        }
       }
     </script>
+    <script src="scroll_test.js"></script>
   </body>
 </html>

@@ -1176,28 +1176,27 @@ hw-a55-aarch64-shippable-scroll:
         build:
             - artifact: geckoview_example.apk
               extract: false
+            - artifact: target.common.tests.tar.zst
+            - artifact: target.condprof.tests.tar.zst
+            - artifact: target.mochitest.tests.tar.zst
+        toolchain:
+            - linux64-hostutils
     require-build:
         android-hw-a55-14-0-aarch64-shippable/opt: build-android-aarch64-shippable/opt
     perftest:
-        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
-    perftest-extra-options:
-        by-perftest:
-            backdrop-filter-scroll:
-                - --browsertime-extra-options
-                - browsertime.page=backdrop-filter-scroll
+        - [backdrop-filter-scroll, gfx/tests/performance/test_backdrop_filter_scroll.html]
     run:
         command: >-
             mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
             cd $MOZ_FETCHES_DIR &&
             python3 python/mozperftest/mozperftest/runner.py
             {perftest_testname}
-            --flavor mobile-browser
+            --flavor mochitest
             --app geckoview
             --android
             --android-app-name org.mozilla.geckoview_example
             --android-activity org.mozilla.geckoview_example.GeckoViewActivity
             --android-install-apk $MOZ_FETCHES_DIR/geckoview_example.apk
-            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
             --output $MOZ_FETCHES_DIR/../artifacts
 
 hw-p6-aarch64-shippable-scroll:
@@ -1215,28 +1214,27 @@ hw-p6-aarch64-shippable-scroll:
         build:
             - artifact: geckoview_example.apk
               extract: false
+            - artifact: target.common.tests.tar.zst
+            - artifact: target.condprof.tests.tar.zst
+            - artifact: target.mochitest.tests.tar.zst
+        toolchain:
+            - linux64-hostutils
     require-build:
         android-hw-p6-13-0-aarch64-shippable/opt: build-android-aarch64-shippable/opt
     perftest:
-        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
-    perftest-extra-options:
-        by-perftest:
-            backdrop-filter-scroll:
-                - --browsertime-extra-options
-                - browsertime.page=backdrop-filter-scroll
+        - [backdrop-filter-scroll, gfx/tests/performance/test_backdrop_filter_scroll.html]
     run:
         command: >-
             mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
             cd $MOZ_FETCHES_DIR &&
             python3 python/mozperftest/mozperftest/runner.py
             {perftest_testname}
-            --flavor mobile-browser
+            --flavor mochitest
             --app geckoview
             --android
             --android-app-name org.mozilla.geckoview_example
             --android-activity org.mozilla.geckoview_example.GeckoViewActivity
             --android-install-apk $MOZ_FETCHES_DIR/geckoview_example.apk
-            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
             --output $MOZ_FETCHES_DIR/../artifacts
 
 hw-s24-aarch64-shippable-scroll:
@@ -1254,26 +1252,25 @@ hw-s24-aarch64-shippable-scroll:
         build:
             - artifact: geckoview_example.apk
               extract: false
+            - artifact: target.common.tests.tar.zst
+            - artifact: target.condprof.tests.tar.zst
+            - artifact: target.mochitest.tests.tar.zst
+        toolchain:
+            - linux64-hostutils
     require-build:
         android-hw-s24-14-0-aarch64-shippable/opt: build-android-aarch64-shippable/opt
     perftest:
-        - [backdrop-filter-scroll, gfx/tests/performance/perftest_scroll.js]
-    perftest-extra-options:
-        by-perftest:
-            backdrop-filter-scroll:
-                - --browsertime-extra-options
-                - browsertime.page=backdrop-filter-scroll
+        - [backdrop-filter-scroll, gfx/tests/performance/test_backdrop_filter_scroll.html]
     run:
         command: >-
             mkdir -p $MOZ_FETCHES_DIR/../artifacts &&
             cd $MOZ_FETCHES_DIR &&
             python3 python/mozperftest/mozperftest/runner.py
             {perftest_testname}
-            --flavor mobile-browser
+            --flavor mochitest
             --app geckoview
             --android
             --android-app-name org.mozilla.geckoview_example
             --android-activity org.mozilla.geckoview_example.GeckoViewActivity
             --android-install-apk $MOZ_FETCHES_DIR/geckoview_example.apk
-            --browsertime-geckodriver ${MOZ_FETCHES_DIR}/geckodriver
             --output $MOZ_FETCHES_DIR/../artifacts
