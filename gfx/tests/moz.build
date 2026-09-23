@@ -5,3 +5,4 @@
 MOCHITEST_MANIFESTS += ["mochitest/mochitest.toml"]
 BROWSER_CHROME_MANIFESTS += ["browser/browser.toml"]
 MOCHITEST_CHROME_MANIFESTS += ["chrome/chrome.toml"]
+PERFTESTS_MANIFESTS += ["performance/perftest.toml"]

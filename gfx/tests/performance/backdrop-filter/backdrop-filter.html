@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en" data-fixture-ready="false">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Backdrop filter scrolling performance</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: system-ui, sans-serif;
+        background: #101820;
+        color: #e8edf2;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: repeating-linear-gradient(
+          135deg,
+          #101820 0,
+          #101820 24px,
+          #17232e 24px,
+          #17232e 48px
+        );
+      }
+
+      body > header {
+        position: fixed;
+        z-index: 1;
+        inset-block-start: 0;
+        inset-inline: 0;
+        min-height: 56px;
+        display: flex;
+        align-items: center;
+        padding-inline: 16px;
+        border-block-end: 1px solid rgb(255 255 255 / 12%);
+        background: rgb(16 24 32 / 72%);
+        backdrop-filter: blur(10px) saturate(180%) contrast(75%) brightness(70%);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .feed {
+        max-width: 680px;
+        margin: 56px auto 0;
+        border-inline: 1px solid rgb(255 255 255 / 10%);
+        background: rgb(16 24 32 / 60%);
+      }
+
+      .post {
+        display: flex;
+        gap: 12px;
+        padding: 14px 16px;
+        border-block-end: 1px solid rgb(255 255 255 / 12%);
+      }
+
+      .post:nth-child(even) {
+        background: rgb(255 255 255 / 3%);
+      }
+
+      .avatar {
+        flex: none;
+        width: 42px;
+        height: 42px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: hsl(var(--hue) 62% 48%);
+        color: white;
+        font-weight: 700;
+      }
+
+      .avatar-0 { background: #397fc3; }
+      .avatar-1 { background: #bf4d5c; }
+      .avatar-2 { background: #369b91; }
+      .avatar-3 { background: #318ba4; }
+      .avatar-4 { background: #568b6b; }
+      .avatar-5 { background: #9a8241; }
+      .avatar-6 { background: #5b7186; }
+      .avatar-7 { background: #a34d78; }
+
+      .post-content {
+        min-width: 0;
+        flex: 1;
+      }
+
+      .post-heading {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: baseline;
+        margin-block-end: 5px;
+      }
+
+      .post-heading strong {
+        font-size: 15px;
+      }
+
+      .handle {
+        color: #a6b2bd;
+        font-size: 14px;
+      }
+
+      .post p {
+        margin: 0;
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-block-start: 12px;
+      }
+
+      .action {
+        padding: 5px 11px;
+        border: 1px solid rgb(255 255 255 / 12%);
+        border-radius: 999px;
+        background: rgb(255 255 255 / 8%);
+        backdrop-filter: blur(10px) saturate(180%) contrast(75%) brightness(70%);
+        color: #e8edf2;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <header><h1>Backdrop filter scrolling fixture</h1></header>
+    <main class="feed" aria-label="Posts"></main>
+    <script>
+      const names = [
+        ["Alice Martin", "@alice"],
+        ["Bob Chen", "@bobchen"],
+        ["Carol White", "@carolw"],
+        ["David Kim", "@dkim"],
+        ["Eva Torres", "@evat"],
+        ["Frank Lee", "@frankl"],
+        ["Grace Patel", "@gracep"],
+        ["Henry Muller", "@hmuller"],
+      ];
+      const posts = [
+        "A fixed header with blur is a common pattern on long pages.",
+        "This feed keeps its content stable so scroll runs are comparable.",
+        "Backdrop filters can require additional work as the page moves.",
+        "The same sequence of posts is generated for every benchmark run.",
+      ];
+      const feed = document.querySelector(".feed");
+      const fragment = document.createDocumentFragment();
+
+      for (let index = 0; index < 80; index++) {
+        const [name, handle] = names[index % names.length];
+        const article = document.createElement("article");
+        article.className = "post";
+
+        const avatar = document.createElement("span");
+        avatar.className = "avatar";
+        avatar.classList.add(`avatar-${index % 8}`);
+        avatar.setAttribute("aria-hidden", "true");
+        avatar.textContent = name[0];
+
+        const content = document.createElement("div");
+        content.className = "post-content";
+        const heading = document.createElement("header");
+        heading.className = "post-heading";
+        const author = document.createElement("strong");
+        author.textContent = name;
+        const userHandle = document.createElement("span");
+        userHandle.className = "handle";
+        userHandle.textContent = handle;
+        heading.append(author, userHandle);
+
+        const text = document.createElement("p");
+        text.textContent = posts[index % posts.length];
+
+        const actions = document.createElement("div");
+        actions.className = "actions";
+        for (const [label, base] of [["Reply", 20], ["Repost", 50], ["Like", 200]]) {
+          const action = document.createElement("span");
+          action.className = "action";
+          action.textContent = `${label} ${base + (index % 17)}`;
+          actions.append(action);
+        }
+
+        content.append(heading, text, actions);
+        article.append(avatar, content);
+        fragment.append(article);
+      }
+
+      feed.append(fragment);
+      document.documentElement.dataset.fixtureReady = "true";
+    </script>
+  </body>
+</html>
