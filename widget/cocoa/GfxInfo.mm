@@ -534,22 +534,10 @@ nsresult GfxInfo::GetFeatureStatusImpl(
       aFailureId = "FEATURE_UNQUALIFIED_WEBRENDER_MAC_ROSETTA";
       return NS_OK;
     } else if (aFeature == nsIGfxInfo::FEATURE_WEBGL_ANGLE_METAL) {
-      if (mMacOSVersionEx.Compare(GfxVersionEx(12, 0, 0)) < 0) {
-        // ANGLE only supports macOS 12 onwards. Blocked until we restore
-        // support for earlier OS versions. See bug 2053051.
-        *aStatus = nsIGfxInfo::FEATURE_BLOCKED_OS_VERSION;
-        aFailureId = "FEATURE_FAILURE_METAL_ANGLE_MACOS_VERSION";
-      } else {
-        *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
-      }
+      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
       return NS_OK;
     } else if (aFeature == nsIGfxInfo::FEATURE_WEBRENDER_ANGLE_METAL) {
-      if (mMacOSVersionEx.Compare(GfxVersionEx(12, 0, 0)) < 0) {
-        // ANGLE only supports macOS 12 onwards. Blocked until we restore
-        // support for earlier OS versions. See bug 2053051.
-        *aStatus = nsIGfxInfo::FEATURE_BLOCKED_OS_VERSION;
-        aFailureId = "FEATURE_FAILURE_METAL_ANGLE_MACOS_VERSION";
-      } else if (mNumGPUsDetected > 1) {
+      if (mNumGPUsDetected > 1) {
         // Blocked on devices with multiple GPUs until we implement support for
         // GPU switching. See bug 1600178.
         *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
