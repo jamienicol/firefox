@@ -1065,6 +1065,15 @@ impl RenderPass {
             textures_to_invalidate: src.textures_to_invalidate.clone(),
         }
     }
+
+    /// Returns true if this pass does not render or invalidate anything.
+    pub fn is_empty(&self) -> bool {
+        self.alpha.targets.is_empty() &&
+            self.color.targets.is_empty() &&
+            self.texture_cache.is_empty() &&
+            self.picture_cache.is_empty() &&
+            self.textures_to_invalidate.is_empty()
+    }
 }
 
 // Dump an SVG visualization of the render graph for debugging purposes

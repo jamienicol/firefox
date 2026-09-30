@@ -37,6 +37,11 @@ suites:
             webpagetest-firefox: ""
             webpagetest-chrome: ""
 
+    gfx/tests/performance:
+        description: "Performance tests from the 'gfx/tests/performance' folder."
+        tests:
+            backdrop-filter-scroll: ""
+
     browser/base/content/test:
         description: "Performance tests from the 'browser/base/content/test' folder."
         tests:

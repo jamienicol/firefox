@@ -1,6 +1,8 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import statistics
+
 from mozperftest.metrics.notebook.utilities import flat
 
 
@@ -54,3 +56,11 @@ class SingleJsonRetriever:
         Only available in the Perfherder layer.
         """
         return None
+
+
+class SingleJsonMedianRetriever(SingleJsonRetriever):
+    """Same as SingleJsonRetriever, but summarizes each subtest using the
+    median of its replicates rather than their mean."""
+
+    def subtest_summary(self, subtest):
+        return statistics.median(subtest["replicates"])
