@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Backdrop Filter Perf Testcase</title>
+    <style>
+      h1,
+      p {
+        margin: 0;
+      }
+
+      html {
+        scrollbar-width: none;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #15202b;
+        color: #e7e9ea;
+      }
+
+      body > header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 53px;
+        display: flex;
+        align-items: center;
+        padding: 0 16px;
+        backdrop-filter: blur(10px) saturate(180%) contrast(75%) brightness(70%);
+        background: rgba(21, 32, 43, 0.75);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        z-index: 100;
+      }
+
+      body > header h1 {
+        font-size: 20px;
+        font-weight: 700;
+      }
+
+      .feed {
+        margin-top: 53px;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+        border-left: 1px solid #2f3336;
+        border-right: 1px solid #2f3336;
+      }
+
+      .tweet {
+        padding: 12px 16px;
+        border-bottom: 1px solid #2f3336;
+        display: flex;
+        gap: 12px;
+      }
+
+      .avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: grid;
+        place-items: center;
+        color: white;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .avatar-0 {
+        background: #1d9bf0;
+      }
+      .avatar-1 {
+        background: #ff6b6b;
+      }
+      .avatar-2 {
+        background: #4ecdc4;
+      }
+      .avatar-3 {
+        background: #45b7d1;
+      }
+      .avatar-4 {
+        background: #96ceb4;
+      }
+      .avatar-5 {
+        background: #ffeaa7;
+      }
+      .avatar-6 {
+        background: #dfe6e9;
+      }
+      .avatar-7 {
+        background: #fd79a8;
+      }
+
+      .tweet-body {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .tweet-header {
+        display: flex;
+        gap: 6px;
+        align-items: baseline;
+        margin-bottom: 4px;
+      }
+
+      .display-name {
+        font-weight: 700;
+        font-size: 15px;
+      }
+
+      .handle {
+        color: #8b98a5;
+        font-size: 15px;
+      }
+
+      .tweet-text {
+        font-size: 15px;
+        line-height: 1.5;
+      }
+
+      .tweet-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+        color: #8b98a5;
+        font-size: 13px;
+      }
+
+      .tweet-action {
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.05);
+        backdrop-filter: blur(10px) saturate(180%) contrast(75%) brightness(70%);
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>&#x1F98A; Foxtodon</h1>
+    </header>
+
+    <main class="feed">
+      <template id="tweet-template">
+        <article class="tweet">
+          <span class="avatar" aria-hidden="true"></span>
+          <div class="tweet-body">
+            <header class="tweet-header">
+              <span class="display-name"></span>
+              <span class="handle"></span>
+            </header>
+            <p class="tweet-text"></p>
+            <div class="tweet-actions">
+              <span class="tweet-action"
+                >&#128172; <span class="action-count"></span
+              ></span>
+              <span class="tweet-action"
+                >&#128257; <span class="action-count"></span
+              ></span>
+              <span class="tweet-action"
+                >&#9825; <span class="action-count"></span
+              ></span>
+            </div>
+          </div>
+        </article>
+      </template>
+    </main>
+
+    <script>
+      const names = [
+        ["Alice Martin", "@alice"],
+        ["Bob Chen", "@bobchen"],
+        ["Carol White", "@carolw"],
+        ["David Kim", "@dkim"],
+        ["Eva Torres", "@evat"],
+        ["Frank Lee", "@frankl"],
+        ["Grace Patel", "@gracep"],
+        ["Henry Müller", "@hmuller"],
+      ];
+
+      const texts = [
+        "Just pushed a fix for that annoying rendering bug. Took way longer than expected but it's finally done.",
+        "Hot take: most performance problems are actually just doing too much work per frame. Profile first, optimize second.",
+        "The new CSS backdrop-filter spec updates are interesting. Lots of edge cases around stacking contexts.",
+        "Spent the morning reviewing patches. Good stuff landing this week. Excited to see where this goes.",
+        "Anyone else notice how much smoother scrolling feels on sites that avoid compositing traps? Night and day difference.",
+        "Reminder that position: fixed + backdrop-filter is a very common pattern and we should make sure it's fast.",
+        "Working on a new testcase for scroll performance. Lorem ipsum dolor sit amet, consectetur adipiscing elit.",
+        "The tricky part about fixed headers with blur is that every scroll frame needs to re-composite the backdrop.",
+        "Just read an interesting paper on tile-based rendering optimizations. Some ideas might apply here.",
+        "Good morning! Coffee in hand, ready to look at some flame graphs. What could go wrong?",
+        "Fixed a regression introduced last week. The culprit was an unexpected invalidation in the display list builder.",
+        "Sometimes the best optimization is removing the feature entirely. But not today.",
+      ];
+
+      const avatarColorCount = 8;
+
+      const feed = document.querySelector(".feed");
+      const tweetTemplate = document.getElementById("tweet-template");
+
+      for (let i = 0; i < 80; i++) {
+        const [name, handle] = names[i % names.length];
+        const text = texts[i % texts.length];
+
+        const tweet = tweetTemplate.content.cloneNode(true);
+        const avatar = tweet.querySelector(".avatar");
+        avatar.classList.add(`avatar-${i % avatarColorCount}`);
+        avatar.textContent = name[0];
+        tweet.querySelector(".display-name").textContent = name;
+        tweet.querySelector(".handle").textContent = handle;
+        tweet.querySelector(".tweet-text").textContent = text;
+        tweet.querySelectorAll(".action-count").forEach((count, index) => {
+          const maximum = [20, 50, 200][index];
+          count.textContent = (i * 37 + index * 11) % maximum;
+        });
+
+        feed.appendChild(tweet);
+      }
+    </script>
+  </body>
+</html>

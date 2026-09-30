@@ -228,7 +228,11 @@ bool RenderCompositorEGL::Resume() {
     }
     mHandlingNewSurfaceError = false;
 
-    gl::GLContextEGL::Cast(gl())->SetEGLSurfaceOverride(mEGLSurface);
+    const auto& gle = gl::GLContextEGL::Cast(gl());
+    gle->SetEGLSurfaceOverride(mEGLSurface);
+    MakeCurrent();
+    const int interval = gfx::gfxVars::SwapIntervalEGL() ? 1 : 0;
+    gle->mEgl->fSwapInterval(interval);
   } else if (kIsLinux) {
 #ifdef MOZ_X11
     if (widget::GdkIsX11Display()) {

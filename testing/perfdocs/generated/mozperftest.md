@@ -497,6 +497,33 @@ test_queue_write_perf.html
 **Test the performance of Queue.writeBuffer and Queue.writeTexture**
 
 
+## gfx/tests/performance
+
+Performance tests from the 'gfx/tests/performance' folder.
+
+perftest_backdrop_filter_scroll.js
+==================================
+
+:owner: Graphics Team
+:name: backdrop-filter-scroll
+:Default options:
+
+::
+
+ --perfherder
+ --perfherder-transformer SingleJsonMedianRetriever
+ --perfherder-metrics name:frameIntervalMean,unit:ms,lowerIsBetter:True
+ --console-metrics name:frameIntervalMean
+ --browsertime-extra-options firefox.preference=layout.frame_rate:0,firefox.preference=layout.css.s
+croll-behavior.same-physics-as-user-input:false,firefox.preference=gfx
+.swap-interval.egl:false,firefox.preference=toolkit.framesRecording.bu
+fferSize:10000
+
+**Measures frame intervals while smooth scrolling a page using backdrop-filter.**
+
+Loads a page with a fixed header and many small elements using backdrop-filter, then performs a single smooth scroll to the bottom using an underdamped animation, so that it does not slow down at the end. Frame intervals are recorded in the compositor for the whole scroll using nsIDOMWindowUtils.startFrameTimeRecording/stopFrameTimeRecording, similarly to the APZ part of tscrollx. Rendering runs in ASAP mode (layout.frame_rate=0, no EGL swap interval), so results are not limited by the display refresh rate.
+
+
 ## intl/benchmarks/test/xpcshell
 
 Performance tests running through XPCShell for Intl code

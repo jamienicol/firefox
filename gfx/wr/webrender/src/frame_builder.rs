@@ -1443,11 +1443,12 @@ impl Frame {
 
     // Returns true if this frame doesn't alter what is on screen currently.
     pub fn is_nop(&self) -> bool {
-        // If there are no off-screen passes, that implies that there are no
-        // picture cache tiles, and no texture cache tasks being updates. If this
-        // is the case, we can consider the frame a nop (higher level checks
-        // test if a composite is needed due to picture cache surfaces moving
-        // or external surfaces being updated).
-        self.passes.is_empty()
+        // If there are no non-empty off-screen passes, that implies that there
+        // are no picture cache tiles, and no texture cache tasks being updates.
+        // If this is the case, we can consider the frame a nop (higher level
+        // checks test if a composite is needed due to picture cache surfaces
+        // moving or external surfaces being updated). Note that the render task
+        // graph always contains at least one pass, which may be empty.
+        self.passes.iter().all(|pass| pass.is_empty())
     }
 }
