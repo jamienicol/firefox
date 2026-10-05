@@ -983,6 +983,9 @@ DecodeSupportSet PDMFactory::SupportsMimeType(
     if (MP4Decoder::IsHEVC(aMimeType)) {
       return MCSInfo::GetDecodeSupportSet(MediaCodec::HEVC, aSupported);
     }
+    if (aMimeType.EqualsLiteral("video/mp4v-es")) {
+      return MCSInfo::GetDecodeSupportSet(MediaCodec::MPEG4, aSupported);
+    }
   }
 
   if (supports.contains(TrackSupport::DecodeAudio)) {

@@ -63,6 +63,7 @@ static CodecType MediaCodecToCodecType(MediaCodec aCodec) {
       return CodecType::Opus;
     case MediaCodec::Vorbis:
       return CodecType::Vorbis;
+    case MediaCodec::MPEG4:
     case MediaCodec::MP3:
     case MediaCodec::Wave:
     case MediaCodec::SENTINEL:
