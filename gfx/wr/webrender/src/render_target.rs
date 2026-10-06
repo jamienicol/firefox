@@ -576,8 +576,7 @@ impl RenderTarget {
                 }
             }
             RenderTaskKind::Image(..) |
-            RenderTaskKind::Cached(..) |
-            RenderTaskKind::TileComposite(..) => {
+            RenderTaskKind::Cached(..) => {
                 panic!("Should not be added to color target!");
             }
             RenderTaskKind::Readback(..) => {}
@@ -627,10 +626,6 @@ impl RenderTarget {
 pub enum PictureCacheTargetKind {
     Draw {
         alpha_batch_container: AlphaBatchContainer,
-    },
-    Blit {
-        task_id: RenderTaskId,
-        sub_rect_offset: DeviceIntVector2D,
     },
 }
 
