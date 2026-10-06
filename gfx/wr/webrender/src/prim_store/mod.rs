@@ -21,7 +21,7 @@ use crate::render_task_graph::RenderTaskId;
 use crate::resource_cache::ImageProperties;
 use crate::util::Recycler;
 use crate::internal_types::{FastHashSet, LayoutPrimitiveInfo};
-use crate::visibility::{PrimitiveDrawHeader, PrimitiveDrawIndex};
+use crate::visibility::{BackdropCaptureRegion, PrimitiveDrawHeader, PrimitiveDrawIndex};
 use std::ops;
 
 pub mod backdrop;
@@ -482,6 +482,10 @@ pub struct PrimitiveFrameScratch {
     /// visit ends.
     pending_picture_draws: Vec<PrimitiveDrawIndex>,
 
+    /// The capture region of every backdrop-filter chain reachable this frame,
+    /// found before the visibility pass.
+    pub backdrop_captures: Vec<BackdropCaptureRegion>,
+
     /// Per-frame scratch for Picture primitives. Holds the picture's
     /// primary/secondary render task ids and any per-composite-mode
     /// extra GPU buffer addresses. Indexed by `scratch_handle` on
@@ -524,6 +528,7 @@ impl Default for PrimitiveFrameScratch {
             picture_draws: Vec::new(),
             picture_draw_ranges: Vec::new(),
             pending_picture_draws: Vec::new(),
+            backdrop_captures: Vec::new(),
             pictures: storage::Storage::new(0),
             text_runs: storage::Storage::new(0),
             glyph_keys: GlyphKeyStorage::new(0),
@@ -623,6 +628,7 @@ impl PrimitiveFrameScratch {
         recycler.recycle_vec(&mut self.draws);
         recycler.recycle_vec(&mut self.picture_draws);
         recycler.recycle_vec(&mut self.picture_draw_ranges);
+        recycler.recycle_vec(&mut self.backdrop_captures);
         self.pictures.recycle(recycler);
         self.text_runs.recycle(recycler);
         self.glyph_keys.recycle(recycler);

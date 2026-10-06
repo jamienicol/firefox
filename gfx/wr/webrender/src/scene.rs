@@ -307,6 +307,9 @@ pub struct BuiltScene {
     pub hit_testing_scene: Arc<HitTestingScene>,
     pub tile_cache_config: TileCacheConfig,
     pub snapshot_pictures: Vec<PictureIndex>,
+    /// The outermost picture (`IntermediateSurface`) of each backdrop-filter
+    /// chain in the scene.
+    pub backdrop_chains: Vec<PictureIndex>,
     pub tile_cache_pictures: Vec<PictureIndex>,
     pub picture_graph: PictureGraph,
     pub num_plane_splitters: usize,
@@ -332,6 +335,7 @@ impl BuiltScene {
             hit_testing_scene: Arc::new(HitTestingScene::new(&HitTestingSceneStats::empty())),
             tile_cache_config: TileCacheConfig::new(0),
             snapshot_pictures: Vec::new(),
+            backdrop_chains: Vec::new(),
             tile_cache_pictures: Vec::new(),
             picture_graph: PictureGraph::new(),
             num_plane_splitters: 0,
