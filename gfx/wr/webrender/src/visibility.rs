@@ -29,7 +29,7 @@
 //! main reason visibility is a separate pass.
 //!
 
-use api::DebugFlags;
+use api::{ColorF, DebugFlags};
 use api::units::*;
 use crate::clip::ClipStore;
 use crate::composite::CompositeState;
@@ -43,7 +43,8 @@ use crate::frame_builder::{FrameBuilderConfig, FrameBuildingContext};
 use crate::picture::ClusterFlags;
 use crate::picture_composite_mode::PictureCompositeMode;
 use crate::surface::SurfaceInfo;
-use crate::tile_cache::TileCacheInstance;
+use crate::tile_cache::{SliceId, TileCacheInstance};
+use crate::internal_types::FastHashMap;
 use crate::picture::{PictureFlags, PictureInstance, PictureScratch, RasterConfig};
 use crate::picture_graph::PictureGraph;
 use smallvec::SmallVec;
@@ -55,7 +56,8 @@ use crate::prim_store::{PrimitiveStore, PrimitiveInstance, PrimitiveInstanceInde
 use crate::prim_store::storage;
 use crate::prim_store::text_run::TextRunScratch;
 use crate::render_backend::{DataStores, ScratchBuffer};
-use crate::render_task_graph::RenderTaskGraphBuilder;
+use crate::command_buffer::CommandBufferIndex;
+use crate::render_task_graph::{RenderTaskGraphBuilder, RenderTaskId};
 use crate::resource_cache::ResourceCache;
 use crate::util::MaxRect;
 use crate::scene::SceneProperties;
@@ -262,6 +264,25 @@ pub struct PrimitiveDrawHeader {
     /// pass (snapping `PrimTemplateCommonData.prim_rect` against the
     /// surface raster node) before any visibility / prepare consumer reads it.
     pub snapped_pattern_rect: LayoutRect,
+
+    /// The backdrop-filter captures this primitive is behind, as a range of
+    /// `PrimitiveFrameScratch::draw_backdrop_captures`. Its commands are
+    /// emitted into each of their surfaces as well.
+    pub backdrop_captures: BackdropCaptureRange,
+}
+
+/// A range of `PrimitiveFrameScratch::draw_backdrop_captures`.
+#[derive(Debug, Copy, Clone, Default)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+pub struct BackdropCaptureRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl BackdropCaptureRange {
+    pub fn is_empty(&self) -> bool {
+        self.start == self.end
+    }
 }
 
 impl PrimitiveDrawHeader {
@@ -277,6 +298,7 @@ impl PrimitiveDrawHeader {
             kind_scratch: KindScratchHandle::None,
             compositor_surface_kind: CompositorSurfaceKind::Blit,
             snapped_pattern_rect: LayoutRect::zero(),
+            backdrop_captures: BackdropCaptureRange::default(),
         }
     }
 
@@ -297,6 +319,9 @@ impl PrimitiveDrawHeader {
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 pub struct BackdropCaptureRegion {
+    /// The outermost picture of the backdrop-filter chain, which
+    /// `BackdropRender` refers to.
+    pub chain_pic_index: PictureIndex,
     /// The picture holding the `BackdropCapture` primitive. Its surface is the
     /// one the backdrop is captured into.
     pub capture_pic_index: PictureIndex,
@@ -312,6 +337,18 @@ pub struct BackdropCaptureRegion {
     /// output: the capture's rect, grown by whatever the chain's filters sample
     /// outside of their output (drop shadow offsets and blur).
     pub region: PictureRect,
+    /// The color a picture cache slice clears its tiles to, if the backdrop
+    /// root is the slice itself. Part of what is painted behind the element,
+    /// but not drawn by any primitive.
+    pub root_background_color: Option<ColorF>,
+    /// The command buffer the capture surface draws into, created when the
+    /// first primitive behind the element is prepared. Each such primitive is
+    /// prepared once, for the backdrop root, and its commands are emitted into
+    /// this buffer as well as the root's.
+    pub cmd_buffer_index: Option<CommandBufferIndex>,
+    /// The render tasks the primitives behind the element depend on, which the
+    /// capture surface's task has to depend on too.
+    pub dependencies: Vec<RenderTaskId>,
 }
 
 /// Find the capture region of every backdrop-filter chain reachable this frame.
@@ -322,6 +359,7 @@ pub fn build_backdrop_capture_regions(
     picture_graph: &PictureGraph,
     surfaces: &[SurfaceInfo],
     prim_instances: &[PrimitiveInstance],
+    tile_caches: &FastHashMap<SliceId, Box<TileCacheInstance>>,
     frame_context: &FrameBuildingContext,
     regions: &mut Vec<BackdropCaptureRegion>,
 ) {
@@ -376,6 +414,15 @@ pub fn build_backdrop_capture_regions(
             "bug: backdrop chain is not in its root's space",
         );
 
+        // The draws of the primitives behind the element are reused for the
+        // capture surface, which `assign_surface` makes rasterize like the
+        // root's for that.
+        debug_assert!(
+            capture_surface.raster_spatial_node_index == root_surface.raster_spatial_node_index &&
+                capture_surface.device_pixel_scale == root_surface.device_pixel_scale,
+            "bug: backdrop capture doesn't rasterize like its root",
+        );
+
         let root_is_tile_cache = matches!(
             pictures[root_pic_index.0 as usize].raster_config,
             Some(RasterConfig { composite_mode: PictureCompositeMode::TileCache { .. }, .. })
@@ -416,12 +463,23 @@ pub fn build_backdrop_capture_regions(
             }
         }
 
+        let root_background_color = match pictures[root_pic_index.0 as usize].raster_config {
+            Some(RasterConfig { composite_mode: PictureCompositeMode::TileCache { slice_id }, .. }) => {
+                tile_caches[&slice_id].background_color
+            }
+            _ => None,
+        };
+
         regions.push(BackdropCaptureRegion {
+            chain_pic_index,
             capture_pic_index,
             root_pic_index,
             root_surface_index,
             capture_instance_index,
             region,
+            root_background_color,
+            cmd_buffer_index: None,
+            dependencies: Vec::new(),
         });
     }
 }
@@ -719,16 +777,22 @@ pub fn update_prim_visibility(
             draw.clip_chain = clip_chain;
 
             if paints_into_parent && !frame_state.active_backdrop_captures.is_empty() {
-                let captures = &frame_state.scratch.primitive.frame.backdrop_captures;
-                let is_capture_candidate = frame_state.active_backdrop_captures
-                    .iter()
-                    .map(|&index| &captures[index as usize])
-                    .any(|capture| {
-                        debug_assert_eq!(capture.root_surface_index, surface_index);
-                        (prim_instance_index as u32) < capture.capture_instance_index.0 &&
-                            capture.region.intersects(&clip_chain.pic_coverage_rect)
-                    });
-                if is_capture_candidate {
+                let frame_scratch = &mut frame_state.scratch.primitive.frame;
+                let start = frame_scratch.draw_backdrop_captures.len() as u32;
+
+                for &index in &frame_state.active_backdrop_captures {
+                    let capture = &frame_scratch.backdrop_captures[index as usize];
+                    debug_assert_eq!(capture.root_surface_index, surface_index);
+
+                    if (prim_instance_index as u32) < capture.capture_instance_index.0 &&
+                        capture.region.intersects(&clip_chain.pic_coverage_rect) {
+                        frame_scratch.draw_backdrop_captures.push(index);
+                    }
+                }
+
+                let end = frame_scratch.draw_backdrop_captures.len() as u32;
+                draw.backdrop_captures = BackdropCaptureRange { start, end };
+                if start != end {
                     frame_state.profile.add(profiler::VIS_BACKDROP_CAPTURE_CANDIDATES, 1);
                 }
             }

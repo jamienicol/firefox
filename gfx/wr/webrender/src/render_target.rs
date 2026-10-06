@@ -257,7 +257,9 @@ impl RenderTarget {
                 RenderTaskKind::Picture(ref pic_task) => {
                     let target_rect = task.get_target_rect();
 
-                    let scissor_rect = if pic_task.can_merge {
+                    let scissor_rect = if pic_task.scissor_to_content_size {
+                        Some(DeviceIntRect::from_origin_and_size(target_rect.min, pic_task.content_size))
+                    } else if pic_task.can_merge {
                         None
                     } else {
                         Some(target_rect)
@@ -270,6 +272,13 @@ impl RenderTarget {
                         self.clears.push((target_rect, clear_color));
                     } else if self.cached {
                         self.clears.push((target_rect, ColorF::TRANSPARENT));
+                    }
+                    if let Some(color) = pic_task.content_clear_color {
+                        let content_rect = DeviceIntRect::from_origin_and_size(
+                            target_rect.min,
+                            pic_task.content_size,
+                        );
+                        self.clears.push((content_rect, color));
                     }
 
                     // TODO(gw): The type names of AlphaBatchBuilder and BatchBuilder

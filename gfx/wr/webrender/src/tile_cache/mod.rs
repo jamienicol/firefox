@@ -2612,11 +2612,32 @@ impl TileCacheInstance {
                         }
                     }
 
+                    // A backdrop drawn by its own primitives depends on everything
+                    // in the region its filters sample, not just what's under the
+                    // element. Invalidating that whole region also keeps any
+                    // surface behind the element from being clipped to a part of it.
+                    let collected_region = scratch.frame.backdrop_captures
+                        .iter()
+                        .find(|capture| {
+                            capture.chain_pic_index == pic_index &&
+                                capture.root_surface_index == self.surface_index
+                        })
+                        .map(|capture| capture.region);
+
+                    let (dirty_test_rect, dirty_test_p0, dirty_test_p1) = match collected_region {
+                        Some(region) => {
+                            let rect = region.union(&pic_coverage_rect);
+                            let (p0, p1) = self.get_tile_coords_for_rect(&rect);
+                            (rect, p0, p1)
+                        }
+                        None => (pic_coverage_rect, p0, p1),
+                    };
+
                     // For backdrop-filter, we need to check if any of the dirty rects
                     // in tiles that are affected by the filter primitive are dirty.
                     self.deferred_dirty_tests.push(DeferredDirtyTest {
-                        tile_rect: TileRect::new(p0, p1),
-                        prim_rect: pic_coverage_rect,
+                        tile_rect: TileRect::new(dirty_test_p0, dirty_test_p1),
+                        prim_rect: dirty_test_rect,
                     });
                 }
             }

@@ -507,6 +507,10 @@ pub struct CommandBufferBuilder {
     /// as a resolve source for the input from the parent surface.
     pub resolve_source: Option<RenderTaskId>,
 
+    /// If this surface builds a sub-graph whose backdrop is drawn into its
+    /// capture surface rather than copied in by a resolve.
+    pub collected_backdrop: bool,
+
     /// List of render tasks that depend on the task that will be created for this builder.
     pub extra_dependencies: Vec<RenderTaskId>,
 }
@@ -517,6 +521,7 @@ impl CommandBufferBuilder {
             kind: CommandBufferBuilderKind::Invalid,
             establishes_sub_graph: false,
             resolve_source: None,
+            collected_backdrop: false,
             extra_dependencies: Vec::new(),
         }
     }
@@ -531,6 +536,7 @@ impl CommandBufferBuilder {
             },
             establishes_sub_graph: false,
             resolve_source: None,
+            collected_backdrop: false,
             extra_dependencies: Vec::new(),
         }
     }
@@ -550,6 +556,7 @@ impl CommandBufferBuilder {
             },
             establishes_sub_graph,
             resolve_source: None,
+            collected_backdrop: false,
             extra_dependencies: Vec::new(),
         }
     }

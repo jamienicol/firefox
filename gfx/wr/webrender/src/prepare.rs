@@ -191,6 +191,22 @@ fn prepare_primitives(
             draw,
             &mut cmd_buffer_targets,
         ) {
+            // A primitive behind a backdrop-filter is prepared once, and its
+            // commands go to the filter's capture surface too, which rasterizes
+            // like this one. A pass-through picture emits nothing itself.
+            let has_captures = !draw.backdrop_captures.is_empty() &&
+                !matches!(draw.state, DrawState::PassThrough);
+            let captures = if has_captures {
+                frame_state.surface_builder.begin_capture_dependencies();
+                scratch.frame.add_backdrop_capture_targets(
+                    draw_index,
+                    frame_state.cmd_buffers,
+                    &mut cmd_buffer_targets,
+                )
+            } else {
+                0 .. 0
+            };
+
             let plane_split_anchor = PlaneSplitAnchor::new(
                 spatial_node_index,
                 draw_index,
@@ -214,6 +230,11 @@ fn prepare_primitives(
                 prim_instances,
                 &cmd_buffer_targets,
             );
+
+            if has_captures {
+                let task_ids = frame_state.surface_builder.end_capture_dependencies();
+                scratch.frame.add_backdrop_capture_dependencies(captures, &task_ids);
+            }
 
             frame_state.num_visible_primitives += 1;
             frame_state.num_cmd_targets += cmd_buffer_targets.len() as u32;
@@ -1051,9 +1072,9 @@ fn prepare_prim_for_render(
             return;
         }
         PrimitiveKind::BackdropCapture { .. } => {
-            // Register the owner picture of this backdrop primitive as the
-            // target for resolve of the sub-graph
-            frame_state.surface_builder.register_resolve_source();
+            // The primitives behind the backdrop-filter were drawn into this
+            // surface already.
+            frame_state.surface_builder.register_collected_backdrop();
 
             if frame_context.debug_flags.contains(DebugFlags::HIGHLIGHT_BACKDROP_FILTERS) {
                 if let Some(device_rect) = pic_state.map_pic_to_device.map(&prim_info.clip_chain.pic_coverage_rect) {

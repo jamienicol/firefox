@@ -17,6 +17,7 @@ use glyph_rasterizer::GlyphKey;
 use crate::gpu_types::QuadSegment;
 use crate::intern;
 use crate::picture::{PictureInstance, PictureScratch};
+use crate::command_buffer::{CommandBufferIndex, CommandBufferList};
 use crate::render_task_graph::RenderTaskId;
 use crate::resource_cache::ImageProperties;
 use crate::util::Recycler;
@@ -486,6 +487,11 @@ pub struct PrimitiveFrameScratch {
     /// found before the visibility pass.
     pub backdrop_captures: Vec<BackdropCaptureRegion>,
 
+    /// For each draw behind one or more backdrop-filters, the indices into
+    /// `backdrop_captures` of those captures. A draw's
+    /// `PrimitiveDrawHeader::backdrop_captures` locates its entries.
+    pub draw_backdrop_captures: Vec<u32>,
+
     /// Per-frame scratch for Picture primitives. Holds the picture's
     /// primary/secondary render task ids and any per-composite-mode
     /// extra GPU buffer addresses. Indexed by `scratch_handle` on
@@ -529,6 +535,7 @@ impl Default for PrimitiveFrameScratch {
             picture_draw_ranges: Vec::new(),
             pending_picture_draws: Vec::new(),
             backdrop_captures: Vec::new(),
+            draw_backdrop_captures: Vec::new(),
             pictures: storage::Storage::new(0),
             text_runs: storage::Storage::new(0),
             glyph_keys: GlyphKeyStorage::new(0),
@@ -549,6 +556,7 @@ impl PrimitiveFrameScratch {
         self.picture_draws.clear();
         self.picture_draw_ranges.clear();
         self.picture_draw_ranges.resize(picture_count, 0 .. 0);
+        self.draw_backdrop_captures.clear();
         debug_assert!(self.pending_picture_draws.is_empty());
     }
 
@@ -588,6 +596,55 @@ impl PrimitiveFrameScratch {
         self.pending_picture_draws.push(draw_index);
 
         draw_index
+    }
+
+    /// Add the command buffers of the backdrop-filter captures a draw is behind
+    /// to the targets it is emitted into, creating each capture's buffer on
+    /// first use. Returns the indices into `backdrop_captures` of those
+    /// captures.
+    pub fn add_backdrop_capture_targets(
+        &mut self,
+        draw_index: PrimitiveDrawIndex,
+        cmd_buffers: &mut CommandBufferList,
+        targets: &mut Vec<CommandBufferIndex>,
+    ) -> ops::Range<usize> {
+        let range = self.draws[draw_index.0 as usize].backdrop_captures;
+        for &index in &self.draw_backdrop_captures[range.start as usize .. range.end as usize] {
+            let capture = &mut self.backdrop_captures[index as usize];
+            let cmd_buffer_index = *capture.cmd_buffer_index
+                .get_or_insert_with(|| cmd_buffers.create_cmd_buffer());
+            targets.push(cmd_buffer_index);
+        }
+        range.start as usize .. range.end as usize
+    }
+
+    /// Add the command buffers of the backdrop-filter captures a draw is behind
+    /// to its targets, for a draw that `add_backdrop_capture_targets` already
+    /// created them for when it was prepared.
+    pub fn existing_backdrop_capture_targets(
+        &self,
+        draw_index: PrimitiveDrawIndex,
+        targets: &mut Vec<CommandBufferIndex>,
+    ) {
+        let range = self.draws[draw_index.0 as usize].backdrop_captures;
+        for &index in &self.draw_backdrop_captures[range.start as usize .. range.end as usize] {
+            let cmd_buffer_index = self.backdrop_captures[index as usize].cmd_buffer_index
+                .expect("bug: draw behind a backdrop-filter was not prepared");
+            targets.push(cmd_buffer_index);
+        }
+    }
+
+    /// Make every backdrop-filter capture whose index is in
+    /// `draw_backdrop_captures[captures]` depend on `task_ids`.
+    pub fn add_backdrop_capture_dependencies(
+        &mut self,
+        captures: ops::Range<usize>,
+        task_ids: &[RenderTaskId],
+    ) {
+        for position in captures {
+            let index = self.draw_backdrop_captures[position];
+            self.backdrop_captures[index as usize].dependencies.extend_from_slice(task_ids);
+        }
     }
 
     /// Check that the visibility pass resolved a state for every draw it

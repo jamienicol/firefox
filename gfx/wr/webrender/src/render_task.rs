@@ -221,6 +221,12 @@ pub struct PictureTask {
     pub resolve_op: Option<ResolveOp>,
     pub content_size: DeviceIntSize,
     pub can_use_shared_surface: bool,
+    /// Scissor drawing to `content_size` rather than to the whole task, leaving
+    /// any padding added for a filter clear.
+    pub scissor_to_content_size: bool,
+    /// A color to clear the content area to, after the whole task has been
+    /// cleared to `clear_color`.
+    pub content_clear_color: Option<ColorF>,
 }
 
 impl PictureTask {
@@ -496,6 +502,8 @@ impl RenderTaskKind {
         RenderTaskKind::Picture(PictureTask {
             content_origin,
             can_merge: !needs_scissor_rect,
+            scissor_to_content_size: false,
+            content_clear_color: None,
             surface_spatial_node_index,
             raster_spatial_node_index,
             device_pixel_scale,

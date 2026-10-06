@@ -136,6 +136,7 @@ impl<'a> TestHarness<'a> {
         self.test_redundant_scroll_root();
         self.test_rounded_rect_intersection();
         self.test_promotion_shapes();
+        self.test_backdrop_sampled_margin();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -397,6 +398,18 @@ impl<'a> TestHarness<'a> {
     }
 
     /// Render a YAML file by name (relative to invalidation/), and return the picture cache debug info
+    /// A backdrop-filter whose drop shadow samples content in another tile must
+    /// invalidate its own tile when only that content changes.
+    fn test_backdrop_sampled_margin(&mut self) {
+        self.render_yaml("backdrop_sampled_margin_1");
+        let results = self.render_yaml("backdrop_sampled_margin_2");
+
+        assert!(
+            matches!(results.pc_debug.slice(0).tile(0, 1), TileDebugInfo::Dirty(..)),
+            "Ensure the backdrop's tile is invalidated by a change to content its filter samples",
+        );
+    }
+
     fn render_yaml(
         &mut self,
         filename: &str,
