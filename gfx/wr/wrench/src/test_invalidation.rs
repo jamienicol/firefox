@@ -141,6 +141,7 @@ impl<'a> TestHarness<'a> {
         self.test_backdrop_sampled_margin();
         self.test_backdrop_cross_slice_scroll();
         self.test_backdrop_cross_slice_rounded();
+        self.test_backdrop_cross_slice_compositor_surfaces();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -465,6 +466,30 @@ impl<'a> TestHarness<'a> {
                 "Ensure lower slice content under a backdrop is clipped like the slice at ({}, {}): expected {:?}, got {:?}",
                 x, y, expected, actual,
             );
+        }
+    }
+
+    fn test_backdrop_cross_slice_compositor_surfaces(&mut self) {
+        // An image that would be promoted to an overlay or an underlay in a
+        // slice below a backdrop-filter (an iframe, so a separate primary slice)
+        // must still be drawn into the backdrop, as when it is in one slice.
+        for kind in &["overlay", "underlay"] {
+            for &(x, y) in &[(200, 40), (200, 120)] {
+                let expected = self.render_yaml_path_probe(
+                    &PathBuf::from(format!("invalidation/backdrop_cross_slice_{}_ref.yaml", kind)),
+                    Some((x, y)),
+                ).probe_pixel.unwrap();
+                let actual = self.render_yaml_path_probe(
+                    &PathBuf::from(format!("invalidation/backdrop_cross_slice_{}.yaml", kind)),
+                    Some((x, y)),
+                ).probe_pixel.unwrap();
+
+                assert!(
+                    expected.iter().zip(actual.iter()).all(|(e, a)| (*e as i32 - *a as i32).abs() <= 8),
+                    "Ensure a {} candidate under a backdrop in a lower slice is drawn into it at ({}, {}): expected {:?}, got {:?}",
+                    kind, x, y, expected, actual,
+                );
+            }
         }
     }
 

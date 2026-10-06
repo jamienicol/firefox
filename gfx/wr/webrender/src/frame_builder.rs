@@ -379,6 +379,12 @@ impl FrameBuilder {
         );
 
         let slice_ids = tile_cache_slice_ids(&scene.tile_cache_pictures, &scene.prim_store.pictures);
+        crate::tile_cache::map_backdrop_regions_to_lower_slices(
+            &slice_ids,
+            tile_caches,
+            &scratch.primitive.frame.backdrop_captures,
+            frame_context.spatial_tree,
+        );
 
         // In order to handle picture snapshots consistently we need
         // the visibility and prepare passes to visit them first before

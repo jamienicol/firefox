@@ -875,6 +875,10 @@ pub struct TileCacheInstance {
     /// The parts of this slice that backdrop-filters in slices above sample
     /// this frame, each drawn into a task of its own.
     pub backdrop_sources: Vec<BackdropSource>,
+    /// The areas of this slice that backdrop-filters in slices above it may
+    /// sample this frame, known before visibility. Compositor surfaces aren't
+    /// drawn into a backdrop, so nothing is promoted to one in these areas.
+    pub backdrop_sample_rects: Vec<PictureRect>,
 }
 
 /// A rounded-rect clip a slice is composited with.
@@ -960,7 +964,13 @@ impl TileCacheInstance {
             corners_cache: CornersCache::new(),
             prev_pic_to_root: None,
             backdrop_sources: Vec::new(),
+            backdrop_sample_rects: Vec::new(),
         }
+    }
+
+    /// Whether a backdrop-filter in a slice above may sample `rect`.
+    fn is_sampled_by_backdrop(&self, rect: &PictureRect) -> bool {
+        self.backdrop_sample_rects.iter().any(|sample_rect| sample_rect.intersects(rect))
     }
 
     /// Return the total number of tiles allocated by this tile cache
@@ -1641,6 +1651,9 @@ impl TileCacheInstance {
         if surface_kind != CompositorSurfaceKind::Underlay {
             if self.slice_flags.contains(SliceFlags::IS_ATOMIC) {
                 return Err(SliceAtomic);
+            }
+            if self.is_sampled_by_backdrop(&pic_coverage_rect) {
+                return Err(UnderBackdropFilter);
             }
         }
 
@@ -2566,8 +2579,10 @@ impl TileCacheInstance {
                 // It is for handling cases where underlay is disabled later.
                 let kind = scratch.frame.draw(draw_index).compositor_surface_kind;
                 if kind == CompositorSurfaceKind::Blit ||
-                    kind == CompositorSurfaceKind::Underlay &&
-                    self.slice_flags.contains(SliceFlags::IS_ATOMIC) {
+                    kind == CompositorSurfaceKind::Underlay && (
+                        self.slice_flags.contains(SliceFlags::IS_ATOMIC) ||
+                        self.is_sampled_by_backdrop(&pic_coverage_rect)
+                    ) {
                     prim_info.images.extend(
                         prim_data.kind.yuv_key.iter().map(|key| {
                             ImageDependency {
@@ -3013,7 +3028,11 @@ impl TileCacheInstance {
             surface.used_this_frame
         });
 
-        if !self.underlays.is_empty() && (!self.deferred_dirty_tests.is_empty() || !self.mix_blend_pic_rects.is_empty()) {
+        if !self.underlays.is_empty() && (
+            !self.deferred_dirty_tests.is_empty() ||
+            !self.mix_blend_pic_rects.is_empty() ||
+            !self.backdrop_sample_rects.is_empty()
+        ) {
             let is_yuv_8bit = |desc: &ExternalSurfaceDescriptor| {
                 matches!(
                     desc.dependency,
@@ -3027,7 +3046,8 @@ impl TileCacheInstance {
             let intersects_with_dirty_tests = |desc: &ExternalSurfaceDescriptor| {
                 self.deferred_dirty_tests
                     .iter()
-                    .any(|dirty_test| dirty_test.prim_rect.intersects(&desc.local_rect))
+                    .any(|dirty_test| dirty_test.prim_rect.intersects(&desc.local_rect)) ||
+                    self.is_sampled_by_backdrop(&desc.local_rect)
             };
 
             let intersects_with_mix_blend = |desc: &ExternalSurfaceDescriptor| {
@@ -3336,6 +3356,7 @@ enum SurfacePromotionFailure {
     NotRootTileCache,
     ComplexTransform,
     SliceAtomic,
+    UnderBackdropFilter,
     SizeTooLarge,
 }
 
@@ -3357,6 +3378,7 @@ impl Display for SurfacePromotionFailure {
                 SurfacePromotionFailure::NotRootTileCache => "is not on a root tile cache",
                 SurfacePromotionFailure::ComplexTransform => "has a complex transform",
                 SurfacePromotionFailure::SliceAtomic => "slice is atomic",
+                SurfacePromotionFailure::UnderBackdropFilter => "sampled by a backdrop-filter in a slice above",
                 SurfacePromotionFailure::SizeTooLarge => "surface is too large for compositor",
             }.to_owned()
         )
@@ -3538,6 +3560,39 @@ pub fn update_cross_slice_backdrops(
                 rect,
                 task: None,
             });
+        }
+    }
+}
+
+/// Record on each slice the areas that backdrop-filters in the slices above it
+/// sample, before visibility, so that nothing there is promoted to a compositor
+/// surface, which a backdrop can't draw.
+pub fn map_backdrop_regions_to_lower_slices(
+    slice_ids: &[SliceId],
+    tile_caches: &mut FastHashMap<SliceId, Box<TileCacheInstance>>,
+    captures: &[BackdropCaptureRegion],
+    spatial_tree: &SpatialTree,
+) {
+    let root = spatial_tree.root_reference_frame_index();
+    let pic_to_root: Vec<ScaleOffset> = slice_ids
+        .iter()
+        .map(|slice_id| {
+            let tile_cache = tile_caches.get_mut(slice_id).expect("bug: no tile cache");
+            tile_cache.backdrop_sample_rects.clear();
+            get_relative_scale_offset(tile_cache.spatial_node_index, root, spatial_tree)
+        })
+        .collect();
+
+    for capture in captures {
+        let Some(top) = capture.root_slice.and_then(|id| slice_ids.iter().position(|s| *s == id)) else {
+            continue;
+        };
+        let root_region: LayoutRect = pic_to_root[top].map_rect(&capture.region);
+
+        for lower in 0 .. top {
+            tile_caches.get_mut(&slice_ids[lower]).unwrap()
+                .backdrop_sample_rects
+                .push(pic_to_root[lower].unmap_rect(&root_region));
         }
     }
 }
