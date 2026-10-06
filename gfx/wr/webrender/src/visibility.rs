@@ -341,6 +341,9 @@ pub struct BackdropCaptureRegion {
     /// root is the slice itself. Part of what is painted behind the element,
     /// but not drawn by any primitive.
     pub root_background_color: Option<ColorF>,
+    /// Whether the capture surface was drawn this frame. The `BackdropRender`
+    /// draws nothing otherwise.
+    pub drawn: bool,
     /// The command buffer the capture surface draws into, created when the
     /// first primitive behind the element is prepared. Each such primitive is
     /// prepared once, for the backdrop root, and its commands are emitted into
@@ -454,8 +457,8 @@ pub fn build_backdrop_capture_regions(
                 .get_required_source_rect(surface, region.cast_unit())
                 .cast_unit();
 
-            // The resolve never gives an SVG filter graph more than the
-            // surface's own rect (see `get_surface_rects`).
+            // An SVG filter graph never samples more than the surface's own
+            // rect (see `get_surface_rects`).
             if let PictureCompositeMode::SVGFEGraph(..) = raster_config.composite_mode {
                 region = region
                     .intersection(&surface.unclipped_local_rect)
@@ -478,6 +481,7 @@ pub fn build_backdrop_capture_regions(
             capture_instance_index,
             region,
             root_background_color,
+            drawn: false,
             cmd_buffer_index: None,
             dependencies: Vec::new(),
         });
@@ -726,7 +730,7 @@ pub fn update_prim_visibility(
             let paints_into_parent = match frame_state.prim_instances[prim_instance_index].kind {
                 PrimitiveKind::BackdropCapture { .. } => false,
                 PrimitiveKind::Picture { pic_index, .. } => {
-                    !store.pictures[pic_index.0 as usize].flags.contains(PictureFlags::IS_SUB_GRAPH)
+                    !store.pictures[pic_index.0 as usize].flags.contains(PictureFlags::IS_BACKDROP_CHAIN)
                 }
                 _ => true,
             };
