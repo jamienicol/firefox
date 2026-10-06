@@ -1073,6 +1073,15 @@ name = "cmake"
 version = "0.1.999"
 
 [[package]]
+name = "cobs"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fa961b519f0b462e3a3b4a34b64d119eeaca1d59af726fe450bbba07a9fc0a1"
+dependencies = [
+ "thiserror 2.0.12",
+]
+
+[[package]]
 name = "cocoabind"
 version = "0.1.0"
 dependencies = [
@@ -1303,7 +1312,7 @@ dependencies = [
 [[package]]
 name = "crash-context"
 version = "0.8.0"
-source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=6744feee58804a78730d176cdcc31bb4f3021107#6744feee58804a78730d176cdcc31bb4f3021107"
+source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=23544f4d0b231bcb3c7f78df76964302227992f6#23544f4d0b231bcb3c7f78df76964302227992f6"
 dependencies = [
  "cfg-if",
  "libc",
@@ -4926,7 +4935,7 @@ dependencies = [
 [[package]]
 name = "minidump-writer"
 version = "0.13.0"
-source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=6744feee58804a78730d176cdcc31bb4f3021107#6744feee58804a78730d176cdcc31bb4f3021107"
+source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=23544f4d0b231bcb3c7f78df76964302227992f6#23544f4d0b231bcb3c7f78df76964302227992f6"
 dependencies = [
  "bitflags 2.10.0",
  "byteorder",
@@ -6477,6 +6486,16 @@ name = "portable-atomic-util"
 version = "0.2.999"
 
 [[package]]
+name = "postcard"
+version = "1.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6764c3b5dd454e283a30e6dfe78e9b31096d9e32036b5d1eaac7a6119ccb9a24"
+dependencies = [
+ "cobs",
+ "serde",
+]
+
+[[package]]
 name = "potential_utf"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6568,9 +6587,10 @@ dependencies = [
 [[package]]
 name = "process-backend"
 version = "0.1.0"
-source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=6744feee58804a78730d176cdcc31bb4f3021107#6744feee58804a78730d176cdcc31bb4f3021107"
+source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=23544f4d0b231bcb3c7f78df76964302227992f6#23544f4d0b231bcb3c7f78df76964302227992f6"
 dependencies = [
  "libc",
+ "postcard",
  "process-reader",
  "serde",
  "thiserror 2.0.12",
@@ -6579,7 +6599,7 @@ dependencies = [
 [[package]]
 name = "process-reader"
 version = "0.1.0"
-source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=6744feee58804a78730d176cdcc31bb4f3021107#6744feee58804a78730d176cdcc31bb4f3021107"
+source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=23544f4d0b231bcb3c7f78df76964302227992f6#23544f4d0b231bcb3c7f78df76964302227992f6"
 dependencies = [
  "libc",
  "serde",

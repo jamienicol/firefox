@@ -1773,7 +1773,7 @@ delta = "0.6.1 -> 0.8.0"
 [[audits.crash-context]]
 who = "Chris Martin <marti4d@live.ca>"
 criteria = "safe-to-deploy"
-delta = "0.8.0 -> 0.8.0@git:6744feee58804a78730d176cdcc31bb4f3021107"
+delta = "0.8.0 -> 0.8.0@git:23544f4d0b231bcb3c7f78df76964302227992f6"
 importable = false
 
 [[audits.crc32fast]]
@@ -4773,7 +4773,7 @@ notes = "This crate is mostly maintained by Mozilla staff"
 [[audits.minidump-writer]]
 who = "Chris Martin <marti4d@live.ca>"
 criteria = "safe-to-deploy"
-delta = "0.13.0 -> 0.13.0@git:6744feee58804a78730d176cdcc31bb4f3021107"
+delta = "0.13.0 -> 0.13.0@git:23544f4d0b231bcb3c7f78df76964302227992f6"
 importable = false
 notes = "This crate is mostly maintained by Mozilla staff."
 

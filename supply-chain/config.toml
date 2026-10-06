@@ -43,7 +43,7 @@ notes = "This is the upstream code plus a fix for https://github.com/rust-lang/c
 audit-as-crates-io = true
 notes = "This is upstream plus a warning fix from bug 1823866."
 
-[policy."crash-context:0.8.0@git:6744feee58804a78730d176cdcc31bb4f3021107"]
+[policy."crash-context:0.8.0@git:23544f4d0b231bcb3c7f78df76964302227992f6"]
 audit-as-crates-io = true
 
 [policy.cssparser]
@@ -250,7 +250,7 @@ audit-as-crates-io = false
 [policy.peek-poke-derive]
 audit-as-crates-io = false
 
-[policy."process-backend:0.1.0@git:6744feee58804a78730d176cdcc31bb4f3021107"]
+[policy."process-backend:0.1.0@git:23544f4d0b231bcb3c7f78df76964302227992f6"]
 audit-as-crates-io = false
 notes = """
 This was originally intended to be a minidump-writer internal crate (and thus
@@ -258,7 +258,7 @@ audited as part of minidump-writer), however an author accidentally published
 it publicly (so it is on crates.io now).
 """
 
-[policy."process-reader:0.1.0@git:6744feee58804a78730d176cdcc31bb4f3021107"]
+[policy."process-reader:0.1.0@git:23544f4d0b231bcb3c7f78df76964302227992f6"]
 audit-as-crates-io = false
 
 [policy.pulse]
