@@ -556,6 +556,7 @@ pub enum SurfaceDescriptorKind {
     // Picture cache tiles
     Tiled {
         tiles: FastHashMap<TileKey, SurfaceTileDescriptor>,
+        extra_targets: Vec<(PictureRect, RenderTaskId)>,
     },
     // A single surface (e.g. for an opacity filter)
     Simple {
@@ -588,10 +589,12 @@ impl SurfaceDescriptor {
     // Create a picture cache tiled surface
     pub fn new_tiled(
         tiles: FastHashMap<TileKey, SurfaceTileDescriptor>,
+        extra_targets: Vec<(PictureRect, RenderTaskId)>,
     ) -> Self {
         SurfaceDescriptor {
             kind: SurfaceDescriptorKind::Tiled {
                 tiles,
+                extra_targets,
             },
         }
     }
@@ -649,13 +652,23 @@ impl CommandBufferTargets {
         }
 
         match cb.kind {
-            CommandBufferBuilderKind::Tiled { ref tiles, .. } => {
+            CommandBufferBuilderKind::Tiled { ref tiles, ref extra_targets } => {
                 for (key, desc) in tiles {
                     let task = rg_builder.get_task(desc.current_task_id);
                     match task.kind {
                         RenderTaskKind::Picture(ref info) => {
                             let available_cmd_buffers = &mut self.available_cmd_buffers[key.sub_slice_index.as_usize()];
                             available_cmd_buffers.push((desc.dirty_rect, info.cmd_buffer_index));
+                        }
+                        _ => unreachable!("bug: not a picture"),
+                    }
+                }
+                for (rect, task_id) in extra_targets {
+                    match rg_builder.get_task(*task_id).kind {
+                        RenderTaskKind::Picture(ref info) => {
+                            for available_cmd_buffers in &mut self.available_cmd_buffers {
+                                available_cmd_buffers.push((*rect, info.cmd_buffer_index));
+                            }
                         }
                         _ => unreachable!("bug: not a picture"),
                     }
@@ -752,9 +765,10 @@ impl SurfaceBuilder {
 
         let builder = if let Some(descriptor) = descriptor {
             match descriptor.kind {
-                SurfaceDescriptorKind::Tiled { tiles } => {
+                SurfaceDescriptorKind::Tiled { tiles, extra_targets } => {
                     CommandBufferBuilder::new_tiled(
                         tiles,
+                        extra_targets,
                     )
                 }
                 SurfaceDescriptorKind::Simple { render_task_id, dirty_rect, .. } => {
@@ -792,12 +806,15 @@ impl SurfaceBuilder {
         let builder = self.builder_stack.last().unwrap();
 
         match builder.kind {
-            CommandBufferBuilderKind::Tiled { ref tiles } => {
+            CommandBufferBuilderKind::Tiled { ref tiles, ref extra_targets } => {
                 for (_, descriptor) in tiles {
                     rg_builder.add_dependency(
                         descriptor.current_task_id,
                         child_task_id,
                     );
+                }
+                for (_, task_id) in extra_targets {
+                    rg_builder.add_dependency(*task_id, child_task_id);
                 }
             }
             CommandBufferBuilderKind::Simple { render_task_id, .. } => {
@@ -871,11 +888,17 @@ impl SurfaceBuilder {
                 self.record_capture_dependency(child_root_task_id.unwrap_or(child_task_id));
 
                 match self.builder_stack.last().unwrap().kind {
-                    CommandBufferBuilderKind::Tiled { ref tiles } => {
+                    CommandBufferBuilderKind::Tiled { ref tiles, ref extra_targets } => {
                         // For a tiled render task, add as a dependency to every tile.
                         for (_, descriptor) in tiles {
                             rg_builder.add_dependency(
                                 descriptor.current_task_id,
+                                child_root_task_id.unwrap_or(child_task_id),
+                            );
+                        }
+                        for (_, task_id) in extra_targets {
+                            rg_builder.add_dependency(
+                                *task_id,
                                 child_root_task_id.unwrap_or(child_task_id),
                             );
                         }
@@ -897,13 +920,18 @@ impl SurfaceBuilder {
         // Step through the dependencies for this builder and add them to the finalized
         // render task root(s) for this surface
         match builder.kind {
-            CommandBufferBuilderKind::Tiled { ref tiles } => {
+            CommandBufferBuilderKind::Tiled { ref tiles, ref extra_targets } => {
                 for (_, descriptor) in tiles {
                     for task_id in &builder.extra_dependencies {
                         rg_builder.add_dependency(
                             descriptor.current_task_id,
                             *task_id,
                         );
+                    }
+                }
+                for (_, extra_task_id) in extra_targets {
+                    for task_id in &builder.extra_dependencies {
+                        rg_builder.add_dependency(*extra_task_id, *task_id);
                     }
                 }
             }

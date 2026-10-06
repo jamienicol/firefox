@@ -483,6 +483,10 @@ pub enum CommandBufferBuilderKind {
         //           slightly complicated by the sub_slice_index in the
         //           TileKey structure - could have a 2 level array?
         tiles: FastHashMap<TileKey, SurfaceTileDescriptor>,
+        /// Tasks besides the tiles that this surface's primitives are drawn
+        /// into, each with the rect of the surface it covers. Primitives of
+        /// every sub-slice in the rect are drawn into it.
+        extra_targets: Vec<(PictureRect, RenderTaskId)>,
     },
     Simple {
         render_task_id: RenderTaskId,
@@ -513,10 +517,12 @@ impl CommandBufferBuilder {
     /// Construct a tiled command buffer builder.
     pub fn new_tiled(
         tiles: FastHashMap<TileKey, SurfaceTileDescriptor>,
+        extra_targets: Vec<(PictureRect, RenderTaskId)>,
     ) -> Self {
         CommandBufferBuilder {
             kind: CommandBufferBuilderKind::Tiled {
                 tiles,
+                extra_targets,
             },
             extra_dependencies: Vec::new(),
         }
