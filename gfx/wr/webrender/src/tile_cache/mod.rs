@@ -801,6 +801,10 @@ pub struct TileCacheInstance {
     pub local_clip_rect: PictureRect,
     /// Registered clip in CompositeState for this picture cache
     pub compositor_clip: Option<CompositorClipIndex>,
+    /// The rounded-rect clips `compositor_clip` was built from, in their own
+    /// spatial node's space, for drawing this slice's content elsewhere with
+    /// the clip it is composited with.
+    pub compositor_clip_shapes: Vec<CompositorClipShape>,
     /// The screen rect, transformed to local picture space.
     pub screen_rect_in_pic_space: PictureRect,
     /// The surface index that this tile cache will be drawn into.
@@ -873,6 +877,15 @@ pub struct TileCacheInstance {
     pub backdrop_sources: Vec<BackdropSource>,
 }
 
+/// A rounded-rect clip a slice is composited with.
+#[derive(Debug, Clone)]
+pub struct CompositorClipShape {
+    pub rect: LayoutRect,
+    pub radius: BorderRadius,
+    pub spatial_node_index: SpatialNodeIndex,
+    pub uid: u64,
+}
+
 /// A part of a slice that a backdrop-filter in a slice above it samples.
 pub struct BackdropSource {
     /// The index of the capture in `PrimitiveFrameScratch::backdrop_captures`.
@@ -915,6 +928,7 @@ impl TileCacheInstance {
             local_rect: PictureRect::zero(),
             local_clip_rect: PictureRect::zero(),
             compositor_clip: None,
+            compositor_clip_shapes: Vec::new(),
             screen_rect_in_pic_space: PictureRect::zero(),
             surface_index: SurfaceIndex(0),
             background_color: params.background_color,
@@ -1178,6 +1192,7 @@ impl TileCacheInstance {
             // that are actually off-screen.
             self.local_clip_rect = PictureRect::zero();
             self.compositor_clip = None;
+            self.compositor_clip_shapes.clear();
 
             if let Some(clip_chain) = clip_chain_instance {
                 self.local_clip_rect = clip_chain.pic_coverage_rect;
@@ -1196,6 +1211,13 @@ impl TileCacheInstance {
                             assert_eq!(mode, ClipMode::Clip);
 
                             let radius = clamped_radius(&radius, clip_instance.clip_rect.size());
+
+                            self.compositor_clip_shapes.push(CompositorClipShape {
+                                rect: clip_instance.clip_rect,
+                                radius,
+                                spatial_node_index: clip_instance.spatial_node_index,
+                                uid: clip_instance.handle.uid().get_uid(),
+                            });
 
                             // Map to device space. All shared rounded-rect clips are in the
                             // root coordinate system (is_rcs), so only a 2D axis-aligned

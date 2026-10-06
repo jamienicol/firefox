@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{ColorF, DebugFlags, ExternalScrollId, FontRenderMode, ImageBufferKind, ImageKey, MinimapData};
+use api::{ClipMode, ColorF, DebugFlags, ExternalScrollId, FontRenderMode, ImageBufferKind, ImageKey, MinimapData};
 use crate::pattern::image::ImagePattern;
 use crate::quad::{self, QuadDescriptor, QuadTransformState};
 use crate::quad_clip::QuadClipStack;
@@ -1513,6 +1513,7 @@ fn begin_cross_slice_captures(
                     sources.push((
                         tile_cache.spatial_node_index,
                         tile_cache.local_clip_rect,
+                        tile_cache.compositor_clip_shapes.clone(),
                         task_id,
                         device_rect,
                     ));
@@ -1525,7 +1526,10 @@ fn begin_cross_slice_captures(
 
         let cmd_buffer_index = frame_state.cmd_buffers.create_cmd_buffer();
         frame_state.surface_builder.push_detached();
-        for (spatial_node_index, local_clip_rect, task_id, device_rect) in sources {
+        // Render tasks the quads below create, such as the mask of a slice's
+        // rounded clip, have to be drawn before the capture.
+        frame_state.surface_builder.begin_capture_dependencies();
+        for (spatial_node_index, local_clip_rect, clip_shapes, task_id, device_rect) in sources {
             // Slices share the device pixel scale, and a slice rasterizes in
             // its own spatial node's space.
             let pattern_rect: LayoutRect = (device_rect / device_pixel_scale).cast_unit();
@@ -1550,8 +1554,20 @@ fn begin_cross_slice_captures(
                 .map(|so| so.map_rect(&bounds))
                 .unwrap_or_else(DeviceRect::max_rect);
 
+            // The slice's rounded clip is applied when its tiles are composited,
+            // not to its primitives, so it is applied here too.
             let mut clips = QuadClipStack::new();
-            clips.set_bounds(bounds, coverage_rect, DeviceRect::max_rect(), false);
+            for shape in &clip_shapes {
+                clips.push_rounded_rect(
+                    shape.rect,
+                    shape.radius,
+                    LayoutSideOffsets::zero(),
+                    ClipMode::Clip,
+                    shape.spatial_node_index,
+                    shape.uid,
+                );
+            }
+            clips.set_bounds(bounds, coverage_rect, DeviceRect::max_rect(), !clip_shapes.is_empty());
 
             quad::prepare_quad(
                 &ImagePattern {
@@ -1578,7 +1594,10 @@ fn begin_cross_slice_captures(
 
             scratch.frame.backdrop_captures[capture_index].dependencies.push(task_id);
         }
+        let task_ids = frame_state.surface_builder.end_capture_dependencies();
         frame_state.surface_builder.pop_empty_surface();
-        scratch.frame.backdrop_captures[capture_index].cmd_buffer_index = Some(cmd_buffer_index);
+        let capture = &mut scratch.frame.backdrop_captures[capture_index];
+        capture.dependencies.extend_from_slice(&task_ids);
+        capture.cmd_buffer_index = Some(cmd_buffer_index);
     }
 }

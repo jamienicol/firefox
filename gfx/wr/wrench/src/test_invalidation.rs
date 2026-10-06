@@ -140,6 +140,7 @@ impl<'a> TestHarness<'a> {
         self.test_promotion_shapes();
         self.test_backdrop_sampled_margin();
         self.test_backdrop_cross_slice_scroll();
+        self.test_backdrop_cross_slice_rounded();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -439,6 +440,32 @@ impl<'a> TestHarness<'a> {
             "Ensure masked content under the backdrop is drawn after scrolling, got {:?}",
             (r, g, b),
         );
+    }
+
+    fn test_backdrop_cross_slice_rounded(&mut self) {
+        // Content in a lower slice with a rounded compositor clip (an iframe in
+        // a rounded root-level stacking context, like browser content under
+        // chrome with rounded corners), under a backdrop-filter. It must look as
+        // it does when everything is in one slice: clipped at the corner, and
+        // visible through the backdrop.
+        for &(x, y) in &[(44, 4), (200, 40)] {
+            let expected = self.render_yaml_path_probe(
+                &PathBuf::from("invalidation/backdrop_cross_slice_rounded_ref.yaml"),
+                Some((x, y)),
+            ).probe_pixel.unwrap();
+            let results = self.render_yaml_path_probe(
+                &PathBuf::from("invalidation/backdrop_cross_slice_rounded.yaml"),
+                Some((x, y)),
+            );
+            let actual = results.probe_pixel.unwrap();
+
+            assert!(results.pc_debug.slices.len() > 2, "Ensure the iframe content is in a slice of its own");
+            assert!(
+                expected.iter().zip(actual.iter()).all(|(e, a)| (*e as i32 - *a as i32).abs() <= 8),
+                "Ensure lower slice content under a backdrop is clipped like the slice at ({}, {}): expected {:?}, got {:?}",
+                x, y, expected, actual,
+            );
+        }
     }
 
     fn render_yaml(
