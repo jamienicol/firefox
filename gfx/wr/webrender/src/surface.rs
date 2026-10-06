@@ -871,6 +871,13 @@ impl SurfaceBuilder {
         }
     }
 
+    /// Push a builder that draws nothing, for emitting commands into an explicit
+    /// command buffer outside of any surface. The caller tracks their
+    /// dependencies itself.
+    pub fn push_detached(&mut self) {
+        self.builder_stack.push(CommandBufferBuilder::empty());
+    }
+
     pub fn pop_empty_surface(&mut self) {
         self.builder_stack.pop().unwrap();
     }

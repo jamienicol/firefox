@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{ColorF, DebugFlags, ExternalScrollId, FontRenderMode, ImageKey, MinimapData};
+use api::{ColorF, DebugFlags, ExternalScrollId, FontRenderMode, ImageBufferKind, ImageKey, MinimapData};
+use crate::pattern::image::ImagePattern;
+use crate::quad::{self, QuadDescriptor, QuadTransformState};
+use crate::quad_clip::QuadClipStack;
+use crate::segment::EdgeMask;
 use api::units::*;
 use plane_split::BspSplitter;
 use crate::batch::{BatchBuilder, AlphaBatchBuilder, AlphaBatchContainer};
@@ -18,7 +22,7 @@ use crate::gpu_types::QuadSegment;
 use crate::internal_types::{FastHashMap, PlaneSplitter, FrameStamp};
 use crate::invalidation::DirtyRegion;
 use crate::tile_cache::{max_surface_size_for_screen, SliceId, TileCacheInstance};
-use crate::picture::PictureInstance;
+use crate::picture::{get_relative_scale_offset, PictureInstance};
 use crate::picture::ResolvedSurfaceTexture;
 use crate::picture::{RasterConfig, PictureScratch};
 use crate::picture_composite_mode::PictureCompositeMode;
@@ -374,6 +378,8 @@ impl FrameBuilder {
             &mut scratch.primitive.frame.backdrop_captures,
         );
 
+        let slice_ids = tile_cache_slice_ids(&scene.tile_cache_pictures, &scene.prim_store.pictures);
+
         // In order to handle picture snapshots consistently we need
         // the visibility and prepare passes to visit them first before
         // traversing the scene. This ensures that out-of-view snapshots
@@ -528,6 +534,16 @@ impl FrameBuilder {
                 }
             }
 
+            if render_picture_cache_slices {
+                crate::tile_cache::update_cross_slice_backdrops(
+                    &slice_ids,
+                    tile_caches,
+                    &scratch.primitive.frame.backdrop_captures,
+                    &scratch.primitive.frame.required_backdrop_chains,
+                    frame_context.spatial_tree,
+                );
+            }
+
             scratch.primitive.frame.assert_draws_resolved();
 
             profile.end_time(profiler::FRAME_VISIBILITY_TIME);
@@ -624,10 +640,19 @@ impl FrameBuilder {
         );
         frame_state.push_dirty_region(default_dirty_region);
 
-        for pic_index in &scene.tile_cache_pictures {
+        for (position, pic_index) in scene.tile_cache_pictures.iter().enumerate() {
             if !render_picture_cache_slices {
                 break;
             }
+
+            begin_cross_slice_captures(
+                &slice_ids,
+                position,
+                &frame_context,
+                &mut frame_state,
+                &mut scratch.primitive,
+                tile_caches,
+            );
 
             prepare_picture(
                 *pic_index,
@@ -1437,5 +1462,123 @@ impl Frame {
         // moving or external surfaces being updated). Note that the render task
         // graph always contains at least one pass, which may be empty.
         self.passes.iter().all(|pass| pass.is_empty())
+    }
+}
+
+/// The slice ids of the picture cache slices, bottom-up.
+fn tile_cache_slice_ids(
+    tile_cache_pictures: &[PictureIndex],
+    pictures: &[PictureInstance],
+) -> Vec<SliceId> {
+    tile_cache_pictures
+        .iter()
+        .filter_map(|pic_index| match pictures[pic_index.0 as usize].raster_config {
+            Some(RasterConfig { composite_mode: PictureCompositeMode::TileCache { slice_id }, .. }) => Some(slice_id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Before the slice at `position` is prepared, start the command buffer of
+/// each backdrop-filter capture it is the backdrop root of with the parts of
+/// the slices below it that the capture samples, bottom-up. The slice's own
+/// primitives behind the element follow as it is prepared.
+fn begin_cross_slice_captures(
+    slice_ids: &[SliceId],
+    position: usize,
+    frame_context: &FrameBuildingContext,
+    frame_state: &mut FrameBuildingState,
+    scratch: &mut PrimitiveScratchBuffer,
+    tile_caches: &FastHashMap<SliceId, Box<TileCacheInstance>>,
+) {
+    let slice_id = slice_ids[position];
+
+    for capture_index in 0 .. scratch.frame.backdrop_captures.len() {
+        let capture = &scratch.frame.backdrop_captures[capture_index];
+        if capture.root_slice != Some(slice_id) {
+            continue;
+        }
+        let root_surface = &frame_state.surfaces[capture.root_surface_index.0];
+        let raster_spatial_node_index = root_surface.raster_spatial_node_index;
+        let device_pixel_scale = root_surface.device_pixel_scale;
+
+        let mut sources = Vec::new();
+        for lower_slice_id in &slice_ids[.. position] {
+            let tile_cache = &tile_caches[lower_slice_id];
+            for source in &tile_cache.backdrop_sources {
+                if source.capture_index != capture_index {
+                    continue;
+                }
+                if let Some((task_id, device_rect)) = source.task {
+                    sources.push((
+                        tile_cache.spatial_node_index,
+                        tile_cache.local_clip_rect,
+                        task_id,
+                        device_rect,
+                    ));
+                }
+            }
+        }
+        if sources.is_empty() {
+            continue;
+        }
+
+        let cmd_buffer_index = frame_state.cmd_buffers.create_cmd_buffer();
+        frame_state.surface_builder.push_detached();
+        for (spatial_node_index, local_clip_rect, task_id, device_rect) in sources {
+            // Slices share the device pixel scale, and a slice rasterizes in
+            // its own spatial node's space.
+            let pattern_rect: LayoutRect = (device_rect / device_pixel_scale).cast_unit();
+            let bounds = match pattern_rect.intersection(&local_clip_rect.cast_unit()) {
+                Some(bounds) => bounds,
+                None => continue,
+            };
+
+            // Place the slice's content where its tiles are composited, with
+            // the same device-pixel rounding, relative to the capture.
+            let root = frame_context.spatial_tree.root_reference_frame_index();
+            let slice_to_raster = get_relative_scale_offset(spatial_node_index, root, frame_context.spatial_tree)
+                .then(&get_relative_scale_offset(raster_spatial_node_index, root, frame_context.spatial_tree).inverse());
+            let mut transform = QuadTransformState::from_scale_offset(
+                slice_to_raster,
+                spatial_node_index,
+                raster_spatial_node_index,
+                device_pixel_scale,
+            );
+            let coverage_rect = transform
+                .as_2d_scale_offset()
+                .map(|so| so.map_rect(&bounds))
+                .unwrap_or_else(DeviceRect::max_rect);
+
+            let mut clips = QuadClipStack::new();
+            clips.set_bounds(bounds, coverage_rect, DeviceRect::max_rect(), false);
+
+            quad::prepare_quad(
+                &ImagePattern {
+                    src_task_id: task_id,
+                    src_is_opaque: false,
+                    premultiplied: true,
+                    sampler_kind: ImageBufferKind::Texture2D,
+                    color: ColorF::WHITE,
+                },
+                &QuadDescriptor {
+                    pattern_rect,
+                    bounds,
+                    aligned_aa_edges: EdgeMask::empty(),
+                    transformed_aa_edges: EdgeMask::empty(),
+                },
+                &None,
+                &clips,
+                &mut transform,
+                frame_context.spatial_tree,
+                &[cmd_buffer_index],
+                frame_state,
+                scratch,
+            );
+
+            scratch.frame.backdrop_captures[capture_index].dependencies.push(task_id);
+        }
+        frame_state.surface_builder.pop_empty_surface();
+        scratch.frame.backdrop_captures[capture_index].cmd_buffer_index = Some(cmd_buffer_index);
     }
 }

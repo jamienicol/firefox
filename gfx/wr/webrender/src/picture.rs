@@ -841,7 +841,14 @@ impl PictureInstance {
         // If this is a picture cache, push the dirty region to ensure any
         // child primitives are culled and clipped to the dirty rect(s).
         if let Some(RasterConfig { composite_mode: PictureCompositeMode::TileCache { slice_id }, .. }) = self.raster_config {
-            let dirty_region = tile_caches[&slice_id].dirty_region.clone();
+            let mut dirty_region = tile_caches[&slice_id].dirty_region.clone();
+            // Primitives under a backdrop-filter in a slice above are drawn for
+            // it whether or not their tiles are dirty.
+            for source in &tile_caches[&slice_id].backdrop_sources {
+                if source.task.is_some() {
+                    dirty_region.add_dirty_region(source.rect, frame_context.spatial_tree);
+                }
+            }
             frame_state.push_dirty_region(dirty_region);
 
             dirty_region_count += 1;
@@ -879,6 +886,22 @@ impl PictureInstance {
         // Pop any dirty regions this picture set
         for _ in 0 .. context.dirty_region_count {
             frame_state.pop_dirty_region();
+        }
+
+        if let Some(RasterConfig { composite_mode: PictureCompositeMode::TileCache { slice_id }, .. }) = self.raster_config {
+            // A capture whose picture wasn't prepared never took the tasks drawn
+            // for it, such as the parts of lower slices it samples. The slice's
+            // tiles take them instead, so that they are still freed.
+            for capture in &scratch.frame.backdrop_captures {
+                if capture.root_slice == Some(slice_id) {
+                    for task_id in &capture.dependencies {
+                        frame_state.surface_builder.add_child_render_task(
+                            *task_id,
+                            frame_state.rg_builder,
+                        );
+                    }
+                }
+            }
         }
 
         if self.raster_config.is_some() {
@@ -2196,7 +2219,46 @@ fn prepare_tiled_picture_surface(
             );
     }
 
-    let descriptor = SurfaceDescriptor::new_tiled(surface_render_tasks, Vec::new());
+    // The parts of this slice that backdrop-filters above it sample are drawn
+    // into tasks of their own, in this slice's raster space, from the same
+    // commands as its tiles.
+    let mut backdrop_source_targets = Vec::new();
+    let surface = &frame_state.surfaces[surface_index.0];
+    let raster_spatial_node_index = surface.raster_spatial_node_index;
+    for source in &mut tile_cache.backdrop_sources {
+        let device_rect = surface.map_to_device_rect(&source.rect).round_out();
+        if device_rect.is_empty() {
+            continue;
+        }
+        let size = device_rect.size().to_i32();
+        let cmd_buffer_index = frame_state.cmd_buffers.create_cmd_buffer();
+        let task_id = frame_state.rg_builder.add().init(
+            RenderTask::new_dynamic(
+                size,
+                RenderTaskKind::new_picture(
+                    size,
+                    true,
+                    device_rect.min,
+                    surface_spatial_node_index,
+                    raster_spatial_node_index,
+                    device_pixel_scale,
+                    None,
+                    None,
+                    Some(tile_cache.background_color.unwrap_or(ColorF::TRANSPARENT)),
+                    cmd_buffer_index,
+                    true,
+                    None,
+                ),
+            ),
+        );
+        source.task = Some((task_id, device_rect));
+        backdrop_source_targets.push((source.rect, task_id));
+        // Primitives are drawn for the source whether or not their tiles are
+        // dirty, so their clip masks and cached patterns have to cover it too.
+        surface_device_dirty_rect = surface_device_dirty_rect.union(&device_rect);
+    }
+
+    let descriptor = SurfaceDescriptor::new_tiled(surface_render_tasks, backdrop_source_targets);
 
     frame_state.surface_builder.push_surface(
         surface_index,

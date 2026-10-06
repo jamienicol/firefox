@@ -21,7 +21,7 @@ use crate::composite::{ExternalSurfaceDependency, NativeSurfaceId, NativeTileId}
 use crate::composite::{CompositorClipIndex, CompositorTransformIndex};
 use crate::composite::{CompositeTileDescriptor, CompositeTile};
 use crate::gpu_types::ZBufferId;
-use crate::internal_types::{FastHashMap, FrameId, Filter};
+use crate::internal_types::{FastHashMap, FastHashSet, FrameId, Filter};
 use crate::invalidation::{InvalidationReason, DirtyRegion, PrimitiveCompareResult};
 use crate::invalidation::cached_surface::{CachedSurface, TileUpdateDirtyContext, TileUpdateDirtyState, PrimitiveDependencyInfo};
 use crate::invalidation::vert_buffer::{CornersCache, VertRange};
@@ -40,10 +40,11 @@ use crate::renderer::GpuBufferBuilderF;
 use crate::resource_cache::{ResourceCache, ImageRequest};
 use crate::scene_building::SliceFlags;
 use crate::space::{SpaceMapper, SpaceSnapper};
+use crate::render_task_graph::RenderTaskId;
 use crate::spatial_tree::{SpatialNodeIndex, SpatialTree};
 use crate::surface::{SubpixelMode, SurfaceIndex, SurfaceInfo};
 use crate::util::{ScaleOffset, MatrixHelpers, MaxRect};
-use crate::visibility::{FrameVisibilityContext, FrameVisibilityState, DrawState, PrimitiveDrawIndex, PrimitiveVisibilityFlags};
+use crate::visibility::{BackdropCaptureRegion, FrameVisibilityContext, FrameVisibilityState, DrawState, PrimitiveDrawIndex, PrimitiveVisibilityFlags};
 use euclid::approxeq::ApproxEq;
 use euclid::Box2D;
 use peek_poke::{PeekPoke, ensure_red_zone};
@@ -864,6 +865,23 @@ pub struct TileCacheInstance {
     yuv_surface_stability: FastHashMap<crate::intern::ItemUid, YuvSurfaceStability>,
     /// Persistent cache for computing and storing raster-space primitive corners.
     corners_cache: CornersCache,
+    /// This slice's picture to root transform last frame, to tell when it moved
+    /// under a backdrop-filter in a slice above.
+    prev_pic_to_root: Option<ScaleOffset>,
+    /// The parts of this slice that backdrop-filters in slices above sample
+    /// this frame, each drawn into a task of its own.
+    pub backdrop_sources: Vec<BackdropSource>,
+}
+
+/// A part of a slice that a backdrop-filter in a slice above it samples.
+pub struct BackdropSource {
+    /// The index of the capture in `PrimitiveFrameScratch::backdrop_captures`.
+    pub capture_index: usize,
+    /// The sampled area, in this slice's picture space.
+    pub rect: PictureRect,
+    /// The task this slice's primitives in `rect` are drawn into, and its
+    /// device rect, once this slice is prepared.
+    pub task: Option<(RenderTaskId, DeviceRect)>,
 }
 
 impl TileCacheInstance {
@@ -926,6 +944,8 @@ impl TileCacheInstance {
             yuv_images_remaining: 0,
             yuv_surface_stability: FastHashMap::default(),
             corners_cache: CornersCache::new(),
+            prev_pic_to_root: None,
+            backdrop_sources: Vec::new(),
         }
     }
 
@@ -3403,4 +3423,99 @@ fn test_max_surface_size_for_screen() {
     // Degenerate sizes fall back to the floor rather than underflowing.
     assert_eq!(for_screen(0, 0), MAX_SURFACE_SIZE);
     assert_eq!(for_screen(-1, -1), MAX_SURFACE_SIZE);
+}
+
+/// Find the parts of lower slices that each backdrop-filter in a slice samples,
+/// and redraw the backdrop when any of them changed or moved. Runs once every
+/// tile cache's dirty rects are known, before prepare.
+pub fn update_cross_slice_backdrops(
+    slice_ids: &[SliceId],
+    tile_caches: &mut FastHashMap<SliceId, Box<TileCacheInstance>>,
+    captures: &[BackdropCaptureRegion],
+    required_backdrop_chains: &FastHashSet<PictureIndex>,
+    spatial_tree: &SpatialTree,
+) {
+    let root = spatial_tree.root_reference_frame_index();
+    let mut pic_to_root = Vec::with_capacity(slice_ids.len());
+    let mut moved = Vec::with_capacity(slice_ids.len());
+
+    for slice_id in slice_ids {
+        let tile_cache = tile_caches.get_mut(slice_id).expect("bug: no tile cache");
+        tile_cache.backdrop_sources.clear();
+
+        // The same transform the slice's tiles are composited with.
+        let transform = get_relative_scale_offset(tile_cache.spatial_node_index, root, spatial_tree);
+        moved.push(Some(transform) != tile_cache.prev_pic_to_root);
+        tile_cache.prev_pic_to_root = Some(transform);
+        pic_to_root.push(transform);
+    }
+
+    for (capture_index, capture) in captures.iter().enumerate() {
+        let Some(top) = capture.root_slice.and_then(|id| slice_ids.iter().position(|s| *s == id)) else {
+            continue;
+        };
+        // A chain that isn't drawn, such as one under an invisible picture,
+        // has no capture to read the sources.
+        if !required_backdrop_chains.contains(&capture.chain_pic_index) {
+            continue;
+        }
+        let root_region: LayoutRect = pic_to_root[top].map_rect(&capture.region);
+
+        let mut sources = Vec::new();
+        let mut changed = moved[top];
+
+        for lower in 0 .. top {
+            let lower_to_root = pic_to_root[lower];
+            let tile_cache = &tile_caches[&slice_ids[lower]];
+            let rect: PictureRect = lower_to_root.unmap_rect(&root_region);
+            let Some(rect) = rect
+                .intersection(&tile_cache.local_clip_rect)
+                .and_then(|rect| rect.intersection(&tile_cache.local_rect)) else {
+                continue;
+            };
+
+            changed |= moved[lower] || tile_cache.sub_slices.iter().any(|sub_slice| {
+                sub_slice.tiles.values().any(|tile| {
+                    tile.is_visible &&
+                        !tile.cached_surface.is_valid &&
+                        tile.cached_surface.local_dirty_rect.intersects(&rect)
+                })
+            });
+            sources.push((lower, rect));
+        }
+
+        if sources.is_empty() {
+            continue;
+        }
+
+        let top_cache = tile_caches.get_mut(&slice_ids[top]).unwrap();
+        if changed {
+            for sub_slice in &mut top_cache.sub_slices {
+                for tile in sub_slice.tiles.values_mut() {
+                    if tile.is_visible && tile.cached_surface.local_rect.intersects(&capture.region) {
+                        tile.invalidate(Some(capture.region), InvalidationReason::SurfaceContentChanged);
+                    }
+                }
+            }
+        }
+
+        let drawn = top_cache.sub_slices.iter().any(|sub_slice| {
+            sub_slice.tiles.values().any(|tile| {
+                tile.is_visible &&
+                    !tile.cached_surface.is_valid &&
+                    tile.cached_surface.local_dirty_rect.intersects(&capture.region)
+            })
+        });
+        if !drawn {
+            continue;
+        }
+
+        for (lower, rect) in sources {
+            tile_caches.get_mut(&slice_ids[lower]).unwrap().backdrop_sources.push(BackdropSource {
+                capture_index,
+                rect,
+                task: None,
+            });
+        }
+    }
 }
