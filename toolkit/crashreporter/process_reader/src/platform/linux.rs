@@ -4,8 +4,7 @@
 
 use std::{
     cmp::min,
-    fs::File,
-    io::{BufRead, BufReader, Error},
+    io::Error,
     mem::{size_of, MaybeUninit},
     ptr::null_mut,
     slice,
@@ -30,8 +29,24 @@ use libc::{
     PTRACE_PEEKDATA,
 };
 
-impl ProcessReader {
-    pub fn new(process: ProcessHandle) -> Result<ProcessReader, ProcessReaderError> {
+/// Provides access to a process without attaching to it with ptrace, for example when the target
+/// can only be inspected by a helper running with its credentials.
+pub trait ProcessAccess {
+    /// Fill `buf` with the memory at `address` in the target process.
+    fn read_memory(&self, address: usize, buf: &mut [u8]) -> Result<(), ReadError>;
+    /// Return the contents of the target's `/proc/<pid>/maps` file.
+    fn read_maps(&self) -> Result<String, Error>;
+}
+
+impl<'a> ProcessReader<'a> {
+    pub fn with_access(process: ProcessHandle, access: &'a dyn ProcessAccess) -> ProcessReader<'a> {
+        ProcessReader {
+            process,
+            access: Some(access),
+        }
+    }
+
+    pub fn new(process: ProcessHandle) -> Result<ProcessReader<'static>, ProcessReaderError> {
         let pid: pid_t = process;
 
         ptrace_attach(pid)?;
@@ -53,16 +68,20 @@ impl ProcessReader {
             }
         }
 
-        Ok(ProcessReader { process: pid })
+        Ok(ProcessReader {
+            process: pid,
+            access: None,
+        })
     }
 
     pub fn find_module(&self, module_name: &str) -> Result<usize, ProcessReaderError> {
-        let maps_file = File::open(format!("/proc/{}/maps", self.process))?;
+        let maps = match self.access {
+            Some(access) => access.read_maps()?,
+            None => std::fs::read_to_string(format!("/proc/{}/maps", self.process))?,
+        };
 
-        BufReader::new(maps_file)
-            .lines()
-            .map_while(Result::ok)
-            .map(|line| parse_proc_maps_line(&line))
+        maps.lines()
+            .map(parse_proc_maps_line)
             .filter_map(Result::ok)
             .find_map(|(name, address)| {
                 let name = name?;
@@ -229,6 +248,24 @@ impl ProcessReader {
             .map_err(|_| ReadError::TooLarge)?;
         let num_bytes = num * size_of::<T>();
         let mut array_buffer = array.as_mut_ptr() as *mut u8;
+
+        if let Some(access) = self.access {
+            let mut bytes = Vec::<u8>::new();
+            bytes
+                .try_reserve_exact(num_bytes)
+                .map_err(|_| ReadError::TooLarge)?;
+            bytes.resize(num_bytes, 0);
+            access.read_memory(src, &mut bytes)?;
+            unsafe {
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), array_buffer, num_bytes);
+                array.set_len(num);
+                return Ok(std::mem::transmute::<
+                    std::vec::Vec<std::mem::MaybeUninit<T>>,
+                    std::vec::Vec<T>,
+                >(array));
+            }
+        }
+
         let mut index = 0;
 
         while index < num_bytes {
@@ -255,8 +292,12 @@ impl ProcessReader {
     }
 }
 
-impl Drop for ProcessReader {
+impl Drop for ProcessReader<'_> {
     fn drop(&mut self) {
+        if self.access.is_some() {
+            return;
+        }
+
         let _ignored = ptrace_detach(self.process);
     }
 }

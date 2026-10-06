@@ -163,7 +163,11 @@ impl CrashGenerator {
             .map(|d| (d.error.clone(), d.annotations.clone()))
             .unwrap_or_default();
         let global_annotations = self.retrieve_main_process_annotations();
-        let annotations = retrieve_annotations(process, process_type);
+        let annotations = retrieve_annotations(
+            process,
+            process_type,
+            extra_data.and_then(|d| d.child_annotations.as_ref()),
+        );
         let annotations = [
             STATIC_ANNOTATIONS.get().cloned().context("MissingStaticAnnotations"),
             global_annotations.context("MissingMainProcessAnnotations"),
@@ -351,12 +355,19 @@ pub(crate) unsafe extern "C" fn finalize_breakpad_minidump(
 fn retrieve_annotations(
     process: RawProcessHandle,
     process_type: ProcessType,
+    retrieved: Option<&Result<Vec<CAnnotation>, AnnotationsRetrievalError>>,
 ) -> Result<Vec<CAnnotation>> {
     if process_type == ProcessType::Parent {
         return Ok(vec![]);
     }
 
-    let mut annotations = mozannotation_server::retrieve_annotations(process, CrashAnnotation::Count as usize)?;
+    let mut annotations = match retrieved {
+        Some(Ok(annotations)) => annotations.clone(),
+        Some(Err(error)) => return Err(anyhow::anyhow!("{error}")),
+        None => {
+            mozannotation_server::retrieve_annotations(process, CrashAnnotation::Count as usize)?
+        }
+    };
 
     // Add a unique identifier for this crash event.
     let crash_event_id = uuid::Uuid::new_v4()

@@ -54,9 +54,12 @@ struct ImageInfo {
 
 const DATA_SEGMENT: &[u8; 16] = b"__DATA\0\0\0\0\0\0\0\0\0\0";
 
-impl ProcessReader {
-    pub fn new(process: ProcessHandle) -> Result<ProcessReader, ProcessReaderError> {
-        Ok(ProcessReader { process })
+impl ProcessReader<'_> {
+    pub fn new(process: ProcessHandle) -> Result<ProcessReader<'static>, ProcessReaderError> {
+        Ok(ProcessReader {
+            process,
+            _access: std::marker::PhantomData,
+        })
     }
 
     pub fn find_module(&self, module_name: &str) -> Result<usize, ProcessReaderError> {
@@ -223,6 +226,6 @@ impl ProcessReader {
     }
 }
 
-impl Drop for ProcessReader {
+impl Drop for ProcessReader<'_> {
     fn drop(&mut self) {}
 }

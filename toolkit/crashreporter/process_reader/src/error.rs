@@ -63,6 +63,9 @@ pub enum ReadError {
     ReadProcessMemoryError,
     #[error("The requested read is too large")]
     TooLarge,
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[error("Could not read from the target process via its access provider")]
+    AccessError(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 #[cfg(any(target_os = "linux", target_os = "android"))]

@@ -24,6 +24,10 @@ use {
     },
 };
 
+mod remote_annotations;
+
+type RemoteTransport = transport::postcard::Backend<UnixStream, [u8; OUTPUT_BUFFER_LEN]>;
+
 #[allow(non_camel_case_types)]
 #[cfg(not(target_arch = "arm"))]
 type fpregset_t = crash_context::fpregset_t;
@@ -46,6 +50,9 @@ pub struct MinidumpWriterContext {
     blamed_thread: pid_t,
     // Also not available in `MinidumpWriterConfig`, but needed to compute extra annotations
     siginfo: Option<libc::signalfd_siginfo>,
+    // Connection to the remote executor, handed to `writer_config` once annotations have been
+    // read through it.
+    remote_transport: Option<RemoteTransport>,
 }
 
 /// Gather any extra crash data that the minidump writer doesn't support natively.
@@ -150,6 +157,7 @@ pub unsafe extern "C" fn minidump_writer_create(
             process_id: child,
             blamed_thread: child_blamed_thread,
             siginfo: None,
+            remote_transport: None,
         }))
     });
     if !extra_data.is_null() {
@@ -227,8 +235,10 @@ pub extern "C" fn minidump_writer_set_remote_unix_stream(
     unix_stream_socket_fd: c_int,
 ) {
     let io = unsafe { UnixStream::from_raw_fd(unix_stream_socket_fd) };
-    let transport = transport::postcard::Backend::new(io, [0u8; OUTPUT_BUFFER_LEN]);
-    context.writer_config.set_remote_transport(transport);
+    context.remote_transport = Some(transport::postcard::Backend::new(
+        io,
+        [0u8; OUTPUT_BUFFER_LEN],
+    ));
 }
 
 /// Write the minidump to the file
@@ -259,6 +269,13 @@ pub unsafe extern "C" fn minidump_writer_dump(
         ) {
             extra_data.error = Some(CString::new(format!("{e:#?}")).unwrap());
         }
+    }
+    if let Some(mut transport) = context.remote_transport.take() {
+        let child_annotations = remote_annotations::retrieve(&mut transport, context.process_id);
+        if let Some(ref mut extra_data) = extra_data {
+            extra_data.child_annotations = Some(child_annotations);
+        }
+        context.writer_config.set_remote_transport(transport);
     }
     err_to_error_msg(extra_data, || {
         context

@@ -18,11 +18,18 @@ pub type ProcessHandle = libc::pid_t;
 #[cfg(target_os = "macos")]
 pub type ProcessHandle = mach2::mach_types::task_t;
 
-pub struct ProcessReader {
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub use platform::ProcessAccess;
+
+pub struct ProcessReader<'a> {
     process: ProcessHandle,
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    access: Option<&'a dyn ProcessAccess>,
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    _access: std::marker::PhantomData<&'a ()>,
 }
 
-impl ProcessReader {
+impl ProcessReader<'_> {
     pub fn copy_null_terminated_string(&self, address: usize) -> Result<CString, ReadError> {
         // Try copying the string word-by-word first, this is considerably
         // faster than one byte at a time.

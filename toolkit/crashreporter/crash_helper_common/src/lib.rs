@@ -21,7 +21,7 @@ pub mod crash_annotations {
 
 use bytes::Bytes;
 use messages::MessageError;
-use mozannotation_server::CAnnotation;
+use mozannotation_server::{errors::AnnotationsRetrievalError, CAnnotation};
 
 // Matches the same type in mozglue/misc/ProcessType.h
 pub type GeckoChildId = i32;
@@ -104,4 +104,7 @@ pub const IO_TIMEOUT: u16 = 2 * 1000;
 pub struct ExtraCrashData {
     pub error: Option<std::ffi::CString>,
     pub annotations: Vec<CAnnotation>,
+    /// The crashed process's own annotations, if they were already retrieved while writing the
+    /// minidump. When `None` they are read directly from the crashed process.
+    pub child_annotations: Option<Result<Vec<CAnnotation>, AnnotationsRetrievalError>>,
 }

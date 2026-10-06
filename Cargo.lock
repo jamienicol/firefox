@@ -7289,6 +7289,8 @@ dependencies = [
  "libc",
  "minidump-writer",
  "mozannotation_server",
+ "process-backend",
+ "serde",
 ]
 
 [[package]]

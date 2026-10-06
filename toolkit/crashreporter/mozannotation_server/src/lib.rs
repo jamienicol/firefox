@@ -9,6 +9,8 @@ use crate::errors::*;
 use memoffset::offset_of;
 use process_reader::error::ProcessReaderError;
 use process_reader::ProcessReader;
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub use process_reader::{error::ReadError, ProcessAccess};
 
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use mozannotation_client::ANNOTATION_SECTION;
@@ -49,7 +51,26 @@ pub fn retrieve_annotations(
     max_annotations: usize,
 ) -> Result<Vec<CAnnotation>, AnnotationsRetrievalError> {
     let reader = ProcessReader::new(process)?;
-    let address = find_annotations(&reader)?;
+    retrieve_annotations_from_reader(&reader, max_annotations)
+}
+
+/// Like [`retrieve_annotations`], but reads the target process through `access` instead of
+/// attaching to it.
+#[cfg(any(target_os = "linux", target_os = "android"))]
+pub fn retrieve_annotations_with_access(
+    process: ProcessHandle,
+    access: &dyn ProcessAccess,
+    max_annotations: usize,
+) -> Result<Vec<CAnnotation>, AnnotationsRetrievalError> {
+    let reader = ProcessReader::with_access(process, access);
+    retrieve_annotations_from_reader(&reader, max_annotations)
+}
+
+fn retrieve_annotations_from_reader(
+    reader: &ProcessReader,
+    max_annotations: usize,
+) -> Result<Vec<CAnnotation>, AnnotationsRetrievalError> {
+    let address = find_annotations(reader)?;
 
     let mut mutex = reader
         .copy_object_shallow::<AnnotationMutex>(address)
@@ -72,7 +93,7 @@ pub fn retrieve_annotations(
 
     for i in 0..length {
         let annotation_address = unsafe { vec_pointer.add(i) };
-        if let Ok(annotation) = read_annotation(&reader, annotation_address as usize) {
+        if let Ok(annotation) = read_annotation(reader, annotation_address as usize) {
             annotations.push(annotation);
         }
     }
