@@ -37,6 +37,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <unistd.h>
 
 
 #include <algorithm>
@@ -72,16 +73,17 @@ static bool ForkAndLaunchExecutor(UniqueFd executor_endpoint) {
   if (child_pid == -1) {
     return false;
   } else if (child_pid == 0) {
-    // We're the child
+    // We're the child. Exit with _exit() so we don't run the crashed process's atexit
+    // handlers and static destructors.
     post_fork_sync_write.reset();
 
     uint8_t byte = 0;
     if (HANDLE_EINTR(sys_read(post_fork_sync_read.get(), &byte, sizeof(byte))) != sizeof(byte)) {
-      exit(1);
+      _exit(1);
     }
 
     if (byte != POST_FORK_SYNC_BYTE) {
-      exit(1);
+      _exit(1);
     }
 
     post_fork_sync_read.reset();
@@ -92,10 +94,10 @@ static bool ForkAndLaunchExecutor(UniqueFd executor_endpoint) {
         // We're not going to bother with the error message because... What can we really do about it?
         nullptr))
     {
-      exit(1);
+      _exit(1);
     }
 
-    exit(0);  
+    _exit(0);
   }
 
   // We're the crashed process
