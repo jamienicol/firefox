@@ -30,6 +30,7 @@
 #include "linux/crash_generation/crash_generation_client.h"
 #include "linux/crash_generation/crash_generation.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <linux/prctl.h>
 #include <sys/prctl.h>
@@ -102,7 +103,8 @@ static bool ForkAndLaunchExecutor(UniqueFd executor_endpoint) {
   executor_endpoint.reset();
 
   // Give the child permission to ptrace us
-  if (prctl(PR_SET_PTRACER, child_pid) == -1) {
+  // EINVAL means Yama isn't enabled, in which case no permission is needed.
+  if (prctl(PR_SET_PTRACER, child_pid) == -1 && errno != EINVAL) {
     return false;
   }
 
@@ -113,7 +115,7 @@ static bool ForkAndLaunchExecutor(UniqueFd executor_endpoint) {
 
   post_fork_sync_write.reset();
 
-  if (waitid(P_PID, child_pid, nullptr, WEXITED) != -1) {
+  if (HANDLE_EINTR(waitid(P_PID, child_pid, nullptr, WEXITED)) == -1) {
     return false;
   }
 
