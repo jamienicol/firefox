@@ -145,6 +145,7 @@ impl<'a> TestHarness<'a> {
         self.test_backdrop_cross_slice_changes();
         self.test_backdrop_cross_slice_move_together();
         self.test_backdrop_own_slice_compositor_surfaces();
+        self.test_backdrop_scroll_under_clip();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -564,6 +565,20 @@ impl<'a> TestHarness<'a> {
         assert_eq!(
             self.render_yaml_overlays("backdrop_own_slice_overlay_inside"), 0,
             "Ensure an image in the area a backdrop-filter in its slice samples isn't promoted",
+        );
+    }
+
+    fn test_backdrop_scroll_under_clip(&mut self) {
+        // Scrolling a backdrop-filter over a fixed background redraws it, which
+        // dirties tiles that its slice's clip then keeps from being drawn. A
+        // later frame with no change must not redraw anything because of them.
+        self.render_yaml("basic");
+        self.render_yaml("backdrop_scroll_under_clip_1");
+        self.render_yaml("backdrop_scroll_under_clip_2");
+        let results = self.render_yaml("backdrop_scroll_under_clip_2");
+        assert!(
+            !Self::has_any_dirty_tile(&results.pc_debug),
+            "Ensure an unchanged frame after scrolling a backdrop redraws no tiles",
         );
     }
 
