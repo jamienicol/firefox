@@ -450,8 +450,8 @@ pub fn build_backdrop_capture_regions(
                 .get_required_source_rect(surface, region.cast_unit())
                 .cast_unit();
 
-            // The resolve never gives an SVG filter graph more than the
-            // surface's own rect (see `get_surface_rects`).
+            // An SVG filter graph never samples more than the surface's own
+            // rect (see `get_surface_rects`).
             if let PictureCompositeMode::SVGFEGraph(..) = raster_config.composite_mode {
                 region = region
                     .intersection(&surface.unclipped_local_rect)
@@ -698,7 +698,7 @@ pub fn update_prim_visibility(
                 // prepared, so primitives prepared after that, such as ones in
                 // a wrapping stacking context that the chain was placed before,
                 // can't be drawn into it.
-                if store.pictures[pic_index.0 as usize].flags.contains(PictureFlags::IS_SUB_GRAPH) {
+                if store.pictures[pic_index.0 as usize].flags.contains(PictureFlags::IS_BACKDROP_CHAIN) {
                     if let Some(index) = frame_state.scratch.primitive.frame.backdrop_capture_for_chain(pic_index) {
                         frame_state.active_backdrop_captures.retain(|&active| active as usize != index);
                     }
@@ -723,7 +723,7 @@ pub fn update_prim_visibility(
             let paints_into_parent = match frame_state.prim_instances[prim_instance_index].kind {
                 PrimitiveKind::BackdropCapture { .. } => false,
                 PrimitiveKind::Picture { pic_index, .. } => {
-                    !store.pictures[pic_index.0 as usize].flags.contains(PictureFlags::IS_SUB_GRAPH)
+                    !store.pictures[pic_index.0 as usize].flags.contains(PictureFlags::IS_BACKDROP_CHAIN)
                 }
                 _ => true,
             };

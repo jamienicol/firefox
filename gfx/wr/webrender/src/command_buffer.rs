@@ -497,15 +497,6 @@ pub enum CommandBufferBuilderKind {
 pub struct CommandBufferBuilder {
     pub kind: CommandBufferBuilderKind,
 
-    /// If a command buffer establishes a sub-graph, then at the end of constructing
-    /// the surface, the parent surface is supplied as an input dependency, and the
-    /// parent surface gets a duplicated (existing) task with the same location, and
-    /// with the sub-graph output as an input dependency.
-    pub establishes_sub_graph: bool,
-
-    /// If this surface builds a sub-graph whose backdrop is drawn into its
-    /// capture surface rather than copied in by a resolve.
-    pub collected_backdrop: bool,
 
     /// List of render tasks that depend on the task that will be created for this builder.
     pub extra_dependencies: Vec<RenderTaskId>,
@@ -515,8 +506,6 @@ impl CommandBufferBuilder {
     pub fn empty() -> Self {
         CommandBufferBuilder {
             kind: CommandBufferBuilderKind::Invalid,
-            establishes_sub_graph: false,
-            collected_backdrop: false,
             extra_dependencies: Vec::new(),
         }
     }
@@ -529,8 +518,6 @@ impl CommandBufferBuilder {
             kind: CommandBufferBuilderKind::Tiled {
                 tiles,
             },
-            establishes_sub_graph: false,
-            collected_backdrop: false,
             extra_dependencies: Vec::new(),
         }
     }
@@ -538,7 +525,6 @@ impl CommandBufferBuilder {
     /// Construct a simple command buffer builder.
     pub fn new_simple(
         render_task_id: RenderTaskId,
-        establishes_sub_graph: bool,
         root_task_id: Option<RenderTaskId>,
         dirty_rect: PictureRect,
     ) -> Self {
@@ -548,8 +534,6 @@ impl CommandBufferBuilder {
                 root_task_id,
                 dirty_rect,
             },
-            establishes_sub_graph,
-            collected_backdrop: false,
             extra_dependencies: Vec::new(),
         }
     }
