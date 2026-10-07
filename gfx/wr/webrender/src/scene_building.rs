@@ -473,6 +473,7 @@ pub struct SceneBuilder<'a> {
     /// Keep track of snapshot pictures to ensure that they are rendered even if they
     /// are off-screen and the visibility traversal does not reach them.
     snapshot_pictures: Vec<PictureIndex>,
+    backdrop_chains: Vec<PictureIndex>,
 
     /// Keep track of allocated plane splitters for this scene. A plane
     /// splitter is allocated whenever we encounter a new 3d rendering context.
@@ -556,6 +557,7 @@ impl<'a> SceneBuilder<'a> {
             picture_graph: mem::take(&mut recycler.picture_graph),
             // This vector is empty most of the time, don't bother with recycling it for now.
             snapshot_pictures: Vec::new(),
+            backdrop_chains: Vec::new(),
             next_plane_splitter_index: 0,
             prim_instances: mem::take(&mut recycler.prim_instances),
             surfaces: mem::take(&mut recycler.surfaces),
@@ -632,6 +634,7 @@ impl<'a> SceneBuilder<'a> {
             config: builder.config,
             tile_cache_config,
             snapshot_pictures: builder.snapshot_pictures,
+            backdrop_chains: builder.backdrop_chains,
             tile_cache_pictures,
             picture_graph: builder.picture_graph,
             num_plane_splitters: builder.next_plane_splitter_index,
@@ -3145,6 +3148,7 @@ impl<'a> SceneBuilder<'a> {
                 PrimitiveKind::Picture { pic_index, .. } => pic_index,
                 _ => panic!("bug: not a picture"),
             };
+            self.backdrop_chains.push(output_pic_index);
 
             // Find which stacking context (or root tile cache) to add the
             // backdrop-filter chain to

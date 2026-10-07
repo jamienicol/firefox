@@ -70,7 +70,7 @@ static PROFILER_PRESETS: &'static[(&'static str, &'static str)] = &[
     (&"Frame stats", &"Primitives,Visible primitives,Draw calls,Vertices,Color passes,Alpha passes,Rendered picture tiles,Rasterized glyphs"),
     // How much of each frame-building pass's traversal produces a draw, and the
     // per-prim fan-out across dirty tiles.
-    (&"Frame build traversal", &"Primitives,Visibility visited prims,Prepare visited prims,Visible primitives,Prepare cmd targets,Prepare pictures, ,Visibility,Prepare"),
+    (&"Frame build traversal", &"Primitives,Visibility visited prims,Prepare visited prims,Visible primitives,Prepare cmd targets,Prepare pictures,Vis backdrop capture candidates, ,Visibility,Prepare"),
     // Texture cache allocation stats.
     (&"Texture cache stats", &"Atlas textures mem, Standalone textures mem, Picture tiles mem, Render targets mem, Depth targets mem, Atlas items mem,
         Texture cache standalone pressure, Texture cache eviction count, Texture cache youngest evicted, ,
@@ -334,8 +334,12 @@ pub const VIS_CULLING_RECT_FALLBACKS: usize = 144;
 /// a mask is assumed. Non-zero only for a clip outside the 3D context that
 /// established the surface's raster root.
 pub const VIS_CLIP_INDETERMINATE: usize = 145;
+/// Primitives the visibility pass found behind a backdrop-filter: earlier in
+/// paint order within its backdrop root, and overlapping the region the filter
+/// samples.
+pub const VIS_BACKDROP_CAPTURE_CANDIDATES: usize = 146;
 
-pub const NUM_PROFILER_EVENTS: usize = 146;
+pub const NUM_PROFILER_EVENTS: usize = 147;
 
 pub struct Profiler {
     counters: Vec<Counter>,
@@ -563,6 +567,7 @@ impl Profiler {
             int("Vis clip rejects", "", VIS_CLIP_REJECTS, Expected::none()),
             int("Vis culling rect fallbacks", "", VIS_CULLING_RECT_FALLBACKS, expected(0..1)),
             int("Vis clip indeterminate", "", VIS_CLIP_INDETERMINATE, Expected::none()),
+            int("Vis backdrop capture candidates", "", VIS_BACKDROP_CAPTURE_CANDIDATES, Expected::none()),
         ];
 
         let mut counters = Vec::with_capacity(profile_counters.len());

@@ -43,7 +43,7 @@ use crate::transform::{TransformPalette, TransformData};
 use std::sync::Arc;
 use std::{f32, mem};
 use crate::util::{MaxRect, VecHelper, Preallocator};
-use crate::visibility::{new_clip_root_stack, update_prim_visibility, FrameVisibilityState, FrameVisibilityContext};
+use crate::visibility::{build_backdrop_capture_regions, new_clip_root_stack, update_prim_visibility, FrameVisibilityState, FrameVisibilityContext};
 use crate::internal_types::{FrameVec, FrameMemory};
 
 #[derive(Clone, Copy, Debug)]
@@ -362,6 +362,17 @@ impl FrameBuilder {
             &frame_context,
         );
 
+        build_backdrop_capture_regions(
+            &scene.backdrop_chains,
+            &scene.prim_store.pictures,
+            &scene.picture_graph,
+            &scene.surfaces,
+            &scene.prim_instances,
+            &frame_context,
+            &mut scratch.primitive.frame.backdrop_captures,
+        );
+        scratch.primitive.frame.index_backdrop_captures(scene.prim_store.pictures.len());
+
         // In order to handle picture snapshots consistently we need
         // the visibility and prepare passes to visit them first before
         // traversing the scene. This ensures that out-of-view snapshots
@@ -406,6 +417,7 @@ impl FrameBuilder {
                     profile,
                     scratch,
                     visited_pictures: &mut visited_pictures,
+                    active_backdrop_captures: Vec::new(),
                 };
 
                 // For now, snapshots are updated every frame. For the
@@ -465,6 +477,7 @@ impl FrameBuilder {
                             profile,
                             scratch,
                             visited_pictures: &mut visited_pictures,
+                            active_backdrop_captures: Vec::new(),
                         };
 
                         // If we have a tile cache for this picture, see if any of the

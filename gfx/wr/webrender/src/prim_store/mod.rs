@@ -21,7 +21,7 @@ use crate::render_task_graph::RenderTaskId;
 use crate::resource_cache::ImageProperties;
 use crate::util::Recycler;
 use crate::internal_types::{FastHashSet, LayoutPrimitiveInfo};
-use crate::visibility::{PrimitiveDrawHeader, PrimitiveDrawIndex};
+use crate::visibility::{BackdropCaptureRegion, PrimitiveDrawHeader, PrimitiveDrawIndex};
 use std::ops;
 
 pub mod backdrop;
@@ -482,6 +482,18 @@ pub struct PrimitiveFrameScratch {
     /// visit ends.
     pending_picture_draws: Vec<PrimitiveDrawIndex>,
 
+    /// The capture region of every backdrop-filter chain reachable this frame,
+    /// found before the visibility pass.
+    pub backdrop_captures: Vec<BackdropCaptureRegion>,
+
+    /// The backdrop captures each picture takes part in, indexed by
+    /// `PictureIndex`. Empty when there are none this frame.
+    pub picture_backdrop_captures: Vec<PictureBackdropCaptures>,
+
+    /// Indices into `backdrop_captures`, grouped by backdrop root, which
+    /// `PictureBackdropCaptures::rooted` locates a picture's entries in.
+    pub backdrop_captures_by_root: Vec<u32>,
+
     /// Per-frame scratch for Picture primitives. Holds the picture's
     /// primary/secondary render task ids and any per-composite-mode
     /// extra GPU buffer addresses. Indexed by `scratch_handle` on
@@ -524,6 +536,9 @@ impl Default for PrimitiveFrameScratch {
             picture_draws: Vec::new(),
             picture_draw_ranges: Vec::new(),
             pending_picture_draws: Vec::new(),
+            backdrop_captures: Vec::new(),
+            picture_backdrop_captures: Vec::new(),
+            backdrop_captures_by_root: Vec::new(),
             pictures: storage::Storage::new(0),
             text_runs: storage::Storage::new(0),
             glyph_keys: GlyphKeyStorage::new(0),
@@ -536,7 +551,60 @@ impl Default for PrimitiveFrameScratch {
     }
 }
 
+/// The backdrop captures a picture takes part in, as indices into
+/// `PrimitiveFrameScratch::backdrop_captures`.
+#[derive(Clone, Default)]
+#[cfg_attr(feature = "capture", derive(Serialize))]
+pub struct PictureBackdropCaptures {
+    /// The capture whose surface this picture is.
+    pub capture: Option<u32>,
+    /// The captures this picture is the backdrop root of, as a range of
+    /// `PrimitiveFrameScratch::backdrop_captures_by_root`.
+    pub rooted: ops::Range<u32>,
+}
+
 impl PrimitiveFrameScratch {
+    /// Index this frame's backdrop captures by picture, for a scene with
+    /// `picture_count` pictures.
+    pub fn index_backdrop_captures(&mut self, picture_count: usize) {
+        self.picture_backdrop_captures.clear();
+        self.backdrop_captures_by_root.clear();
+        if self.backdrop_captures.is_empty() {
+            return;
+        }
+        self.picture_backdrop_captures.resize(picture_count, PictureBackdropCaptures::default());
+
+        let captures = &self.backdrop_captures;
+        self.backdrop_captures_by_root.extend(0 .. captures.len() as u32);
+        self.backdrop_captures_by_root.sort_by_key(|&index| captures[index as usize].root_pic_index.0);
+
+        for (position, &index) in self.backdrop_captures_by_root.iter().enumerate() {
+            let capture = &captures[index as usize];
+
+            self.picture_backdrop_captures[capture.capture_pic_index.0 as usize].capture = Some(index);
+
+            let rooted = &mut self.picture_backdrop_captures[capture.root_pic_index.0 as usize].rooted;
+            if rooted.start == rooted.end {
+                *rooted = position as u32 .. position as u32;
+            }
+            rooted.end += 1;
+        }
+    }
+
+    /// The index of the capture whose surface is `pic_index`.
+    pub fn backdrop_capture_for_picture(&self, pic_index: PictureIndex) -> Option<usize> {
+        self.picture_backdrop_captures.get(pic_index.0 as usize)?.capture.map(|index| index as usize)
+    }
+
+    /// The indices of the captures `pic_index` is the backdrop root of, in
+    /// increasing order.
+    pub fn backdrop_captures_rooted_at(&self, pic_index: PictureIndex) -> &[u32] {
+        match self.picture_backdrop_captures.get(pic_index.0 as usize) {
+            Some(captures) => &self.backdrop_captures_by_root[captures.rooted.start as usize .. captures.rooted.end as usize],
+            None => &[],
+        }
+    }
+
     /// Prepare the draw storage for a new frame over a scene with
     /// `picture_count` pictures.
     pub fn reset_draws(&mut self, picture_count: usize) {
@@ -623,6 +691,7 @@ impl PrimitiveFrameScratch {
         recycler.recycle_vec(&mut self.draws);
         recycler.recycle_vec(&mut self.picture_draws);
         recycler.recycle_vec(&mut self.picture_draw_ranges);
+        recycler.recycle_vec(&mut self.backdrop_captures);
         self.pictures.recycle(recycler);
         self.text_runs.recycle(recycler);
         self.glyph_keys.recycle(recycler);
