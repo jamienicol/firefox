@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{ColorF, DebugFlags, ExternalScrollId, FontRenderMode, ImageBufferKind, ImageKey, MinimapData};
+use api::{ClipMode, ColorF, DebugFlags, ExternalScrollId, FontRenderMode, ImageBufferKind, ImageKey, MinimapData};
 use crate::pattern::image::ImagePattern;
 use crate::quad::{self, QuadDescriptor, QuadTransformState};
 use crate::quad_clip::QuadClipStack;
@@ -1525,8 +1525,8 @@ fn begin_cross_slice_captures(
                 continue;
             };
 
-            // Render tasks the quads below depend on have to be drawn
-            // before the capture.
+            // Render tasks the quads below create, such as the mask of a
+            // slice's rounded clip, have to be drawn before the capture.
             let cmd_buffer_index = *cmd_buffer_index.get_or_insert_with(|| {
                 frame_state.surface_builder.push_detached();
                 frame_state.cmd_buffers.create_cmd_buffer()
@@ -1548,8 +1548,20 @@ fn begin_cross_slice_captures(
                 .map(|so| so.map_rect(&bounds))
                 .unwrap_or_else(DeviceRect::max_rect);
 
+            // The slice's rounded clip is applied when its tiles are composited,
+            // not to its primitives, so it is applied here too.
             let mut clips = QuadClipStack::new();
-            clips.set_bounds(bounds, coverage_rect, DeviceRect::max_rect(), false);
+            for shape in &tile_cache.compositor_clip_shapes {
+                clips.push_rounded_rect(
+                    shape.rect,
+                    shape.radius,
+                    LayoutSideOffsets::zero(),
+                    ClipMode::Clip,
+                    shape.spatial_node_index,
+                    shape.uid,
+                );
+            }
+            clips.set_bounds(bounds, coverage_rect, DeviceRect::max_rect(), !tile_cache.compositor_clip_shapes.is_empty());
 
             quad::prepare_quad(
                 &ImagePattern {
@@ -1573,6 +1585,11 @@ fn begin_cross_slice_captures(
                 frame_state,
                 scratch,
             );
+            // A nine-patch quad, as for a slice's rounded clip, draws its
+            // unclipped segments straight from the source without depending
+            // on it, so the source would otherwise be freed after its corner
+            // tasks, before the capture is drawn.
+            scratch.frame.backdrop_captures[capture_index].dependencies.push(task_id);
         }
 
         if let Some(cmd_buffer_index) = cmd_buffer_index {
