@@ -17,6 +17,7 @@ use crate::space::SpaceMapper;
 use crate::spatial_tree::{CoordinateSpaceMapping, CoordinateSystemId, SpatialTree, SpatialNodeIndex};
 use crate::util::{MaxRect, ScaleOffset};
 use crate::visibility::{DrawState, PrimitiveDrawHeader, FrameVisibilityContext};
+use smallvec::{smallvec, SmallVec};
 pub use crate::picture_composite_mode::get_surface_rects;
 
 /// The mapping between a raster node's space and the screen framebuffer's device
@@ -824,6 +825,42 @@ impl SurfaceBuilder {
                 );
             }
             CommandBufferBuilderKind::Invalid { .. } => {}
+        }
+    }
+
+    // Add a child render task as a dependency of only the tasks of the current
+    // surface whose command buffers are in `targets`.
+    pub fn add_child_render_task_to_targets(
+        &mut self,
+        child_task_id: RenderTaskId,
+        targets: &[CommandBufferIndex],
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) {
+        self.record_capture_dependency(child_task_id);
+
+        let builder = self.builder_stack.last().unwrap();
+        let is_target = |task_id: RenderTaskId| {
+            let RenderTaskKind::Picture(ref info) = rg_builder.get_task(task_id).kind else {
+                unreachable!("bug: not a picture");
+            };
+            targets.iter().any(|target| target.0 == info.cmd_buffer_index.0)
+        };
+
+        let task_ids: SmallVec<[RenderTaskId; 4]> = match builder.kind {
+            CommandBufferBuilderKind::Tiled { ref tiles, ref extra_targets } => tiles
+                .values()
+                .map(|descriptor| descriptor.current_task_id)
+                .chain(extra_targets.iter().map(|(_, task_id)| *task_id))
+                .filter(|task_id| is_target(*task_id))
+                .collect(),
+            CommandBufferBuilderKind::Simple { render_task_id, .. } => {
+                smallvec![render_task_id]
+            }
+            CommandBufferBuilderKind::Invalid => SmallVec::new(),
+        };
+
+        for task_id in task_ids {
+            rg_builder.add_dependency(task_id, child_task_id);
         }
     }
 

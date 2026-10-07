@@ -1118,8 +1118,9 @@ fn prepare_prim_for_render(
 
             match chain_output_id {
                 Some(chain_output_id) => {
-                    frame_state.surface_builder.add_child_render_task(
+                    frame_state.surface_builder.add_child_render_task_to_targets(
                         chain_output_id,
+                        targets,
                         frame_state.rg_builder,
                     );
 
