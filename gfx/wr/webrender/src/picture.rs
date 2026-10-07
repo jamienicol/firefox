@@ -783,6 +783,33 @@ impl PictureInstance {
                 picture_scratch.primary_render_task_id = render_tasks[0];
                 picture_scratch.secondary_render_task_id = render_tasks[1];
 
+                // The task a backdrop is captured into may be padded out for its
+                // filter (a blur rounds its size up to its downscale factor),
+                // and the padding must stay clear. A copied backdrop only fills
+                // the content area, but primitives drawn into it extend past it.
+                let capture = scratch.frame.backdrop_capture_for_picture(pic_index)
+                    .map(|index| &mut scratch.frame.backdrop_captures[index]);
+                if let Some(capture) = capture {
+                    let task_id = surface_descriptor.content_task_id();
+                    let task = frame_state.rg_builder.get_task_mut(task_id);
+                    if let RenderTaskKind::Picture(ref mut info) = task.kind {
+                        info.capture_clear_color = Some(capture.root_background_color.unwrap_or(ColorF::TRANSPARENT));
+                        // A filter's task isn't always cleared. Clearing a target of
+                        // its own in full is cheaper than the clears above alone.
+                        if info.clear_color.is_none() {
+                            info.clear_color = Some(ColorF::TRANSPARENT);
+                        }
+                        // The primitives behind the element were emitted into
+                        // this buffer as they were prepared for the backdrop root.
+                        if let Some(cmd_buffer_index) = capture.cmd_buffer_index {
+                            info.cmd_buffer_index = cmd_buffer_index;
+                        }
+                    }
+                    for dependency in capture.dependencies.drain(..) {
+                        frame_state.rg_builder.add_dependency(task_id, dependency);
+                    }
+                }
+
                 let is_sub_graph = self.flags.contains(PictureFlags::IS_SUB_GRAPH);
 
                 frame_state.surface_builder.push_surface(
@@ -873,6 +900,14 @@ impl PictureInstance {
                     draw,
                     &mut cmd_buffer_targets,
                 ) {
+                    // A plane behind a backdrop-filter is composited into the
+                    // filter's capture surface too. Its picture's task was made a
+                    // dependency of the capture when the picture was prepared.
+                    scratch.frame.existing_backdrop_capture_targets(
+                        child.anchor.draw_index,
+                        &mut cmd_buffer_targets,
+                    );
+
                     // The picture content this plane samples. Missing when the
                     // child has no content task (for example a detached snapshot),
                     // in which case there is nothing to composite.
@@ -1286,6 +1321,31 @@ impl PictureInstance {
                     }
                 };
 
+                // A backdrop-filter chain rasterizes exactly like the surface it
+                // reads its backdrop from, so that the draws of the primitives
+                // behind the element can be reused for its capture. The chain is
+                // placed in that surface's space, so only the raster root and
+                // scales differ otherwise.
+                let parent_surface = parent_surface_index.map(|index| &surfaces[index.0]);
+                let in_backdrop_chain = parent_surface.map_or(false, |parent_surface| {
+                        parent_surface.surface_spatial_node_index == surface_spatial_node_index && (
+                            self.flags.contains(PictureFlags::IS_SUB_GRAPH) ||
+                            parent_surface.in_backdrop_chain
+                        )
+                    });
+                let (device_pixel_scale, raster_spatial_node_index, surface_snaps, local_scale, world_scale_factors, blur_scale_factors) =
+                    match parent_surface.filter(|_| in_backdrop_chain) {
+                        Some(parent_surface) => (
+                            parent_surface.device_pixel_scale,
+                            parent_surface.raster_spatial_node_index,
+                            parent_surface.allow_snapping,
+                            parent_surface.local_scale,
+                            parent_surface.world_scale_factors,
+                            parent_surface.blur_scale_factors,
+                        ),
+                        None => (device_pixel_scale, raster_spatial_node_index, surface_snaps, local_scale, world_scale_factors, blur_scale_factors),
+                    };
+
                 let mut surface = SurfaceInfo::new(
                     surface_spatial_node_index,
                     raster_spatial_node_index,
@@ -1298,6 +1358,7 @@ impl PictureInstance {
                     surface_snaps,
                     force_scissor_rect,
                 );
+                surface.in_backdrop_chain = in_backdrop_chain;
 
                 // For a backdrop filter the SVGFE graph composites in this
                 // surface's (backdrop-root) space, but its subregions are
@@ -2871,6 +2932,7 @@ fn test_large_surface_scale_1() {
             allow_snapping: true,
             force_scissor_rect: false,
             svgfe_source_map: ScaleOffset::identity(),
+            in_backdrop_chain: false,
             picture_to_device: ScaleOffset::identity(),
         },
         SurfaceInfo {
@@ -2893,6 +2955,7 @@ fn test_large_surface_scale_1() {
             allow_snapping: true,
             force_scissor_rect: false,
             svgfe_source_map: ScaleOffset::identity(),
+            in_backdrop_chain: false,
             picture_to_device: ScaleOffset::identity(),
         },
     ];
@@ -2975,6 +3038,7 @@ fn test_drop_filter_dirty_region_outside_prim() {
             allow_snapping: true,
             force_scissor_rect: false,
             svgfe_source_map: ScaleOffset::identity(),
+            in_backdrop_chain: false,
             picture_to_device: ScaleOffset::identity(),
             culling_rect: RasterRect::max_rect(),
             culling_rect_projection_failed: false,
@@ -3000,6 +3064,7 @@ fn test_drop_filter_dirty_region_outside_prim() {
             allow_snapping: true,
             force_scissor_rect: false,
             svgfe_source_map: ScaleOffset::identity(),
+            in_backdrop_chain: false,
             picture_to_device: ScaleOffset::identity(),
             culling_rect: RasterRect::max_rect(),
             culling_rect_projection_failed: false,
@@ -3097,6 +3162,7 @@ fn test_drop_filter_partial_dirty_content_inflate() {
             allow_snapping: true,
             force_scissor_rect: false,
             svgfe_source_map: ScaleOffset::identity(),
+            in_backdrop_chain: false,
             picture_to_device: ScaleOffset::identity(),
             culling_rect: RasterRect::max_rect(),
             culling_rect_projection_failed: false,
@@ -3122,6 +3188,7 @@ fn test_drop_filter_partial_dirty_content_inflate() {
             allow_snapping: true,
             force_scissor_rect: false,
             svgfe_source_map: ScaleOffset::identity(),
+            in_backdrop_chain: false,
             picture_to_device: ScaleOffset::identity(),
             culling_rect: RasterRect::max_rect(),
             culling_rect_projection_failed: false,

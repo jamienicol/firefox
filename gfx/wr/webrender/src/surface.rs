@@ -331,6 +331,9 @@ pub struct SurfaceInfo {
     /// spans), so a translation alone is not enough. All SVGFE coverage paths
     /// map the subregions through this so they line up with the geometry.
     pub svgfe_source_map: ScaleOffset,
+    /// Whether this is the surface of a picture in a backdrop-filter chain that
+    /// rasterizes like the surface it reads its backdrop from.
+    pub in_backdrop_chain: bool,
 }
 
 impl SurfaceInfo {
@@ -454,6 +457,7 @@ impl SurfaceInfo {
             allow_snapping,
             force_scissor_rect,
             svgfe_source_map: ScaleOffset::identity(),
+            in_backdrop_chain: false,
             culling_rect,
             culling_rect_projection_failed,
         }
@@ -680,6 +684,15 @@ pub struct SurfaceDescriptor {
 }
 
 impl SurfaceDescriptor {
+    /// The task this surface's primitives are drawn into.
+    pub fn content_task_id(&self) -> RenderTaskId {
+        match self.kind {
+            SurfaceDescriptorKind::Tiled { .. } => panic!("bug: tiled surfaces have no single content task"),
+            SurfaceDescriptorKind::Simple { render_task_id, .. } |
+            SurfaceDescriptorKind::Chained { render_task_id, .. } => render_task_id,
+        }
+    }
+
     // Create a picture cache tiled surface
     pub fn new_tiled(
         tiles: FastHashMap<TileKey, SurfaceTileDescriptor>,
@@ -799,6 +812,10 @@ pub struct SurfaceBuilder {
     // A map of the output render tasks from any sub-graphs that haven't
     // been consumed by BackdropRender prims yet
     pub sub_graph_output_map: FastHashMap<PictureIndex, RenderTaskId>,
+    // For each draw being prepared that is also emitted into backdrop-filter
+    // captures, innermost last: the depth of `builder_stack` it is drawn at,
+    // and the render tasks made dependencies of that surface while preparing it.
+    capture_dependency_recordings: Vec<(usize, Vec<RenderTaskId>)>,
 }
 
 impl SurfaceBuilder {
@@ -807,6 +824,31 @@ impl SurfaceBuilder {
             current_cmd_buffers: CommandBufferTargets::new(),
             builder_stack: Vec::new(),
             sub_graph_output_map: FastHashMap::default(),
+            capture_dependency_recordings: Vec::new(),
+        }
+    }
+
+    /// Start recording the render tasks the current surface is made to depend
+    /// on, for a draw that is also emitted into backdrop-filter captures, which
+    /// have to depend on them too.
+    pub fn begin_capture_dependencies(&mut self) {
+        self.capture_dependency_recordings.push((self.builder_stack.len(), Vec::new()));
+    }
+
+    /// Stop the recording started by the matching `begin_capture_dependencies`
+    /// and return what it recorded.
+    pub fn end_capture_dependencies(&mut self) -> Vec<RenderTaskId> {
+        let (depth, task_ids) = self.capture_dependency_recordings.pop().unwrap();
+        debug_assert_eq!(depth, self.builder_stack.len());
+        task_ids
+    }
+
+    fn record_capture_dependency(&mut self, task_id: RenderTaskId) {
+        let depth = self.builder_stack.len();
+        if let Some((recording_depth, task_ids)) = self.capture_dependency_recordings.last_mut() {
+            if *recording_depth == depth {
+                task_ids.push(task_id);
+            }
         }
     }
 
@@ -831,6 +873,21 @@ impl SurfaceBuilder {
         }
 
         unreachable!("bug: resolve source with no sub-graph");
+    }
+
+    /// Mark the task sub-graph currently on the surface builder stack as having
+    /// its backdrop drawn into the current surface, so that no resolve is set up
+    /// for it.
+    pub fn register_collected_backdrop(&mut self) {
+        for builder in self.builder_stack.iter_mut().rev() {
+            if builder.establishes_sub_graph {
+                assert_eq!(builder.resolve_source, None);
+                builder.collected_backdrop = true;
+                return;
+            }
+        }
+
+        unreachable!("bug: collected backdrop with no sub-graph");
     }
 
     pub fn push_surface(
@@ -884,6 +941,8 @@ impl SurfaceBuilder {
         child_task_id: RenderTaskId,
         rg_builder: &mut RenderTaskGraphBuilder,
     ) {
+        self.record_capture_dependency(child_task_id);
+
         let builder = self.builder_stack.last().unwrap();
 
         match builder.kind {
@@ -912,6 +971,7 @@ impl SurfaceBuilder {
         &mut self,
         child_task_id: RenderTaskId,
     ) {
+        self.record_capture_dependency(child_task_id);
         self.builder_stack
             .last_mut()
             .unwrap()
@@ -970,6 +1030,16 @@ impl SurfaceBuilder {
                     unreachable!("bug: sub-graphs can only be simple surfaces");
                 }
                 CommandBufferBuilderKind::Simple { render_task_id: child_render_task_id, root_task_id: child_root_task_id, .. } => {
+                    // A backdrop drawn into the capture surface needs no resolve:
+                    // the output only has to be found by the `BackdropRender`.
+                    if builder.collected_backdrop {
+                        let _old = self.sub_graph_output_map.insert(
+                            pic_index,
+                            child_root_task_id.unwrap_or(child_render_task_id),
+                        );
+                        debug_assert!(_old.is_none());
+                    }
+
                     // Get info about the resolve operation to copy from parent surface or tiles to the picture cache task
                     if let Some(resolve_task_id) = builder.resolve_source {
                         let mut src_task_ids = Vec::new();
@@ -1209,6 +1279,8 @@ impl SurfaceBuilder {
                     }
                 }
                 CommandBufferBuilderKind::Simple { render_task_id: child_task_id, root_task_id: child_root_task_id, .. } => {
+                    self.record_capture_dependency(child_root_task_id.unwrap_or(child_task_id));
+
                     match self.builder_stack.last().unwrap().kind {
                         CommandBufferBuilderKind::Tiled { ref tiles } => {
                             // For a tiled render task, add as a dependency to every tile.
