@@ -866,9 +866,9 @@ pub struct TileCacheInstance {
     yuv_surface_stability: FastHashMap<crate::intern::ItemUid, YuvSurfaceStability>,
     /// Persistent cache for computing and storing raster-space primitive corners.
     corners_cache: CornersCache,
-    /// This slice's picture to root transform last frame, to tell when it moved
-    /// under a backdrop-filter in a slice above.
-    prev_pic_to_root: Option<ScaleOffset>,
+    /// What each backdrop-filter capture this slice is the backdrop root of
+    /// read from the slices below it last frame, by its chain.
+    backdrop_capture_keys: FastHashMap<PictureIndex, BackdropCaptureKey>,
     /// The parts of this slice that backdrop-filters in slices above sample
     /// this frame, each drawn into a task of its own, in increasing capture
     /// order.
@@ -881,12 +881,32 @@ pub struct TileCacheInstance {
 }
 
 /// A rounded-rect clip a slice is composited with.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CompositorClipShape {
     pub rect: LayoutRect,
     pub radius: BorderRadius,
     pub spatial_node_index: SpatialNodeIndex,
     pub uid: u64,
+}
+
+/// What a backdrop-filter capture reads from the slices below its own. When it
+/// changes, so does the backdrop, even if none of those slices' tiles do.
+#[derive(Debug, Default, PartialEq)]
+pub struct BackdropCaptureKey {
+    region: PictureRect,
+    sources: Vec<BackdropSourceKey>,
+}
+
+/// What a backdrop-filter capture reads from one slice below its own.
+#[derive(Debug, PartialEq)]
+struct BackdropSourceKey {
+    slice_id: SliceId,
+    /// Maps the slice's picture space to the capture's.
+    slice_to_capture: ScaleOffset,
+    /// The sampled part of the slice, in its picture space.
+    rect: PictureRect,
+    compositor_clip_shapes: Vec<CompositorClipShape>,
+    background_color: Option<ColorF>,
 }
 
 /// A part of a slice that a backdrop-filter in a slice above it samples.
@@ -961,7 +981,7 @@ impl TileCacheInstance {
             yuv_images_remaining: 0,
             yuv_surface_stability: FastHashMap::default(),
             corners_cache: CornersCache::new(),
-            prev_pic_to_root: None,
+            backdrop_capture_keys: FastHashMap::default(),
             backdrop_sources: Vec::new(),
             backdrop_sample_rects: Vec::new(),
         }
@@ -3533,58 +3553,72 @@ pub fn update_cross_slice_backdrops(
     spatial_tree: &SpatialTree,
 ) {
     let root = spatial_tree.root_reference_frame_index();
-    let mut moved = Vec::with_capacity(slice_ids.len());
+    let mut pic_to_root = Vec::with_capacity(slice_ids.len());
+    let mut prev_keys = Vec::with_capacity(slice_ids.len());
 
     for slice_id in slice_ids {
         let tile_cache = tile_caches.get_mut(slice_id).expect("bug: no tile cache");
         tile_cache.backdrop_sources.clear();
+        prev_keys.push(mem::take(&mut tile_cache.backdrop_capture_keys));
 
         // The same transform the slice's tiles are composited with.
-        let transform = get_relative_scale_offset(tile_cache.spatial_node_index, root, spatial_tree);
-        moved.push(Some(transform) != tile_cache.prev_pic_to_root);
-        tile_cache.prev_pic_to_root = Some(transform);
+        pic_to_root.push(get_relative_scale_offset(tile_cache.spatial_node_index, root, spatial_tree));
     }
 
     for (capture_index, capture) in captures.iter().enumerate() {
         let Some(top) = capture.root_slice.and_then(|id| slice_ids.iter().position(|s| *s == id)) else {
             continue;
         };
+        // A chain that isn't drawn, such as one under an invisible picture,
+        // samples nothing.
+        if !required_backdrop_chains.contains(&capture.chain_pic_index) {
+            continue;
+        }
         // The slices below took what drawn backdrop-filters sample before their
         // visibility pass, so each chain has to be found to be drawn by then.
         assert!(
-            !required_backdrop_chains.contains(&capture.chain_pic_index) ||
-                slice_ids[.. top].iter().all(|slice_id| {
-                    tile_caches[slice_id].backdrop_sample_rect(capture_index).is_some()
-                }),
+            slice_ids[.. top].iter().all(|slice_id| {
+                tile_caches[slice_id].backdrop_sample_rect(capture_index).is_some()
+            }),
             "bug: backdrop-filter chain found to be drawn after the slices below it",
         );
+        let root_to_capture = pic_to_root[top].inverse();
         let mut sources = Vec::new();
-        let mut changed = moved[top];
+        let mut key = BackdropCaptureKey { region: capture.region, sources: Vec::new() };
+        let mut changed = false;
 
         for lower in 0 .. top {
             let tile_cache = &tile_caches[&slice_ids[lower]];
-            // A chain that isn't drawn, such as one under an invisible picture,
-            // samples nothing.
-            let Some(rect) = tile_cache.backdrop_sample_rect(capture_index) else {
-                continue;
-            };
+            let rect = tile_cache.backdrop_sample_rect(capture_index).unwrap();
             let Some(rect) = rect
                 .intersection(&tile_cache.local_clip_rect)
                 .and_then(|rect| rect.intersection(&tile_cache.local_rect)) else {
                 continue;
             };
 
-            changed |= moved[lower] || tile_cache.sub_slices.iter().any(|sub_slice| {
+            changed |= tile_cache.sub_slices.iter().any(|sub_slice| {
                 sub_slice.tiles.values().any(|tile| {
                     tile.is_visible &&
                         !tile.cached_surface.is_valid &&
                         tile.cached_surface.local_dirty_rect.intersects(&rect)
                 })
             });
+            key.sources.push(BackdropSourceKey {
+                slice_id: slice_ids[lower],
+                slice_to_capture: pic_to_root[lower].then(&root_to_capture),
+                rect,
+                compositor_clip_shapes: tile_cache.compositor_clip_shapes.clone(),
+                background_color: tile_cache.background_color,
+            });
             sources.push((lower, rect));
         }
 
-        if sources.is_empty() {
+        changed |= prev_keys[top].get(&capture.chain_pic_index).map_or(true, |prev| *prev != key);
+        tile_caches.get_mut(&slice_ids[top]).unwrap()
+            .backdrop_capture_keys
+            .insert(capture.chain_pic_index, key);
+        // Nothing below to read, now or last frame.
+        if sources.is_empty() && !changed {
             continue;
         }
 

@@ -142,6 +142,8 @@ impl<'a> TestHarness<'a> {
         self.test_backdrop_cross_slice_scroll();
         self.test_backdrop_cross_slice_rounded();
         self.test_backdrop_cross_slice_compositor_surfaces();
+        self.test_backdrop_cross_slice_changes();
+        self.test_backdrop_cross_slice_move_together();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -473,6 +475,66 @@ impl<'a> TestHarness<'a> {
                 );
             }
         }
+    }
+
+    fn test_backdrop_cross_slice_changes(&mut self) {
+        // Changes to a slice below a backdrop-filter that don't dirty any of its
+        // tiles still change what the backdrop reads from it. The reference and
+        // the state before the change are each rendered after a scene of a
+        // single slice, so that neither keeps tiles of the backdrop or the slice
+        // below it from an earlier scene.
+        let cases = [
+            ("clip_grow", (100, 40), "content revealed by a lower slice's wider clip shows through the backdrop"),
+            ("radius", (70, 20), "the backdrop is clipped like the lower slice after its rounded clip changes"),
+            ("unsampled", (200, 40), "the backdrop stops showing a lower slice it no longer samples"),
+        ];
+        for (name, probe, what) in cases {
+            let before = format!("invalidation/backdrop_cross_slice_{}_1.yaml", name);
+            let after = format!("invalidation/backdrop_cross_slice_{}_2.yaml", name);
+            self.render_yaml("basic");
+            let expected = self.render_yaml_path_probe(&PathBuf::from(&after), Some(probe)).probe_pixel.unwrap();
+            self.render_yaml("basic");
+            self.render_yaml_path(&PathBuf::from(&before));
+            let actual = self.render_yaml_path_probe(&PathBuf::from(&after), Some(probe)).probe_pixel.unwrap();
+            assert!(
+                expected.iter().zip(actual.iter()).all(|(e, a)| (*e as i32 - *a as i32).abs() <= 8),
+                "Ensure {} at {:?}: expected {:?}, got {:?}",
+                what, probe, expected, actual,
+            );
+        }
+    }
+
+    fn test_backdrop_cross_slice_move_together(&mut self) {
+        // A backdrop-filter and the slice below it, moved by the same amount:
+        // nothing under the backdrop changed, so its tiles are kept.
+        let probe = (200, 80);
+        self.render_yaml("basic");
+        let expected = self.render_yaml_path_probe(
+            &PathBuf::from("invalidation/backdrop_cross_slice_move_together_2.yaml"),
+            Some(probe),
+        ).probe_pixel.unwrap();
+        self.render_yaml("basic");
+        self.render_yaml("backdrop_cross_slice_move_together_1");
+        let results = self.render_yaml_path_probe(
+            &PathBuf::from("invalidation/backdrop_cross_slice_move_together_2.yaml"),
+            Some(probe),
+        );
+        let actual = results.probe_pixel.unwrap();
+
+        let dirty_tiles = |slice: usize| {
+            results.pc_debug.slices[&slice].tiles.values()
+                .filter(|tile| matches!(tile, TileDebugInfo::Dirty(..)))
+                .count()
+        };
+
+        assert_eq!(results.pc_debug.slices.len(), 2, "Ensure the backdrop's slices are not merged");
+        assert_eq!(dirty_tiles(0), 0, "Ensure scrolling the content under the backdrop keeps its tiles");
+        assert_eq!(dirty_tiles(1), 0, "Ensure the backdrop isn't redrawn when it moves with the content under it");
+        assert!(
+            expected.iter().zip(actual.iter()).all(|(e, a)| (*e as i32 - *a as i32).abs() <= 8),
+            "Ensure the backdrop still shows the content under it after both move at {:?}: expected {:?}, got {:?}",
+            probe, expected, actual,
+        );
     }
 
     /// Render `test` and `reference`, and assert that their pixels at `probe`
