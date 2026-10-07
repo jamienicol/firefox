@@ -101,6 +101,8 @@ pub struct TestHarness<'a> {
 struct RenderResult {
     pc_debug: PictureCacheDebugInfo,
     composite_needed: bool,
+    /// The pixel read back at `probe`, if one was requested.
+    probe_pixel: Option<[u8; 4]>,
 }
 
 // Convenience method to build a picture rect
@@ -137,6 +139,7 @@ impl<'a> TestHarness<'a> {
         self.test_rounded_rect_intersection();
         self.test_promotion_shapes();
         self.test_backdrop_sampled_margin();
+        self.test_backdrop_cross_slice_scroll();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -409,6 +412,34 @@ impl<'a> TestHarness<'a> {
         );
     }
 
+    fn test_backdrop_cross_slice_scroll(&mut self) {
+        self.render_yaml("backdrop_cross_slice_scroll_1");
+        // Behind the header, over the rounded gradient once scrolled.
+        let results = self.render_yaml_path_probe(
+            &PathBuf::from("invalidation/backdrop_cross_slice_scroll_2.yaml"),
+            Some((200, 20)),
+        );
+
+        let dirty_tiles = |slice: usize| {
+            results.pc_debug.slices[&slice].tiles.values()
+                .filter(|tile| matches!(tile, TileDebugInfo::Dirty(..)))
+                .count()
+        };
+
+        assert_eq!(results.pc_debug.slices.len(), 3, "Ensure the backdrop's slices are not merged");
+        assert_eq!(dirty_tiles(1), 0, "Ensure scrolling the content under the backdrop keeps its tiles");
+        assert!(dirty_tiles(2) > 0, "Ensure the backdrop is redrawn when the content under it scrolls");
+
+        // Content with a clip mask, in a slice whose tiles are all clean, is
+        // still drawn into the backdrop.
+        let [r, g, b, _] = results.probe_pixel.unwrap();
+        assert!(
+            (r as u32 + g as u32 + b as u32) < 600,
+            "Ensure masked content under the backdrop is drawn after scrolling, got {:?}",
+            (r, g, b),
+        );
+    }
+
     /// Render a YAML file by name (relative to invalidation/), and return the picture cache debug info
     fn render_yaml(
         &mut self,
@@ -422,6 +453,16 @@ impl<'a> TestHarness<'a> {
         &mut self,
         path: &Path,
     ) -> RenderResult {
+        self.render_yaml_path_probe(path, None)
+    }
+
+    /// Render a yaml file, reading back the pixel at `probe` (in the yaml's
+    /// coordinates) before presenting.
+    fn render_yaml_path_probe(
+        &mut self,
+        path: &Path,
+        probe: Option<(i32, i32)>,
+    ) -> RenderResult {
         let mut reader = YamlFrameReader::new(path);
 
         reader.do_frame(self.wrench);
@@ -430,11 +471,22 @@ impl<'a> TestHarness<'a> {
             NotifierEvent::ShutDown => unreachable!(),
         };
         let results = self.wrench.render();
+
+        let probe_pixel = probe.map(|(x, y)| {
+            let window_size = self.window.get_inner_size();
+            let rect = FramebufferIntRect::from_origin_and_size(
+                FramebufferIntPoint::new(x, window_size.height - 1 - y),
+                FramebufferIntSize::new(1, 1),
+            );
+            let pixels = self.wrench.renderer.read_pixels_rgba8(rect);
+            [pixels[0], pixels[1], pixels[2], pixels[3]]
+        });
         self.window.swap_buffers();
 
         RenderResult {
             pc_debug: results.picture_cache_debug,
             composite_needed,
+            probe_pixel,
         }
     }
 }

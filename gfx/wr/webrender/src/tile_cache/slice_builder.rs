@@ -155,6 +155,16 @@ impl TileCacheBuilder {
         }
     }
 
+    /// Give the current slice the restrictions of an atomic slice (no
+    /// compositor surfaces other than underlays) without merging its secondary
+    /// slices.
+    pub fn restrict_current_slice_as_atomic(&mut self) {
+        self.primary_slices
+            .last_mut()
+            .unwrap()
+            .slice_flags |= SliceFlags::IS_ATOMIC;
+    }
+
     pub fn make_current_slice_atomic(&mut self) {
         self.primary_slices
             .last_mut()

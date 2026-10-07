@@ -1855,7 +1855,7 @@ impl<'a> SceneBuilder<'a> {
         );
     }
 
-    fn make_current_slice_atomic_if_required(&mut self) {
+    fn restrict_current_slice_if_required(&mut self) {
         let has_non_wrapping_sc = self.sc_stack
             .iter()
             .position(|sc| {
@@ -1867,7 +1867,7 @@ impl<'a> SceneBuilder<'a> {
             return;
         }
 
-        self.tile_cache_builder.make_current_slice_atomic();
+        self.tile_cache_builder.restrict_current_slice_as_atomic();
     }
 
     /// If no stacking contexts are present (i.e. we are adding prims to a tile
@@ -3057,7 +3057,10 @@ impl<'a> SceneBuilder<'a> {
         // (which is the common case). It will get resolved later during `finalize_picture`.
         let filter_spatial_node_index = SpatialNodeIndex::UNKNOWN;
 
-        self.make_current_slice_atomic_if_required();
+        // A backdrop root that is a picture cache slice reads the content of the
+        // slices below it, so they are not merged into one atomic slice, but
+        // its slice still promotes no compositor surfaces other than underlays.
+        self.restrict_current_slice_if_required();
 
         // Ensure we create a clip-chain for the capture primitive that matches
         // the render primitive, otherwise one might get culled while the other

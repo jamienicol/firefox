@@ -852,6 +852,20 @@ impl SurfaceBuilder {
         }
     }
 
+    /// Push a builder that draws nothing, for emitting commands into an explicit
+    /// command buffer outside of any surface. `pop_detached` returns the render
+    /// tasks those commands depend on.
+    pub fn push_detached(&mut self) {
+        self.builder_stack.push(CommandBufferBuilder::empty());
+        self.begin_capture_dependencies();
+    }
+
+    pub fn pop_detached(&mut self) -> Vec<RenderTaskId> {
+        let task_ids = self.end_capture_dependencies();
+        self.builder_stack.pop().unwrap();
+        task_ids
+    }
+
     pub fn pop_empty_surface(&mut self) {
         self.builder_stack.pop().unwrap();
     }

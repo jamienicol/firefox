@@ -330,6 +330,8 @@ pub struct BackdropCaptureRegion {
     /// The surface the backdrop root's content is drawn into. `region` is in
     /// its picture space.
     pub root_surface_index: SurfaceIndex,
+    /// The picture cache slice the backdrop root is, if it is one.
+    pub root_slice: Option<SliceId>,
     /// The `BackdropCapture` primitive. Primitives painted before the
     /// backdrop-filter element have lower instance indices.
     pub capture_instance_index: PrimitiveInstanceIndex,
@@ -464,6 +466,7 @@ pub fn build_backdrop_capture_regions(
             capture_pic_index,
             root_pic_index,
             root_surface_index,
+            root_slice,
             capture_instance_index,
             region,
             root_background_color: root_slice.and_then(|slice_id| tile_caches[&slice_id].background_color),
