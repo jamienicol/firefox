@@ -230,6 +230,11 @@ fn prepare_primitives(
                 &cmd_buffer_targets,
             );
 
+            frame_state.surface_builder.attach_pending_picture_outputs(
+                &cmd_buffer_targets,
+                frame_state.rg_builder,
+            );
+
             if has_captures {
                 let task_ids = frame_state.surface_builder.end_capture_dependencies();
                 scratch.frame.add_backdrop_capture_dependencies(captures, &task_ids);
@@ -1118,6 +1123,7 @@ fn prepare_prim_for_render(
 
             match chain_output_id {
                 Some(chain_output_id) => {
+                    frame_state.surface_builder.take_pending_picture_output(chain_output_id);
                     frame_state.surface_builder.add_child_render_task_to_targets(
                         chain_output_id,
                         targets,

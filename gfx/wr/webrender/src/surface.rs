@@ -718,6 +718,10 @@ pub struct SurfaceBuilder {
     // captures, innermost last: the depth of `builder_stack` it is drawn at,
     // and the render tasks made dependencies of that surface while preparing it.
     capture_dependency_recordings: Vec<(usize, Vec<RenderTaskId>)>,
+    // The output tasks of child surfaces popped into a tiled surface, with the
+    // depth of `builder_stack` they were popped to, waiting to be made
+    // dependencies of the tasks their picture primitive is drawn into.
+    pending_picture_outputs: Vec<(usize, RenderTaskId)>,
 }
 
 impl SurfaceBuilder {
@@ -726,6 +730,7 @@ impl SurfaceBuilder {
             current_cmd_buffers: CommandBufferTargets::new(),
             builder_stack: Vec::new(),
             capture_dependency_recordings: Vec::new(),
+            pending_picture_outputs: Vec::new(),
         }
     }
 
@@ -837,7 +842,15 @@ impl SurfaceBuilder {
         rg_builder: &mut RenderTaskGraphBuilder,
     ) {
         self.record_capture_dependency(child_task_id);
+        self.add_dependency_to_targets(child_task_id, targets, rg_builder);
+    }
 
+    fn add_dependency_to_targets(
+        &self,
+        child_task_id: RenderTaskId,
+        targets: &[CommandBufferIndex],
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) {
         let builder = self.builder_stack.last().unwrap();
         let is_target = |task_id: RenderTaskId| {
             let RenderTaskKind::Picture(ref info) = rg_builder.get_task(task_id).kind else {
@@ -862,6 +875,33 @@ impl SurfaceBuilder {
         for task_id in task_ids {
             rg_builder.add_dependency(task_id, child_task_id);
         }
+    }
+
+    // Make the outputs of the child surfaces popped while preparing a picture
+    // primitive dependencies of the tasks it is drawn into.
+    pub fn attach_pending_picture_outputs(
+        &mut self,
+        targets: &[CommandBufferIndex],
+        rg_builder: &mut RenderTaskGraphBuilder,
+    ) {
+        if targets.is_empty() {
+            return;
+        }
+        let depth = self.builder_stack.len();
+        while let Some(&(pending_depth, task_id)) = self.pending_picture_outputs.last() {
+            if pending_depth != depth {
+                break;
+            }
+            self.pending_picture_outputs.pop();
+            self.add_dependency_to_targets(task_id, targets, rg_builder);
+        }
+    }
+
+    // Stop waiting for a child surface's output to be drawn by its picture
+    // primitive, for one whose consumer adds the dependency itself.
+    pub fn take_pending_picture_output(&mut self, task_id: RenderTaskId) {
+        let depth = self.builder_stack.len();
+        self.pending_picture_outputs.retain(|&(d, id)| d != depth || id != task_id);
     }
 
     // Add a picture render task as a dependency of the task this surface's
@@ -924,6 +964,24 @@ impl SurfaceBuilder {
         &mut self,
         rg_builder: &mut RenderTaskGraphBuilder,
     ) {
+        // Outputs that no picture primitive took are made dependencies of
+        // every task of the surface.
+        let depth = self.builder_stack.len();
+        while let Some(&(pending_depth, task_id)) = self.pending_picture_outputs.last() {
+            if pending_depth != depth {
+                break;
+            }
+            self.pending_picture_outputs.pop();
+            if let CommandBufferBuilderKind::Tiled { ref tiles, ref extra_targets } = self.builder_stack.last().unwrap().kind {
+                for (_, descriptor) in tiles {
+                    rg_builder.add_dependency(descriptor.current_task_id, task_id);
+                }
+                for (_, extra_task_id) in extra_targets {
+                    rg_builder.add_dependency(*extra_task_id, task_id);
+                }
+            }
+        }
+
         let builder = self.builder_stack.pop().unwrap();
 
         match builder.kind {
@@ -932,20 +990,11 @@ impl SurfaceBuilder {
                 self.record_capture_dependency(child_root_task_id.unwrap_or(child_task_id));
 
                 match self.builder_stack.last().unwrap().kind {
-                    CommandBufferBuilderKind::Tiled { ref tiles, ref extra_targets } => {
-                        // For a tiled render task, add as a dependency to every tile.
-                        for (_, descriptor) in tiles {
-                            rg_builder.add_dependency(
-                                descriptor.current_task_id,
-                                child_root_task_id.unwrap_or(child_task_id),
-                            );
-                        }
-                        for (_, task_id) in extra_targets {
-                            rg_builder.add_dependency(
-                                *task_id,
-                                child_root_task_id.unwrap_or(child_task_id),
-                            );
-                        }
+                    CommandBufferBuilderKind::Tiled { .. } => {
+                        self.pending_picture_outputs.push((
+                            self.builder_stack.len(),
+                            child_root_task_id.unwrap_or(child_task_id),
+                        ));
                     }
                     CommandBufferBuilderKind::Simple { render_task_id: parent_task_id, .. } => {
                         rg_builder.add_dependency(
