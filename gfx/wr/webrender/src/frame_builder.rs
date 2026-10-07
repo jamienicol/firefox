@@ -379,6 +379,12 @@ impl FrameBuilder {
         scratch.primitive.frame.index_backdrop_captures(scene.prim_store.pictures.len());
 
         let slice_ids = tile_cache_slice_ids(&scene.tile_cache_pictures, &scene.prim_store.pictures);
+        let backdrop_root_regions = crate::tile_cache::backdrop_root_regions(
+            &slice_ids,
+            tile_caches,
+            &scratch.primitive.frame.backdrop_captures,
+            frame_context.spatial_tree,
+        );
 
         // In order to handle picture snapshots consistently we need
         // the visibility and prepare passes to visit them first before
@@ -457,7 +463,7 @@ impl FrameBuilder {
                 }
             }
 
-            for pic_index in scene.tile_cache_pictures.iter().rev() {
+            for (position, pic_index) in scene.tile_cache_pictures.iter().enumerate().rev() {
                 if !render_picture_cache_slices {
                     break;
                 }
@@ -468,6 +474,14 @@ impl FrameBuilder {
                         let tile_cache = tile_caches
                             .get_mut(&slice_id)
                             .expect("bug: non-existent tile cache");
+
+                        tile_cache.update_backdrop_sample_rects(
+                            position,
+                            &backdrop_root_regions,
+                            &scratch.primitive.frame.backdrop_captures,
+                            &scratch.primitive.frame.required_backdrop_chains,
+                            spatial_tree,
+                        );
 
                         let mut visibility_state = FrameVisibilityState {
                             clip_store: &mut scene.clip_store,

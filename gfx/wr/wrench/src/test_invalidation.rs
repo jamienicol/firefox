@@ -141,6 +141,7 @@ impl<'a> TestHarness<'a> {
         self.test_backdrop_sampled_margin();
         self.test_backdrop_cross_slice_scroll();
         self.test_backdrop_cross_slice_rounded();
+        self.test_backdrop_cross_slice_compositor_surfaces();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -455,6 +456,22 @@ impl<'a> TestHarness<'a> {
                 "lower slice content under a backdrop is clipped like the slice",
             );
             assert!(results.pc_debug.slices.len() > 2, "Ensure the iframe content is in a slice of its own");
+        }
+    }
+
+    fn test_backdrop_cross_slice_compositor_surfaces(&mut self) {
+        // An image that would be promoted to an overlay or an underlay in a
+        // slice below a backdrop-filter (an iframe, so a separate primary slice)
+        // must still be drawn into the backdrop, as when it is in one slice.
+        for kind in &["overlay", "underlay"] {
+            for &probe in &[(200, 40), (200, 120)] {
+                self.assert_probe_matches(
+                    &format!("invalidation/backdrop_cross_slice_{}.yaml", kind),
+                    &format!("invalidation/backdrop_cross_slice_{}_ref.yaml", kind),
+                    probe,
+                    &format!("a {} candidate under a backdrop in a lower slice is drawn into it", kind),
+                );
+            }
         }
     }
 

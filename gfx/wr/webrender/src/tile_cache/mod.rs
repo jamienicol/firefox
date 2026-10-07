@@ -873,6 +873,11 @@ pub struct TileCacheInstance {
     /// this frame, each drawn into a task of its own, in increasing capture
     /// order.
     pub backdrop_sources: Vec<BackdropSource>,
+    /// The areas of this slice that drawn backdrop-filters in slices above it
+    /// sample this frame, with the index of their capture, in increasing
+    /// capture order, known before visibility. Compositor surfaces aren't drawn
+    /// into a backdrop, so nothing is promoted to one in these areas.
+    pub backdrop_sample_rects: Vec<(usize, PictureRect)>,
 }
 
 /// A rounded-rect clip a slice is composited with.
@@ -958,7 +963,17 @@ impl TileCacheInstance {
             corners_cache: CornersCache::new(),
             prev_pic_to_root: None,
             backdrop_sources: Vec::new(),
+            backdrop_sample_rects: Vec::new(),
         }
+    }
+
+    /// The area of this slice the capture at `capture_index` samples, if it is
+    /// drawn and in a slice above.
+    fn backdrop_sample_rect(&self, capture_index: usize) -> Option<PictureRect> {
+        let position = self.backdrop_sample_rects
+            .binary_search_by_key(&capture_index, |(index, _)| *index)
+            .ok()?;
+        Some(self.backdrop_sample_rects[position].1)
     }
 
     /// The part of this slice the capture at `capture_index` reads, if any.
@@ -967,6 +982,42 @@ impl TileCacheInstance {
             .binary_search_by_key(&capture_index, |source| source.capture_index)
             .ok()?;
         Some(&self.backdrop_sources[position])
+    }
+
+    /// Whether a backdrop-filter in a slice above may sample `rect`.
+    fn is_sampled_by_backdrop(&self, rect: &PictureRect) -> bool {
+        self.backdrop_sample_rects.iter().any(|(_, sample_rect)| sample_rect.intersects(rect))
+    }
+
+    /// Record the areas of this slice, at `position` in the slice order, that
+    /// the drawn backdrop-filters in the slices above it sample. The slices
+    /// above have already found which backdrop-filter chains are drawn.
+    pub fn update_backdrop_sample_rects(
+        &mut self,
+        position: usize,
+        root_regions: &[Option<(usize, LayoutRect)>],
+        captures: &[BackdropCaptureRegion],
+        required_backdrop_chains: &FastHashSet<PictureIndex>,
+        spatial_tree: &SpatialTree,
+    ) {
+        self.backdrop_sample_rects.clear();
+        if captures.is_empty() {
+            return;
+        }
+        let pic_to_root = get_relative_scale_offset(
+            self.spatial_node_index,
+            spatial_tree.root_reference_frame_index(),
+            spatial_tree,
+        );
+        for (capture_index, (capture, root_region)) in captures.iter().zip(root_regions).enumerate() {
+            match root_region {
+                Some((top, root_region)) if *top > position &&
+                    required_backdrop_chains.contains(&capture.chain_pic_index) => {
+                    self.backdrop_sample_rects.push((capture_index, pic_to_root.unmap_rect(root_region)));
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Return the total number of tiles allocated by this tile cache
@@ -1572,6 +1623,10 @@ impl TileCacheInstance {
                 // is necessary for correct color display of HDR.
                 let force_for_hdr = matches!(color_depth, Some(color_depth) if color_depth.bit_depth() > 8);
 
+                if !force_for_hdr && self.is_sampled_by_backdrop(&pic_coverage_rect) {
+                    return Err(UnderBackdropFilter);
+                }
+
                 // If a mask is needed, there are some restrictions.
                 if prim_clip_chain.needs_mask {
                     // Need an opaque region behind this prim. The opaque region doesn't
@@ -1647,6 +1702,9 @@ impl TileCacheInstance {
         if surface_kind != CompositorSurfaceKind::Underlay {
             if self.slice_flags.contains(SliceFlags::IS_ATOMIC) {
                 return Err(SliceAtomic);
+            }
+            if self.is_sampled_by_backdrop(&pic_coverage_rect) {
+                return Err(UnderBackdropFilter);
             }
         }
 
@@ -3339,6 +3397,7 @@ enum SurfacePromotionFailure {
     NotRootTileCache,
     ComplexTransform,
     SliceAtomic,
+    UnderBackdropFilter,
     SizeTooLarge,
 }
 
@@ -3360,6 +3419,7 @@ impl Display for SurfacePromotionFailure {
                 SurfacePromotionFailure::NotRootTileCache => "is not on a root tile cache",
                 SurfacePromotionFailure::ComplexTransform => "has a complex transform",
                 SurfacePromotionFailure::SliceAtomic => "slice is atomic",
+                SurfacePromotionFailure::UnderBackdropFilter => "sampled by a backdrop-filter in a slice above",
                 SurfacePromotionFailure::SizeTooLarge => "surface is too large for compositor",
             }.to_owned()
         )
@@ -3473,7 +3533,6 @@ pub fn update_cross_slice_backdrops(
     spatial_tree: &SpatialTree,
 ) {
     let root = spatial_tree.root_reference_frame_index();
-    let mut pic_to_root = Vec::with_capacity(slice_ids.len());
     let mut moved = Vec::with_capacity(slice_ids.len());
 
     for slice_id in slice_ids {
@@ -3484,27 +3543,31 @@ pub fn update_cross_slice_backdrops(
         let transform = get_relative_scale_offset(tile_cache.spatial_node_index, root, spatial_tree);
         moved.push(Some(transform) != tile_cache.prev_pic_to_root);
         tile_cache.prev_pic_to_root = Some(transform);
-        pic_to_root.push(transform);
     }
 
     for (capture_index, capture) in captures.iter().enumerate() {
         let Some(top) = capture.root_slice.and_then(|id| slice_ids.iter().position(|s| *s == id)) else {
             continue;
         };
-        // A chain that isn't drawn, such as one under an invisible picture,
-        // has no capture to read the sources.
-        if !required_backdrop_chains.contains(&capture.chain_pic_index) {
-            continue;
-        }
-        let root_region: LayoutRect = pic_to_root[top].map_rect(&capture.region);
-
+        // The slices below took what drawn backdrop-filters sample before their
+        // visibility pass, so each chain has to be found to be drawn by then.
+        assert!(
+            !required_backdrop_chains.contains(&capture.chain_pic_index) ||
+                slice_ids[.. top].iter().all(|slice_id| {
+                    tile_caches[slice_id].backdrop_sample_rect(capture_index).is_some()
+                }),
+            "bug: backdrop-filter chain found to be drawn after the slices below it",
+        );
         let mut sources = Vec::new();
         let mut changed = moved[top];
 
         for lower in 0 .. top {
-            let lower_to_root = pic_to_root[lower];
             let tile_cache = &tile_caches[&slice_ids[lower]];
-            let rect: PictureRect = lower_to_root.unmap_rect(&root_region);
+            // A chain that isn't drawn, such as one under an invisible picture,
+            // samples nothing.
+            let Some(rect) = tile_cache.backdrop_sample_rect(capture_index) else {
+                continue;
+            };
             let Some(rect) = rect
                 .intersection(&tile_cache.local_clip_rect)
                 .and_then(|rect| rect.intersection(&tile_cache.local_rect)) else {
@@ -3568,4 +3631,24 @@ pub fn update_cross_slice_backdrops(
             });
         }
     }
+}
+
+/// Each backdrop-filter capture's region in the root space, with the position
+/// of its backdrop root's slice in `slice_ids`.
+pub fn backdrop_root_regions(
+    slice_ids: &[SliceId],
+    tile_caches: &FastHashMap<SliceId, Box<TileCacheInstance>>,
+    captures: &[BackdropCaptureRegion],
+    spatial_tree: &SpatialTree,
+) -> Vec<Option<(usize, LayoutRect)>> {
+    let root = spatial_tree.root_reference_frame_index();
+    captures
+        .iter()
+        .map(|capture| {
+            let slice_id = capture.root_slice?;
+            let top = slice_ids.iter().position(|s| *s == slice_id)?;
+            let pic_to_root = get_relative_scale_offset(tile_caches[&slice_id].spatial_node_index, root, spatial_tree);
+            Some((top, pic_to_root.map_rect(&capture.region)))
+        })
+        .collect()
 }
