@@ -144,6 +144,7 @@ impl<'a> TestHarness<'a> {
         self.test_backdrop_cross_slice_compositor_surfaces();
         self.test_backdrop_cross_slice_changes();
         self.test_backdrop_cross_slice_move_together();
+        self.test_backdrop_own_slice_compositor_surfaces();
 
         // Run manifest-based tests
         let manifest_path = PathBuf::from("invalidation/invalidation.list");
@@ -535,6 +536,48 @@ impl<'a> TestHarness<'a> {
             "Ensure the backdrop still shows the content under it after both move at {:?}: expected {:?}, got {:?}",
             probe, expected, actual,
         );
+    }
+
+    fn test_backdrop_own_slice_compositor_surfaces(&mut self) {
+        // Compositor surfaces aren't drawn into a backdrop, so nothing in the
+        // area a backdrop-filter samples is promoted, but anything elsewhere,
+        // in its slice or in a slice above, still is.
+        assert_eq!(
+            self.render_yaml_overlays("backdrop_own_slice_overlay_control"), 1,
+            "Ensure the image is promoted to an overlay with no backdrop-filter",
+        );
+        assert_eq!(
+            self.render_yaml_overlays("backdrop_own_slice_overlay_outside"), 1,
+            "Ensure an image outside the area a backdrop-filter in its slice samples is promoted",
+        );
+        assert_eq!(
+            self.render_yaml_overlays("backdrop_above_slice_overlay"), 1,
+            "Ensure an image in a slice above a backdrop-filter's is promoted",
+        );
+
+        self.assert_probe_matches(
+            "invalidation/backdrop_own_slice_overlay_inside.yaml",
+            "invalidation/backdrop_own_slice_overlay_inside_ref.yaml",
+            (200, 40),
+            "an image in the area a backdrop-filter in its slice samples is drawn into it",
+        );
+        assert_eq!(
+            self.render_yaml_overlays("backdrop_own_slice_overlay_inside"), 0,
+            "Ensure an image in the area a backdrop-filter in its slice samples isn't promoted",
+        );
+    }
+
+    /// Render a YAML file by name (relative to invalidation/), and return the
+    /// number of compositor surfaces promoted to overlays in the frame.
+    fn render_yaml_overlays(&mut self, filename: &str) -> u32 {
+        self.wrench.renderer.take_frame_build_profiles();
+        self.render_yaml(filename);
+        let profiles = self.wrench.renderer.take_frame_build_profiles();
+        let counters = profiles.last().expect("bug: no frame was built");
+        counters
+            .iter()
+            .find(|counter| counter.name == "Compositor surface overlays")
+            .map_or(0, |counter| counter.value as u32)
     }
 
     /// Render `test` and `reference`, and assert that their pixels at `probe`

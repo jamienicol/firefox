@@ -873,10 +873,11 @@ pub struct TileCacheInstance {
     /// this frame, each drawn into a task of its own, in increasing capture
     /// order.
     pub backdrop_sources: Vec<BackdropSource>,
-    /// The areas of this slice that drawn backdrop-filters in slices above it
-    /// sample this frame, with the index of their capture, in increasing
-    /// capture order, known before visibility. Compositor surfaces aren't drawn
-    /// into a backdrop, so nothing is promoted to one in these areas.
+    /// The areas of this slice that backdrop-filters in it, and drawn ones in
+    /// slices above it, sample this frame, with the index of their capture, in
+    /// increasing capture order, known before visibility. Compositor surfaces
+    /// aren't drawn into a backdrop, so nothing is promoted to one in these
+    /// areas.
     pub backdrop_sample_rects: Vec<(usize, PictureRect)>,
 }
 
@@ -988,7 +989,7 @@ impl TileCacheInstance {
     }
 
     /// The area of this slice the capture at `capture_index` samples, if it is
-    /// drawn and in a slice above.
+    /// in this slice, or drawn and in a slice above.
     fn backdrop_sample_rect(&self, capture_index: usize) -> Option<PictureRect> {
         let position = self.backdrop_sample_rects
             .binary_search_by_key(&capture_index, |(index, _)| *index)
@@ -1004,14 +1005,16 @@ impl TileCacheInstance {
         Some(&self.backdrop_sources[position])
     }
 
-    /// Whether a backdrop-filter in a slice above may sample `rect`.
+    /// Whether a backdrop-filter in this slice or a slice above may sample `rect`.
     fn is_sampled_by_backdrop(&self, rect: &PictureRect) -> bool {
         self.backdrop_sample_rects.iter().any(|(_, sample_rect)| sample_rect.intersects(rect))
     }
 
     /// Record the areas of this slice, at `position` in the slice order, that
-    /// the drawn backdrop-filters in the slices above it sample. The slices
-    /// above have already found which backdrop-filter chains are drawn.
+    /// the backdrop-filters in it and the drawn ones in the slices above it
+    /// sample. The slices above have already found which backdrop-filter chains
+    /// are drawn. This slice's own are only found as it is visited, after the
+    /// primitives behind them, so those count whether drawn or not.
     pub fn update_backdrop_sample_rects(
         &mut self,
         position: usize,
@@ -1031,6 +1034,9 @@ impl TileCacheInstance {
         );
         for (capture_index, (capture, root_region)) in captures.iter().zip(root_regions).enumerate() {
             match root_region {
+                Some((top, _)) if *top == position => {
+                    self.backdrop_sample_rects.push((capture_index, capture.region));
+                }
                 Some((top, root_region)) if *top > position &&
                     required_backdrop_chains.contains(&capture.chain_pic_index) => {
                     self.backdrop_sample_rects.push((capture_index, pic_to_root.unmap_rect(root_region)));
@@ -3439,7 +3445,7 @@ impl Display for SurfacePromotionFailure {
                 SurfacePromotionFailure::NotRootTileCache => "is not on a root tile cache",
                 SurfacePromotionFailure::ComplexTransform => "has a complex transform",
                 SurfacePromotionFailure::SliceAtomic => "slice is atomic",
-                SurfacePromotionFailure::UnderBackdropFilter => "sampled by a backdrop-filter in a slice above",
+                SurfacePromotionFailure::UnderBackdropFilter => "sampled by a backdrop-filter",
                 SurfacePromotionFailure::SizeTooLarge => "surface is too large for compositor",
             }.to_owned()
         )
