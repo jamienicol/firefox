@@ -538,7 +538,7 @@ public final class GeckoRuntime implements Parcelable {
     // Process-selection related environment variables must be applied before GeckoThread starts and
     // XPCOMEventTarget.launcherThread() blocks are run.
     final ArrayList<String> env = GeckoThread.getEnvFromExtras(extras);
-    if (env.contains("MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS=1")) {
+    if (true || env.contains("MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS=1")) {
       Log.i(LOGTAG, "Enabling isolated process mode for content service processes at force");
       pm.setIsolatedProcessEnabled(true);
     } else {
