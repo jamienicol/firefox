@@ -358,8 +358,7 @@ already_AddRefed<MediaDecoderStateMachineBase> HLSDecoder::CreateStateMachine(
 }
 
 bool HLSDecoder::IsEnabled() {
-  return StaticPrefs::media_hls_enabled() &&
-         !java::GeckoAppShell::IsIsolatedProcess();
+  return StaticPrefs::media_hls_enabled();
 }
 
 bool HLSDecoder::IsSupportedType(const MediaContainerType& aContainerType) {
