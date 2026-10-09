@@ -64,6 +64,10 @@ public interface BaseHlsPlayer {
     void onError(int errorCode);
 
     GeckoResult<WebResponse> onOpenChannel(WebRequest request);
+
+    // Whether Gecko can decode media of this type, e.g.
+    // 'video/mp4; codecs="avc1.4d401e"; width=640; height=480'.
+    boolean isTypeSupported(String type);
   }
 
   // Used to identify player instance.
@@ -75,6 +79,9 @@ public interface BaseHlsPlayer {
   void init(String url, ResourceCallbacks callback);
 
   boolean isLiveStream();
+
+  // Sets the connection type, as a navigator.connection type name.
+  void setNetworkType(String type);
 
   // =======================================================================
   // API for GeckoHLSDemuxerWrapper

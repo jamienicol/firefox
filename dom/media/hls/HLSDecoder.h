@@ -6,13 +6,14 @@
 #define HLSDecoder_h_
 
 #include "MediaDecoder.h"
+#include "mozilla/HalNetworkInformation.h"
 #include "mozilla/java/GeckoHLSResourceWrapperWrappers.h"
 
 namespace mozilla {
 
 class HLSResourceCallbacksSupport;
 
-class HLSDecoder final : public MediaDecoder {
+class HLSDecoder final : public MediaDecoder, public hal::NetworkObserver {
  public:
   static RefPtr<HLSDecoder> Create(MediaDecoderInit& aInit);
 
@@ -44,6 +45,10 @@ class HLSDecoder final : public MediaDecoder {
 
   bool IsHLSDecoder() const override { return true; }
 
+  // hal::NetworkObserver. Tells the player about the connection type, which it
+  // uses to estimate bandwidth before it has measured any.
+  void Notify(const hal::NetworkInformation& aNetworkInfo) override;
+
  private:
   friend class HLSResourceCallbacksSupport;
 
@@ -72,6 +77,7 @@ class HLSDecoder final : public MediaDecoder {
   // There can be multiple media files loaded for one HLS content. Use this flag
   // to ensure we only record once per content.
   bool mUsageRecorded;
+  bool mObservingNetwork = false;
 };
 
 }  // namespace mozilla

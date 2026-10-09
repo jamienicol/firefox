@@ -838,6 +838,13 @@ run-if = [
 ]
 tags = "hls"
 
+["test_hls_streams.html"]
+run-if = [
+  "os == 'android'",
+]
+support-files = ["hls/streams/*"]
+tags = "hls"
+
 ["test_hw_video_decoding.html"]
 run-if = [
   "os == 'mac' && os_version != '10.15'", # Bug 1942396

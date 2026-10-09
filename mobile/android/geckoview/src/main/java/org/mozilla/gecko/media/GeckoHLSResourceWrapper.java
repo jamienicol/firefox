@@ -34,6 +34,10 @@ public class GeckoHLSResourceWrapper {
     @WrapForJNI
     public native GeckoResult<WebResponse> onOpenChannel(WebRequest request);
 
+    @Override
+    @WrapForJNI
+    public native boolean isTypeSupported(String type);
+
     @Override // JNIObject
     protected void disposeNative() {
       throw new UnsupportedOperationException();
@@ -58,6 +62,14 @@ public class GeckoHLSResourceWrapper {
   public static GeckoHLSResourceWrapper create(
       final String url, final BaseHlsPlayer.ResourceCallbacks callback) {
     return new GeckoHLSResourceWrapper(url, callback);
+  }
+
+  // Called with the name of a navigator.connection type, e.g. "wifi".
+  @WrapForJNI(calledFrom = "gecko")
+  public void setNetworkType(final String type) {
+    if (mPlayer != null) {
+      mPlayer.setNetworkType(type);
+    }
   }
 
   @WrapForJNI(calledFrom = "gecko")

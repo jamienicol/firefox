@@ -1,0 +1,176 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>Test playback of HLS stream features</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
+</head>
+<body>
+<script type="text/javascript">
+"use strict";
+
+SimpleTest.requestLongerTimeout(3);
+
+const BASE = "hls/streams/";
+
+function waitForEvent(element, name) {
+  return new Promise(resolve =>
+    element.addEventListener(name, resolve, { once: true })
+  );
+}
+
+function rejectOnError(element) {
+  return new Promise((_, reject) =>
+    element.addEventListener(
+      "error",
+      () => reject(new Error(`media error ${element.error?.code}: ${element.error?.message}`)),
+      { once: true }
+    )
+  );
+}
+
+async function playToEnd(src) {
+  const element = document.createElement("video");
+  element.preload = "auto";
+  document.body.appendChild(element);
+  element.src = src;
+  const error = rejectOnError(element);
+  await Promise.race([waitForEvent(element, "loadedmetadata"), error]);
+  const ended = waitForEvent(element, "ended");
+  await element.play();
+  await Promise.race([ended, error]);
+  element.remove();
+  return element;
+}
+
+add_setup(async () => {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["media.hls.enabled", true],
+    ],
+  });
+});
+
+add_task(async function test_alternate_audio_rendition() {
+  // The variant's segments carry video only; audio comes from a packed AAC
+  // rendition.
+  const video = await playToEnd(BASE + "alt_audio.m3u8");
+  ok(video.mozHasAudio, "audio came from the alternate rendition");
+  isfuzzy(video.duration, 9.98, 0.5, "duration");
+});
+
+add_task(async function test_packed_audio_only() {
+  const video = await playToEnd(BASE + "audio.m3u8");
+  ok(video.mozHasAudio, "packed audio played");
+  is(video.videoWidth, 0, "no video track");
+});
+
+add_task(async function test_fmp4_segments() {
+  // fMP4 media segments with an EXT-X-MAP initialization segment.
+  const video = await playToEnd(BASE + "fmp4/index.m3u8");
+  ok(video.mozHasAudio, "fMP4 audio played");
+  is(video.videoWidth, 400, "fMP4 video played");
+});
+
+add_task(async function test_seeking() {
+  const video = document.createElement("video");
+  document.body.appendChild(video);
+  video.src = BASE + "av.m3u8";
+  const error = rejectOnError(video);
+  await Promise.race([waitForEvent(video, "loadeddata"), error]);
+  for (const target of [7, 1, 8.5]) {
+    video.currentTime = target;
+    await Promise.race([waitForEvent(video, "seeked"), error]);
+    isfuzzy(video.currentTime, target, 0.1, `seeked to ${target}`);
+  }
+  const ended = waitForEvent(video, "ended");
+  await video.play();
+  await Promise.race([ended, error]);
+  ok(video.ended, "played to the end after seeking");
+  video.remove();
+});
+
+add_task(async function test_redirected_playlist() {
+  // Segment URLs are relative to the playlist's final URL, after the redirect.
+  const video = await playToEnd(BASE + "redirect.sjs");
+  ok(video.ended, "played through a redirected playlist");
+});
+
+add_task(async function test_segment_retries() {
+  const video = await playToEnd(BASE + `flaky.sjs?key=${Date.now()}`);
+  ok(video.ended, "played despite transient segment failures");
+});
+
+add_task(async function test_variant_exclusion() {
+  // The first variant's segments are missing, so playback has to fall back to
+  // the second variant.
+  const video = await playToEnd(BASE + "exclusion.m3u8");
+  ok(video.ended, "fell back to a working variant");
+});
+
+// Plays a stream whose first variant has the given codecs and bandwidth, and
+// returns whether any of that variant's segments were requested.
+async function playWithTrackedVariant(codecs, bandwidth, avcVariants) {
+  const key = Date.now();
+  const query = `key=${key}&codecs=${encodeURIComponent(codecs)}&bandwidth=${bandwidth}&avcVariants=${avcVariants}`;
+  const video = await playToEnd(BASE + `tracked_variant.sjs?${query}`);
+  ok(video.ended, "played a supported variant");
+  const response = await fetch(BASE + `tracked_variant.sjs?key=${key}&check=1`);
+  return (await response.text()) == "1";
+}
+
+add_task(async function test_unsupported_codec_variant() {
+  // Dolby Vision is a codec Media3 knows but Gecko can't decode.
+  ok(
+    !(await playWithTrackedVariant("mp4a.40.2,dvh1.05.06", 232370, 1)),
+    "never loaded segments of the variant with an unsupported codec"
+  );
+});
+
+add_task(async function test_no_adaptation_across_codecs() {
+  // The HEVC variant has the highest bitrate, so adaptive selection would pick
+  // it if it were allowed to mix codecs. There are more H.264 variants, so
+  // H.264 should be used throughout.
+  ok(
+    !(await playWithTrackedVariant("mp4a.40.2,hvc1.1.6.L93.B0", 600000, 2)),
+    "never loaded segments of the variant with a different codec"
+  );
+});
+
+add_task(async function test_aes128_key_file() {
+  const video = await playToEnd(BASE + "aes/key_file.m3u8");
+  ok(video.ended, "played AES-128 encrypted segments");
+});
+
+add_task(async function test_aes128_data_uri_key() {
+  const video = await playToEnd(BASE + "aes/data_key.m3u8");
+  ok(video.ended, "played AES-128 segments with a data: URI key");
+});
+
+add_task(async function test_live_with_discontinuities() {
+  const video = document.createElement("video");
+  document.body.appendChild(video);
+  video.src = BASE + `live.sjs?start=${Date.now()}`;
+  const error = rejectOnError(video);
+  await Promise.race([waitForEvent(video, "loadedmetadata"), error]);
+  await video.play();
+  const start = video.currentTime;
+  // The stream starts one segment in, so playing for 7s crosses the
+  // discontinuity at the start of the next loop.
+  await Promise.race([
+    new Promise(resolve => {
+      video.addEventListener("timeupdate", function onTimeUpdate() {
+        if (video.currentTime - start > 7) {
+          video.removeEventListener("timeupdate", onTimeUpdate);
+          resolve();
+        }
+      });
+    }),
+    error,
+  ]);
+  ok(video.currentTime - start > 7, "live playback advanced across a discontinuity");
+  video.remove();
+});
+</script>
+</body>
+</html>

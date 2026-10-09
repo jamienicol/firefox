@@ -18,12 +18,13 @@
 #include "base/process_util.h"
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/ErrorNames.h"
+#include "mozilla/Hal.h"
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/dom/HTMLMediaElement.h"
+#include "mozilla/dom/NetworkInformationBinding.h"
 #include "mozilla/glean/DomMediaHlsMetrics.h"
-#include "mozilla/java/GeckoAppShellWrappers.h"
 #include "mozilla/java/GeckoHLSResourceWrapperNatives.h"
 #include "mozilla/java/GeckoResultWrappers.h"
 #include "mozilla/java/WebMessageWrappers.h"
@@ -58,6 +59,9 @@ class HLSResourceCallbacksSupport
   // with a WebRequest. Returns a GeckoResult<WebResponse> that will be resolved
   // on the Gecko main thread.
   jni::Object::LocalRef OnOpenChannel(jni::Object::Param aRequest);
+  // Called by GeckoHlsPlayer off the main thread to check whether Gecko can
+  // decode a variant, given as a MIME type with codecs and dimensions.
+  bool IsTypeSupported(jni::String::Param aType);
 
  private:
   ~HLSResourceCallbacksSupport() {}
@@ -221,6 +225,27 @@ jni::Object::LocalRef HLSResourceCallbacksSupport::OnOpenChannel(
   return jni::ToLocalRef(result);
 }
 
+bool HLSResourceCallbacksSupport::IsTypeSupported(jni::String::Param aType) {
+  MOZ_ASSERT(!NS_IsMainThread());
+  const nsCString type = aType->ToCString();
+  // Decoder support can only be queried on the main thread. The caller holds
+  // no locks that the main thread could be waiting on.
+  bool supported = false;
+  nsresult rv = SyncRunnable::DispatchToThread(
+      GetMainThreadSerialEventTarget(),
+      NS_NewRunnableFunction(
+          "HLSResourceCallbacksSupport::IsTypeSupported", [&]() {
+            Maybe<MediaContainerType> containerType =
+                MakeMediaContainerType(type);
+            supported =
+                containerType && DecoderTraits::CanHandleContainerType(
+                                     *containerType, nullptr) != CANPLAY_NO;
+          }));
+  HLS_DEBUG("HLSResourceCallbacksSupport", "IsTypeSupported({}) = {}",
+            type.get(), NS_SUCCEEDED(rv) && supported);
+  return NS_SUCCEEDED(rv) && supported;
+}
+
 void HLSResourceCallbacksSupport::DoOpenChannel(
     java::WebRequest::Param aRequest, java::GeckoResult::Param aResult) {
   MOZ_ASSERT(NS_IsMainThread());
@@ -357,9 +382,7 @@ already_AddRefed<MediaDecoderStateMachineBase> HLSDecoder::CreateStateMachine(
   return MakeAndAddRef<MediaDecoderStateMachine>(this, mReader);
 }
 
-bool HLSDecoder::IsEnabled() {
-  return StaticPrefs::media_hls_enabled();
-}
+bool HLSDecoder::IsEnabled() { return StaticPrefs::media_hls_enabled(); }
 
 bool HLSDecoder::IsSupportedType(const MediaContainerType& aContainerType) {
   return IsEnabled() && DecoderTraits::IsHttpLiveStreamingType(aContainerType);
@@ -386,6 +409,12 @@ nsresult HLSDecoder::Load(nsIChannel* aChannel) {
   mHLSResourceWrapper = java::GeckoHLSResourceWrapper::Create(
       NS_ConvertUTF8toUTF16(spec), mJavaCallbacks);
   MOZ_ASSERT(mHLSResourceWrapper);
+
+  hal::RegisterNetworkObserver(this);
+  mObservingNetwork = true;
+  hal::NetworkInformation networkInfo;
+  hal::GetCurrentNetworkInformation(&networkInfo);
+  Notify(networkInfo);
 
   rv = MediaShutdownManager::Instance().Register(this);
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -438,6 +467,10 @@ void HLSDecoder::Resume() {
 
 void HLSDecoder::Shutdown() {
   HLS_DEBUG("HLSDecoder", "Shutdown");
+  if (mObservingNetwork) {
+    hal::UnregisterNetworkObserver(this);
+    mObservingNetwork = false;
+  }
   if (mCallbackSupport) {
     mCallbackSupport->Detach();
   }
@@ -450,6 +483,18 @@ void HLSDecoder::Shutdown() {
     mJavaCallbacks = nullptr;
   }
   MediaDecoder::Shutdown();
+}
+
+void HLSDecoder::Notify(const hal::NetworkInformation& aNetworkInfo) {
+  MOZ_ASSERT(NS_IsMainThread());
+  if (!mHLSResourceWrapper ||
+      aNetworkInfo.type() >
+          static_cast<uint32_t>(dom::ConnectionType::Unknown)) {
+    return;
+  }
+  const auto type = static_cast<dom::ConnectionType>(aNetworkInfo.type());
+  mHLSResourceWrapper->SetNetworkType(
+      NS_ConvertASCIItoUTF16(dom::GetEnumString(type)));
 }
 
 void HLSDecoder::NotifyDataArrived() {

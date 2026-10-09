@@ -17,11 +17,7 @@ import androidx.media3.common.util.UnstableApi;
 import androidx.media3.decoder.DecoderInputBuffer;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.RendererCapabilities;
-import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
-import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
-import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import java.nio.ByteBuffer;
-import java.util.List;
 import org.mozilla.geckoview.BuildConfig;
 
 @OptIn(markerClass = UnstableApi.class)
@@ -63,30 +59,12 @@ public class GeckoHlsAudioRenderer extends GeckoHlsRendererBase {
     if (!MimeTypes.isAudio(mimeType)) {
       return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
     }
-    List<MediaCodecInfo> decoderInfos = null;
-    try {
-      final MediaCodecSelector mediaCodecSelector = MediaCodecSelector.DEFAULT;
-      decoderInfos = mediaCodecSelector.getDecoderInfos(mimeType, false, false);
-    } catch (final MediaCodecUtil.DecoderQueryException e) {
-      Log.e(LOGTAG, e.getMessage());
-    }
-    if (decoderInfos == null || decoderInfos.isEmpty()) {
-      return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE);
-    }
-    final MediaCodecInfo info = decoderInfos.get(0);
-    /*
-     *  Note : If the code can make it to this place, ExoPlayer assumes
-     *         support for unknown sampleRate and channelCount when
-     *         SDK version is less than 21, otherwise, further check is needed
-     *         if there's no sampleRate/channelCount in format.
-     */
-    final boolean decoderCapable =
-        ((format.sampleRate == Format.NO_VALUE
-                || info.isAudioSampleRateSupportedV21(format.sampleRate))
-            && (format.channelCount == Format.NO_VALUE
-                || info.isAudioChannelCountSupportedV21(format.channelCount)));
+    // Gecko does the decoding, so ask it rather than MediaCodec. This also works in isolated
+    // processes, where MediaCodec can't be queried.
+    final boolean supported =
+        mPlayerEventDispatcher.isFormatSupported(format, /* isVideo= */ false);
     return RendererCapabilities.create(
-        decoderCapable ? C.FORMAT_HANDLED : C.FORMAT_EXCEEDS_CAPABILITIES,
+        supported ? C.FORMAT_HANDLED : C.FORMAT_EXCEEDS_CAPABILITIES,
         RendererCapabilities.ADAPTIVE_NOT_SEAMLESS,
         RendererCapabilities.TUNNELING_NOT_SUPPORTED);
   }

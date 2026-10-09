@@ -4,7 +4,6 @@
 
 package org.mozilla.gecko.media;
 
-import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaCodec.BufferInfo;
 import android.media.MediaCodec.CryptoInfo;
@@ -18,14 +17,8 @@ import androidx.media3.common.util.UnstableApi;
 import androidx.media3.decoder.DecoderInputBuffer;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.RendererCapabilities;
-import androidx.media3.exoplayer.mediacodec.MediaCodecInfo;
-import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
-import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import java.nio.ByteBuffer;
-import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.ConcurrentLinkedQueue;
-import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.geckoview.BuildConfig;
 
 @OptIn(markerClass = UnstableApi.class)
@@ -102,26 +95,12 @@ public class GeckoHlsVideoRenderer extends GeckoHlsRendererBase {
       return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_TYPE);
     }
 
-    List<MediaCodecInfo> decoderInfos = null;
-    try {
-      final MediaCodecSelector mediaCodecSelector = MediaCodecSelector.DEFAULT;
-      decoderInfos = mediaCodecSelector.getDecoderInfos(mimeType, false, false);
-    } catch (final MediaCodecUtil.DecoderQueryException e) {
-      Log.e(LOGTAG, e.getMessage());
-    }
-    if (decoderInfos == null || decoderInfos.isEmpty()) {
-      return RendererCapabilities.create(C.FORMAT_UNSUPPORTED_SUBTYPE);
-    }
-
-    final Context ctx = GeckoAppShell.getApplicationContext();
-    final Optional<MediaCodecInfo> info =
-        decoderInfos.stream().filter(i -> i.isFormatSupported(ctx, format)).findFirst();
-
+    // Gecko does the decoding, so ask it rather than MediaCodec. This also works in isolated
+    // processes, where MediaCodec can't be queried.
+    final boolean supported = mPlayerEventDispatcher.isFormatSupported(format, /* isVideo= */ true);
     return RendererCapabilities.create(
-        info.isPresent() ? C.FORMAT_HANDLED : C.FORMAT_EXCEEDS_CAPABILITIES,
-        info.isPresent() && info.get().adaptive
-            ? RendererCapabilities.ADAPTIVE_SEAMLESS
-            : RendererCapabilities.ADAPTIVE_NOT_SEAMLESS,
+        supported ? C.FORMAT_HANDLED : C.FORMAT_EXCEEDS_CAPABILITIES,
+        RendererCapabilities.ADAPTIVE_NOT_SEAMLESS,
         RendererCapabilities.TUNNELING_NOT_SUPPORTED);
   }
 

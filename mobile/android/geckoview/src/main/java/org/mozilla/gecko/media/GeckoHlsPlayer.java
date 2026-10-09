@@ -5,10 +5,13 @@
 package org.mozilla.gecko.media;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import androidx.annotation.Nullable;
 import androidx.annotation.OptIn;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
@@ -26,7 +29,6 @@ import androidx.media3.datasource.DefaultDataSource;
 import androidx.media3.exoplayer.DefaultLoadControl;
 import androidx.media3.exoplayer.ExoPlayer;
 import androidx.media3.exoplayer.RendererCapabilities;
-import androidx.media3.exoplayer.RenderersFactory;
 import androidx.media3.exoplayer.hls.HlsMediaSource;
 import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.TrackGroupArray;
@@ -36,7 +38,9 @@ import androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrack
 import androidx.media3.exoplayer.upstream.DefaultAllocator;
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -85,7 +89,7 @@ public class GeckoHlsPlayer
 
   private Handler mMainHandler;
   private HandlerThread mThread;
-  private ExoPlayer mPlayer;
+  private GeckoHlsMediaSourcePlayer mPlayer;
   private GeckoHlsRendererBase[] mRenderers;
   private DefaultTrackSelector mTrackSelector;
   private ComponentListener mComponentListener;
@@ -188,6 +192,9 @@ public class GeckoHlsPlayer
   }
 
   private final HlsMediaTracksInfo mTracksInfo = new HlsMediaTracksInfo();
+  private final Map<String, Boolean> mTypeSupport = new ConcurrentHashMap<>();
+  private volatile @Nullable String mNetworkType;
+  private volatile @Nullable DefaultBandwidthMeter mBandwidthMeter;
 
   // Used only in GeckoHlsPlayerThread.
   private boolean mIsPlayerInitDone = false;
@@ -197,6 +204,10 @@ public class GeckoHlsPlayer
 
   // Accessed only while holding this object's monitor. Once set, never cleared.
   private boolean mReleaseStarted = false;
+  // The position of the last seek, and whether samples have been taken since. Accessed only
+  // while holding this object's monitor.
+  private long mLastSeekUs = C.TIME_UNSET;
+  private boolean mSamplesTakenSinceSeek = false;
 
   private static void assertTrue(final boolean condition) {
     if (DEBUG && !condition) {
@@ -255,6 +266,58 @@ public class GeckoHlsPlayer
         runOnPlayerThread(() -> mComponentListener.onAudioInputFormatChanged(format));
       }
     }
+
+    // Called from GeckoHls{Audio,Video}Renderer.supportsFormat() on ExoPlayer's internal
+    // playback thread.
+    public boolean isFormatSupported(final Format format, final boolean isVideo) {
+      return GeckoHlsPlayer.this.isFormatSupported(format, isVideo);
+    }
+  }
+
+  // Asks Gecko whether it can decode the format, including its profile, level and size.
+  private boolean isFormatSupported(final Format format, final boolean isVideo) {
+    if (format.codecs == null || format.codecs.isEmpty()) {
+      // Playlists without CODECS attributes. Gecko finds out when it starts decoding.
+      return true;
+    }
+    final String type;
+    if (isVideo) {
+      final StringBuilder builder =
+          new StringBuilder("video/mp4; codecs=\"").append(format.codecs).append('"');
+      if (format.width > 0 && format.height > 0) {
+        builder.append("; width=").append(format.width).append("; height=").append(format.height);
+      }
+      if (format.frameRate > 0) {
+        builder.append("; framerate=").append(format.frameRate);
+      }
+      type = builder.toString();
+    } else if (MimeTypes.AUDIO_MPEG.equals(MimeTypes.getAudioMediaMimeType(format.codecs))) {
+      type = "audio/mpeg";
+    } else {
+      type = "audio/mp4; codecs=\"" + format.codecs + "\"";
+    }
+    final Boolean cached = mTypeSupport.get(type);
+    if (cached != null) {
+      return cached;
+    }
+    final BaseHlsPlayer.ResourceCallbacks callbacks;
+    synchronized (this) {
+      if (mReleaseStarted || mResourceCallbacks == null) {
+        return false;
+      }
+      callbacks = mResourceCallbacks;
+    }
+    // Called without holding the monitor, because Gecko answers on its main thread, which may be
+    // waiting for the monitor in release().
+    final boolean supported;
+    try {
+      supported = callbacks.isTypeSupported(type);
+    } catch (final RuntimeException e) {
+      // The native side has already been destroyed.
+      return false;
+    }
+    mTypeSupport.put(type, supported);
+    return supported;
   }
 
   public final class ComponentListener {
@@ -733,10 +796,28 @@ public class GeckoHlsPlayer
     mComponentEventDispatcher = new ComponentEventDispatcher();
     mDurationUs = 0;
 
-    final DefaultBandwidthMeter bandwidthMeter = new DefaultBandwidthMeter.Builder(ctx).build();
+    // With a Context, the bandwidth meter registers a broadcast receiver to observe network type
+    // changes, which isolated processes aren't allowed to do. Gecko tells us about them instead.
+    final DefaultBandwidthMeter bandwidthMeter =
+        new DefaultBandwidthMeter.Builder(/* context= */ null).build();
+    mBandwidthMeter = bandwidthMeter;
+    applyNetworkType();
 
     // Prepare trackSelector
-    mTrackSelector = new DefaultTrackSelector(ctx, new AdaptiveTrackSelection.Factory());
+    // Without a Context, the track selector doesn't query the caption settings, display mode or
+    // Spatializer, none of which isolated processes can reach. Cap variants at the display size
+    // explicitly instead, as the track selector does by default with a Context.
+    final DisplayMetrics display = Resources.getSystem().getDisplayMetrics();
+    mTrackSelector =
+        new DefaultTrackSelector(
+            new DefaultTrackSelector.Parameters.Builder()
+                .setViewportSize(
+                    display.widthPixels,
+                    display.heightPixels,
+                    /* viewportOrientationMayChange= */ true)
+                .setConstrainAudioChannelCountToDeviceCapabilities(false)
+                .build(),
+            new AdaptiveTrackSelection.Factory());
 
     // Prepare customized renderer
     mRenderers = new GeckoHlsRendererBase[2];
@@ -754,20 +835,11 @@ public class GeckoHlsPlayer
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
                 DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
             .build();
-    // Create ExoPlayer instance with specific components.
-    final RenderersFactory renderersFactory =
-        (eventHandler,
-            videoRendererEventListener,
-            audioRendererEventListener,
-            textRendererOutput,
-            metadataRendererOutput) -> mRenderers;
+    // ExoPlayer itself can't be used, because creating one blocks forever in isolated processes,
+    // so play the media source through the same components without it.
     mPlayer =
-        new ExoPlayer.Builder(ctx)
-            .setRenderersFactory(renderersFactory)
-            .setTrackSelector(mTrackSelector)
-            .setLoadControl(dlc)
-            .setBandwidthMeter(bandwidthMeter)
-            .build();
+        new GeckoHlsMediaSourcePlayer(
+            mThread.getLooper(), mRenderers, mTrackSelector, dlc, bandwidthMeter);
     mPlayer.addListener(this);
 
     final Uri uri = Uri.parse(url);
@@ -816,6 +888,42 @@ public class GeckoHlsPlayer
     return !mIsTimelineStatic;
   }
 
+  // Called on Gecko's main thread
+  @Override
+  public void setNetworkType(final String type) {
+    mNetworkType = type;
+    applyNetworkType();
+  }
+
+  // Seeds the bandwidth estimate for the connection type, and resets it when the type changes,
+  // using Media3's per-country estimates. Without a Context, the country comes from the locale.
+  private void applyNetworkType() {
+    final DefaultBandwidthMeter bandwidthMeter = mBandwidthMeter;
+    final String type = mNetworkType;
+    if (bandwidthMeter == null || type == null) {
+      return;
+    }
+    final int networkType;
+    switch (type) {
+      case "wifi":
+        networkType = C.NETWORK_TYPE_WIFI;
+        break;
+      case "ethernet":
+        networkType = C.NETWORK_TYPE_ETHERNET;
+        break;
+      case "cellular":
+        // Gecko doesn't distinguish cellular generations.
+        networkType = C.NETWORK_TYPE_4G;
+        break;
+      case "none":
+        networkType = C.NETWORK_TYPE_OFFLINE;
+        break;
+      default:
+        return;
+    }
+    bandwidthMeter.setNetworkTypeOverride(networkType);
+  }
+
   // =======================================================================
   // API for GeckoHLSDemuxerWrapper
   // =======================================================================
@@ -823,17 +931,16 @@ public class GeckoHlsPlayer
   @Override
   public synchronized ConcurrentLinkedQueue<GeckoHLSSample> getSamples(
       final TrackType trackType, final int number) {
-    if (trackType == TrackType.VIDEO) {
-      return mVRenderer != null
-          ? mVRenderer.getQueuedSamples(number)
-          : new ConcurrentLinkedQueue<GeckoHLSSample>();
-    } else if (trackType == TrackType.AUDIO) {
-      return mARenderer != null
-          ? mARenderer.getQueuedSamples(number)
-          : new ConcurrentLinkedQueue<GeckoHLSSample>();
+    final ConcurrentLinkedQueue<GeckoHLSSample> samples;
+    if (trackType == TrackType.VIDEO && mVRenderer != null) {
+      samples = mVRenderer.getQueuedSamples(number);
+    } else if (trackType == TrackType.AUDIO && mARenderer != null) {
+      samples = mARenderer.getQueuedSamples(number);
     } else {
-      return new ConcurrentLinkedQueue<GeckoHLSSample>();
+      samples = new ConcurrentLinkedQueue<GeckoHLSSample>();
     }
+    mSamplesTakenSinceSeek |= !samples.isEmpty();
+    return samples;
   }
 
   // Called on MFR's TaskQueue
@@ -939,6 +1046,15 @@ public class GeckoHlsPlayer
         Log.d(LOGTAG, "Seek operation won't be performed as no player exists!");
         return false;
       }
+      // While waiting for data after a seek, MediaFormatReader repeats its seek, for each track,
+      // each time data arrives. Seeks are not per track, so seeking again would discard the data
+      // the other track is waiting for, and neither would ever get any. The data loading from the
+      // last seek position covers any later position.
+      if (mLastSeekUs != C.TIME_UNSET && positionUs >= mLastSeekUs && !mSamplesTakenSinceSeek) {
+        return true;
+      }
+      mLastSeekUs = positionUs;
+      mSamplesTakenSinceSeek = false;
     }
     return awaitPlayerThread(
         () -> {
