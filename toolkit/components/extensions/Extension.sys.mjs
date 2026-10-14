@@ -2118,7 +2118,7 @@ export class ExtensionData {
       }
 
       let moduleData = data => ({
-        url: this.rootURI.resolve(data.script),
+        url: Services.io.newURI(this.getURL()).resolve(data.script),
         events: data.events,
         paths: data.paths,
         scopes: data.scopes,
