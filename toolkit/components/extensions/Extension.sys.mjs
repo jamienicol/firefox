@@ -2159,34 +2159,38 @@ export class ExtensionData {
 
       if (manifest.experiment_apis) {
         if (this.canUseAPIExperiment()) {
-          let parentModules = {};
-          let childModules = {};
+          // ExtensionData consumers such as XPIInstall don't load experiment
+          // APIs, and temporarily installed add-ons may not have an id yet.
+          if (this.id && this.constructor !== ExtensionData) {
+            let parentModules = {};
+            let childModules = {};
 
-          for (let [name, data] of Object.entries(manifest.experiment_apis)) {
-            let schema = this.getURL(data.schema);
+            for (let [name, data] of Object.entries(manifest.experiment_apis)) {
+              let schema = this.getURL(data.schema);
 
-            if (!schemaPromises.has(schema)) {
-              schemaPromises.set(
-                schema,
-                this.readJSON(data.schema).then(json =>
-                  lazy.Schemas.processSchema(json)
-                )
-              );
+              if (!schemaPromises.has(schema)) {
+                schemaPromises.set(
+                  schema,
+                  this.readJSON(data.schema).then(json =>
+                    lazy.Schemas.processSchema(json)
+                  )
+                );
+              }
+
+              if (data.parent) {
+                parentModules[name] = moduleData(data.parent);
+              }
+
+              if (data.child) {
+                childModules[name] = moduleData(data.child);
+              }
             }
 
-            if (data.parent) {
-              parentModules[name] = moduleData(data.parent);
-            }
-
-            if (data.child) {
-              childModules[name] = moduleData(data.child);
-            }
+            result.modules = {
+              child: computeModuleInit("addon_child", childModules),
+              parent: computeModuleInit("addon_parent", parentModules),
+            };
           }
-
-          result.modules = {
-            child: computeModuleInit("addon_child", childModules),
-            parent: computeModuleInit("addon_parent", parentModules),
-          };
         } else if (this.temporarilyInstalled) {
           // Hard error for un-privileged temporary installs using experimental apis.
           this.manifestError(
