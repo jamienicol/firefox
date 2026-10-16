@@ -4,6 +4,12 @@
 const { AddonSettings } = ChromeUtils.importESModule(
   "resource://gre/modules/addons/AddonSettings.sys.mjs"
 );
+const { AddonManager } = ChromeUtils.importESModule(
+  "resource://gre/modules/AddonManager.sys.mjs"
+);
+const { TestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/TestUtils.sys.mjs"
+);
 
 AddonTestUtils.init(this);
 AddonTestUtils.overrideCertDB();
@@ -449,4 +455,159 @@ add_task(async function test_eventpage_with_experiments_resetOnIdleAssert() {
   await extension.awaitMessage("eventpage:ready");
 
   await extension.unload();
+});
+
+// Each script returns the URL it was loaded from.
+let scriptURLExperimentAPIs = {
+  scriptURL: {
+    schema: "schema.json",
+    parent: {
+      scopes: ["addon_parent"],
+      script: "parent.js",
+      paths: [["experiments", "scriptURL", "parent"]],
+    },
+    child: {
+      scopes: ["addon_child"],
+      script: "child.js",
+      paths: [["experiments", "scriptURL", "child"]],
+    },
+  },
+};
+
+let scriptURLExperimentFiles = {
+  "schema.json": JSON.stringify([
+    {
+      namespace: "experiments.scriptURL",
+      functions: [
+        {
+          name: "parent",
+          type: "function",
+          async: true,
+          parameters: [{ name: "value", type: "string", optional: true }],
+        },
+        {
+          name: "child",
+          type: "function",
+          parameters: [],
+          returns: { type: "string" },
+        },
+      ],
+    },
+  ]),
+
+  "parent.js": () => {
+    this.scriptURL = class extends ExtensionAPI {
+      getAPI() {
+        return {
+          experiments: {
+            scriptURL: {
+              parent(value) {
+                if (value) {
+                  Services.obs.notifyObservers(null, "script-url", value);
+                }
+                return Promise.resolve(new Error().fileName);
+              },
+            },
+          },
+        };
+      }
+    };
+  },
+
+  "child.js": () => {
+    this.scriptURL = class extends ExtensionAPI {
+      getAPI() {
+        return {
+          experiments: {
+            scriptURL: {
+              child() {
+                return new Error().fileName;
+              },
+            },
+          },
+        };
+      }
+    };
+  },
+};
+
+add_task(async function test_experiment_script_urls() {
+  async function background() {
+    browser.test.sendMessage("urls", {
+      parent: await browser.experiments.scriptURL.parent(),
+      child: browser.experiments.scriptURL.child(),
+    });
+  }
+
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "permanent",
+    manifest: {
+      browser_specific_settings: { gecko: { id: "script-urls@test" } },
+      experiment_apis: scriptURLExperimentAPIs,
+    },
+    background,
+    files: scriptURLExperimentFiles,
+  });
+
+  await extension.startup();
+  let parentURL = extension.extension.getURL("parent.js");
+  let childURL = extension.extension.getURL("child.js");
+
+  let urls = await extension.awaitMessage("urls");
+  equal(urls.parent, parentURL, "Parent script loaded from moz-extension URL");
+  equal(urls.child, childURL, "Child script loaded from moz-extension URL");
+
+  info("Restart so that the experiment modules come from the startup cache");
+  await AddonTestUtils.promiseRestartManager();
+  await extension.awaitStartup();
+
+  urls = await extension.awaitMessage("urls");
+  equal(urls.parent, parentURL, "Parent script URL after restart");
+  equal(urls.child, childURL, "Child script URL after restart");
+
+  await extension.unload();
+});
+
+add_task(async function test_unpacked_temporary_experiment_without_id() {
+  // Allows temporarily installed add-ons to use experiment_apis.
+  Services.prefs.setBoolPref("extensions.experiments.enabled", true);
+  registerCleanupFunction(() =>
+    Services.prefs.clearUserPref("extensions.experiments.enabled")
+  );
+
+  let dir = await IOUtils.createUniqueDirectory(
+    PathUtils.profileDir,
+    "unpacked-experiment"
+  );
+  let manifest = {
+    manifest_version: 2,
+    name: "Unpacked experiment without id",
+    version: "1",
+    background: { scripts: ["background.js"] },
+    experiment_apis: scriptURLExperimentAPIs,
+  };
+  let files = {
+    "manifest.json": JSON.stringify(manifest),
+    "background.js": `browser.experiments.scriptURL.parent(
+      browser.experiments.scriptURL.child()
+    );`,
+  };
+  for (let [name, contents] of Object.entries(scriptURLExperimentFiles)) {
+    files[name] = typeof contents == "function" ? `(${contents})();` : contents;
+  }
+  for (let [name, contents] of Object.entries(files)) {
+    await IOUtils.writeUTF8(PathUtils.join(dir, name), contents);
+  }
+
+  let reported = TestUtils.topicObserved("script-url");
+  let addon = await AddonManager.installTemporaryAddon(new FileUtils.File(dir));
+  let [, childURL] = await reported;
+  equal(
+    childURL,
+    WebExtensionPolicy.getByID(addon.id).getURL("child.js"),
+    "Child script of unpacked add-on loaded from moz-extension URL"
+  );
+
+  await addon.uninstall();
+  await IOUtils.remove(dir, { recursive: true });
 });
