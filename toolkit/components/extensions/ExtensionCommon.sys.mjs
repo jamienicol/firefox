@@ -1734,6 +1734,10 @@ class SchemaAPIManager extends EventEmitter {
       // the async compileScript call. In that case, return the result that we
       // already got from loadModule.
       if (!module.loaded) {
+        if (this.hasShutdown) {
+          throw new Error(`Module '${name}' cannot run after shutdown`);
+        }
+
         this.initGlobal();
         script.executeInGlobal(this.global);
 
@@ -1906,6 +1910,14 @@ class LazyAPIManager extends SchemaAPIManager {
   }
 
   lazyInit() {}
+
+  /**
+   * Prevents any modules that are still being loaded from running, e.g.
+   * because the extension that provides them has shut down.
+   */
+  shutdown() {
+    this.hasShutdown = true;
+  }
 }
 
 defineLazyGetter(LazyAPIManager.prototype, "schema", function () {

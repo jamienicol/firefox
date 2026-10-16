@@ -4473,6 +4473,7 @@ export class Extension extends ExtensionData {
     this.state = "Shutdown";
 
     this.hasShutdown = true;
+    this.experimentAPIManager?.shutdown();
 
     if (!this.policy) {
       return;

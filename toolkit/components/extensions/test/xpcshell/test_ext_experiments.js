@@ -18,6 +18,37 @@ add_task(async function setup() {
   await ExtensionTestUtils.startAddonManager();
 });
 
+add_task(async function test_module_not_run_after_shutdown() {
+  let file = PathUtils.join(PathUtils.profileDir, "testModule.js");
+  await IOUtils.writeUTF8(file, "this.testModule = class {};");
+
+  let manager = new ExtensionCommon.LazyAPIManager(
+    "main",
+    new ExtensionCommon.SchemaAPIManager("main").initModuleJSON([
+      {
+        testModule: {
+          url: PathUtils.toFileURI(file),
+          scopes: ["addon_parent"],
+          paths: [["testModule"]],
+        },
+      },
+    ]),
+    new Map()
+  );
+
+  let loaded = manager.asyncLoadModule("testModule");
+  manager.shutdown();
+
+  await Assert.rejects(
+    loaded,
+    /Module 'testModule' cannot run after shutdown/,
+    "Module still being loaded at shutdown is not run"
+  );
+  equal(manager.global, null, "Module was not run");
+
+  await IOUtils.remove(file);
+});
+
 let fooExperimentAPIs = {
   foo: {
     schema: "schema.json",
