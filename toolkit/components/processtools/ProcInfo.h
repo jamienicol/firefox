@@ -222,7 +222,8 @@ struct ProcInfoRequest {
  * # Performance
  *
  * - This call is always executed on a background thread.
- * - This call does NOT wake up children processes.
+ * - This call does NOT wake up children processes, except for Android isolated
+ *   processes.
  * - This function is sometimes observably slow to resolve, in particular
  *   under Windows.
  *
@@ -247,6 +248,9 @@ RefPtr<ProcInfoPromise> GetProcInfo(nsTArray<ProcInfoRequest>&& aRequests);
 
 /**
  * Synchronous version of GetProcInfo.
+ *
+ * Note that on Android this is not able to request information about isolated
+ * processes when called from a separate process.
  */
 ProcInfoPromise::ResolveOrRejectValue GetProcInfoSync(
     nsTArray<ProcInfoRequest>&& aRequests);
