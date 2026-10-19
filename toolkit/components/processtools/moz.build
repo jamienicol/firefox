@@ -33,6 +33,7 @@ FINAL_LIBRARY = "xul"
 
 XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
 BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
+MOCHITEST_MANIFESTS += ["tests/mochitest/mochitest.toml"]
 
 # Platform-specific implementations of `ProcInfo`.
 toolkit = CONFIG["MOZ_WIDGET_TOOLKIT"]

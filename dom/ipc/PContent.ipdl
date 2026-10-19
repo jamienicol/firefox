@@ -47,6 +47,9 @@ include protocol PSpeechRecognition;
 include protocol PRemoteWorkerDebuggerManager;
 include protocol PRemoteWorkerService;
 include protocol PProfiler;
+#ifdef MOZ_WIDGET_ANDROID
+include protocol PProcInfo;
+#endif
 include protocol PScriptCache;
 include protocol PSessionStorageObserver;
 include CrashReporterInitArgs;
@@ -604,6 +607,9 @@ child:
     async InitGMPService(Endpoint<PGMPServiceChild> service);
     async InitProcessHangMonitor(Endpoint<PProcessHangMonitorChild> hangMonitor);
     async InitProfiler(Endpoint<PProfilerChild> aEndpoint);
+#ifdef MOZ_WIDGET_ANDROID
+    async InitProcInfo(Endpoint<PProcInfoChild> aEndpoint);
+#endif
 
     // Give the content process its endpoints to the compositor.
     async InitRendering(

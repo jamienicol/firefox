@@ -49,6 +49,9 @@ class nsIOpenWindowInfo;
 namespace mozilla {
 class RemoteSpellcheckEngineChild;
 class ChildProfilerController;
+#ifdef MOZ_WIDGET_ANDROID
+class ProcInfoChild;
+#endif
 
 namespace ipc {
 class UntypedEndpoint;
@@ -180,6 +183,11 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvInitProfiler(
       Endpoint<PProfilerChild>&& aEndpoint);
+
+#ifdef MOZ_WIDGET_ANDROID
+  mozilla::ipc::IPCResult RecvInitProcInfo(
+      Endpoint<PProcInfoChild>&& aEndpoint);
+#endif
 
   mozilla::ipc::IPCResult RecvGMPsChanged(
       nsTArray<GMPCapabilityData>&& capabilities);
@@ -929,6 +937,9 @@ class ContentChild final : public PContentChild,
   RefPtr<ipc::SharedMap> mSharedData;
 
   RefPtr<ChildProfilerController> mProfilerController;
+#ifdef MOZ_WIDGET_ANDROID
+  RefPtr<ProcInfoChild> mProcInfoChild;
+#endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   nsCOMPtr<nsIFile> mProfileDir;
