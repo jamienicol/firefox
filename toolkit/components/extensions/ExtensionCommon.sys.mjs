@@ -1463,6 +1463,9 @@ class SchemaAPIManager extends EventEmitter {
     this._scriptScopes = [];
   }
 
+  /** @returns {Promise | void} */
+  lazyInit() {}
+
   onStartup(extension) {
     let promises = [];
     for (let apiName of this.eventModules.get("startup")) {
@@ -1734,6 +1737,9 @@ class SchemaAPIManager extends EventEmitter {
       // the async compileScript call. In that case, return the result that we
       // already got from loadModule.
       if (!module.loaded) {
+        // Check again, because async.
+        this._checkLoadModule(module, name);
+
         this.initGlobal();
         script.executeInGlobal(this.global);
 
@@ -1893,8 +1899,21 @@ class SchemaAPIManager extends EventEmitter {
   }
 }
 
+/**
+ * Manages the experiment API modules declared by an extension. The module
+ * scripts are loaded from the extension's own moz-extension: URLs, so they can
+ * only be loaded while that extension's policy is active.
+ */
 class LazyAPIManager extends SchemaAPIManager {
-  constructor(processType, moduleData, schemaURLs) {
+  /**
+   * @param {string} processType
+   * @param {StructuredCloneHolder} moduleData
+   * @param {Map<string, object>} schemaURLs
+   * @param {object} extension
+   *        The extension whose package contains the module scripts. Must
+   *        expose `id` and `policy`.
+   */
+  constructor(processType, moduleData, schemaURLs, extension) {
     super(processType);
 
     /** @type {Promise | boolean} */
@@ -1903,9 +1922,17 @@ class LazyAPIManager extends SchemaAPIManager {
     this.initModuleData(moduleData);
 
     this.schemaURLs = schemaURLs;
+    this.extension = extension;
   }
 
-  lazyInit() {}
+  _checkLoadModule(module, name) {
+    super._checkLoadModule(module, name);
+    if (!this.extension.policy?.active) {
+      throw new Error(
+        `Cannot load module '${name}' because extension ${this.extension.id} is not active`
+      );
+    }
+  }
 }
 
 defineLazyGetter(LazyAPIManager.prototype, "schema", function () {

@@ -450,3 +450,37 @@ add_task(async function test_eventpage_with_experiments_resetOnIdleAssert() {
 
   await extension.unload();
 });
+
+add_task(async function test_experiment_module_not_loaded_when_inactive() {
+  let extension = ExtensionTestUtils.loadExtension({
+    isPrivileged: true,
+    manifest: { experiment_apis: fooExperimentAPIs },
+    files: fooExperimentFiles,
+  });
+  await extension.startup();
+
+  let { policy, experimentAPIManager } = extension.extension;
+
+  // The script is compiled while the policy is active, but must not be
+  // executed if the policy has been deactivated by the time it is ready.
+  let promiseLoaded = experimentAPIManager.asyncLoadModule("foo");
+  policy.active = false;
+  await Assert.rejects(
+    promiseLoaded,
+    /Cannot load module 'foo' because extension .* is not active/,
+    "Module compiled before deactivation is not executed"
+  );
+
+  await extension.unload();
+
+  Assert.throws(
+    () => experimentAPIManager.loadModule("foo"),
+    /Cannot load module 'foo' because extension .* is not active/,
+    "Module cannot be loaded synchronously after shutdown"
+  );
+  await Assert.rejects(
+    experimentAPIManager.asyncLoadModule("foo"),
+    /Cannot load module 'foo' because extension .* is not active/,
+    "Module cannot be loaded asynchronously after shutdown"
+  );
+});

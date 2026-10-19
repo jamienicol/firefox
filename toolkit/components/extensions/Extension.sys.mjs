@@ -2408,7 +2408,7 @@ export class ExtensionData {
   }
 
   getAPIManager() {
-    /** @type {(InstanceType<typeof ExtensionCommon.LazyAPIManager>)[]} */
+    /** @type {InstanceType<typeof ExtensionCommon.SchemaAPIManager>[]} */
     let apiManagers = [Management];
 
     for (let id of this.dependencies) {
@@ -2426,7 +2426,8 @@ export class ExtensionData {
       this.experimentAPIManager = new ExtensionCommon.LazyAPIManager(
         "main",
         this.modules.parent,
-        this.schemaURLs
+        this.schemaURLs,
+        this
       );
 
       apiManagers.push(this.experimentAPIManager);

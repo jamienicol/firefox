@@ -532,7 +532,7 @@ export class ExtensionChild extends EventEmitter {
   }
 
   getAPIManager() {
-    /** @type {InstanceType<typeof ExtensionCommon.LazyAPIManager>[]} */
+    /** @type {InstanceType<typeof ExtensionCommon.SchemaAPIManager>[]} */
     let apiManagers = [lazy.ExtensionPageChild.apiManager];
 
     if (this.dependencies) {
@@ -548,7 +548,8 @@ export class ExtensionChild extends EventEmitter {
       this.experimentAPIManager = new ExtensionCommon.LazyAPIManager(
         "addon",
         this.childModules,
-        this.schemaURLs
+        this.schemaURLs,
+        this
       );
 
       apiManagers.push(this.experimentAPIManager);
