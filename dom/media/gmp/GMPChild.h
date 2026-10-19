@@ -15,6 +15,9 @@
 namespace mozilla {
 
 class ChildProfilerController;
+#ifdef MOZ_WIDGET_ANDROID
+class ProcInfoChild;
+#endif
 
 namespace gmp {
 
@@ -71,6 +74,11 @@ class GMPChild : public PGMPChild {
   mozilla::ipc::IPCResult RecvInitProfiler(
       Endpoint<mozilla::PProfilerChild>&& aEndpoint);
 
+#ifdef MOZ_WIDGET_ANDROID
+  mozilla::ipc::IPCResult RecvInitProcInfo(
+      Endpoint<mozilla::PProcInfoChild>&& aEndpoint);
+#endif
+
   mozilla::ipc::IPCResult RecvPreferenceUpdate(const Pref& aPref);
 
   mozilla::ipc::IPCResult RecvShutdown(ShutdownResolver&& aResolver);
@@ -100,6 +108,9 @@ class GMPChild : public PGMPChild {
   RefPtr<GMPStorageChild> mStorage;
 
   RefPtr<ChildProfilerController> mProfilerController;
+#ifdef MOZ_WIDGET_ANDROID
+  RefPtr<ProcInfoChild> mProcInfoChild;
+#endif
 
   MessageLoop* mGMPMessageLoop;
   nsString mPluginPath;
