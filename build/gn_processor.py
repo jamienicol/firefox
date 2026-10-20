@@ -12,7 +12,7 @@ import tempfile
 from collections import defaultdict, deque
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
-from itertools import combinations
+from itertools import combinations, product
 from pathlib import Path
 from shutil import which
 
@@ -217,7 +217,9 @@ def find_deps(all_targets, target):
     return all_deps
 
 
-def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
+def filter_gn_config(
+    path, gn_result, sandbox_vars, input_vars, gn_target, moz_config_gn_args
+):
     gen_path = path / "gen"
     # Translates the raw output of gn into just what we'll need to generate a
     # mozbuild configuration.
@@ -261,6 +263,8 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
     }
     if "ozone_platform_x11" in input_vars:
         mozbuild_args["MOZ_X11"] = "1" if input_vars["ozone_platform_x11"] else None
+    for config_name, gn_arg in moz_config_gn_args.items():
+        mozbuild_args[config_name] = "1" if input_vars[gn_arg] else None
 
     gn_out["mozbuild_args"] = mozbuild_args
     all_deps = find_deps(gn_result["targets"], gn_target)
@@ -1075,6 +1079,7 @@ def generate_gn_config(
     non_unified_sources,
     mozilla_flags,
     mozilla_add_override_dir,
+    moz_config_gn_args,
 ):
     def str_for_arg(v):
         if v in (True, False):
@@ -1142,6 +1147,7 @@ def generate_gn_config(
                 sandbox_variables,
                 input_variables,
                 gn_target,
+                moz_config_gn_args,
             )
             mozbuild_result = process_gn_config(
                 gn_config,
@@ -1160,6 +1166,12 @@ def generate_gn_configs(topsrcdir, config):
     gn_binary = bootstrap_toolchain("gn/gn") or which("gn")
     if not gn_binary:
         raise Exception("The GN program must be present to generate GN configs.")
+
+    moz_config_gn_args = config.get("moz_config_gn_args", {})
+    moz_config_variants = [
+        dict(zip(moz_config_gn_args.values(), values))
+        for values in product((True, False), repeat=len(moz_config_gn_args))
+    ]
 
     vars_set = []
     for is_debug in (True, False):
@@ -1190,11 +1202,11 @@ def generate_gn_configs(topsrcdir, config):
                 if target_os == "linux":
                     for enable_x11 in (True, False):
                         vars["ozone_platform_x11"] = enable_x11
-                        vars_set.append(vars.copy())
+                        vars_set.extend({**vars, **v} for v in moz_config_variants)
                 else:
                     if target_os == "openbsd":
                         vars["ozone_platform_x11"] = True
-                    vars_set.append(vars)
+                    vars_set.extend({**vars, **v} for v in moz_config_variants)
 
     gn_configs = []
     NUM_WORKERS = 5
@@ -1214,6 +1226,7 @@ def generate_gn_configs(topsrcdir, config):
                 config["non_unified_sources"],
                 config["mozilla_flags"],
                 config["mozilla_add_override_dir"],
+                moz_config_gn_args,
             ): vars
             for vars in vars_set
         }
