@@ -208,7 +208,9 @@ def find_deps(all_targets, target):
     return all_deps
 
 
-def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
+def filter_gn_config(
+    path, gn_result, sandbox_vars, input_vars, gn_target, moz_config_gn_args
+):
     gen_path = path / "gen"
     # Translates the raw output of gn into just what we'll need to generate a
     # mozbuild configuration.
@@ -252,6 +254,8 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
     }
     if "ozone_platform_x11" in input_vars:
         mozbuild_args["MOZ_X11"] = "1" if input_vars["ozone_platform_x11"] else None
+    for config_name, gn_arg in moz_config_gn_args.items():
+        mozbuild_args[config_name] = "1" if input_vars[gn_arg] else None
 
     gn_out["mozbuild_args"] = mozbuild_args
     all_deps = find_deps(gn_result["targets"], gn_target)
@@ -1066,6 +1070,7 @@ def generate_gn_config(
     non_unified_sources,
     mozilla_flags,
     mozilla_add_override_dir,
+    moz_config_gn_args,
 ):
     def str_for_arg(v):
         if v in (True, False):
@@ -1133,6 +1138,7 @@ def generate_gn_config(
                 sandbox_variables,
                 input_variables,
                 gn_target,
+                moz_config_gn_args,
             )
             mozbuild_result = process_gn_config(
                 gn_config,
@@ -1187,6 +1193,12 @@ def generate_gn_configs(topsrcdir, config):
                         vars["ozone_platform_x11"] = True
                     vars_set.append(vars)
 
+    moz_config_gn_args = config.get("moz_config_gn_args", {})
+    for gn_arg in moz_config_gn_args.values():
+        vars_set = [
+            {**vars, gn_arg: enabled} for vars in vars_set for enabled in (True, False)
+        ]
+
     gn_configs = []
     NUM_WORKERS = 5
     with ProcessPoolExecutor(max_workers=NUM_WORKERS) as executor:
@@ -1205,6 +1217,7 @@ def generate_gn_configs(topsrcdir, config):
                 config["non_unified_sources"],
                 config["mozilla_flags"],
                 config["mozilla_add_override_dir"],
+                moz_config_gn_args,
             ): vars
             for vars in vars_set
         }
