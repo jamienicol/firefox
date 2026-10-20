@@ -34,6 +34,7 @@ import java.util.UUID;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.mozilla.gecko.GeckoAppShell;
+import org.mozilla.gecko.process.GeckoServiceChildProcess;
 import org.mozilla.gecko.util.GeckoBundle;
 
 /** Handler for processing application crashes and sending crash reports. */
@@ -471,6 +472,26 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
   @AnyThread
   @SuppressLint("SdCardPath")
   public boolean reportException(@NonNull final Thread thread, @NonNull final Throwable exc) {
+    final JSONObject json = new JSONObject();
+    try {
+      final Bundle extras = getCrashExtras(thread, exc);
+      final String url = getServerUrl(extras);
+      extras.putString(CrashReport.Annotation.ServerURL.toString(), url);
+
+      for (final String key : extras.keySet()) {
+        json.put(key, extras.get(key));
+      }
+    } catch (final JSONException e) {
+      Log.e(LOGTAG, "Error serializing crash extras", e);
+      return false;
+    }
+
+    // Child processes, in particular isolated ones, may not be able to write to the app's
+    // directories or start services, so let the parent process submit the report.
+    if (GeckoServiceChildProcess.reportJavaCrash(json.toString())) {
+      return true;
+    }
+
     final Context context = getAppContext();
     final String id = UUID.randomUUID().toString();
 
@@ -509,22 +530,13 @@ public class CrashHandler implements Thread.UncaughtExceptionHandler {
     try {
       // Write out crash extra file as text.
 
-      final Bundle extras = getCrashExtras(thread, exc);
-      final String url = getServerUrl(extras);
-      extras.putString(CrashReport.Annotation.ServerURL.toString(), url);
-
-      final JSONObject json = new JSONObject();
-      for (final String key : extras.keySet()) {
-        json.put(key, extras.get(key));
-      }
-
       final BufferedWriter extraWriter = new BufferedWriter(new FileWriter(extraFile));
       try {
         extraWriter.write(json.toString());
       } finally {
         extraWriter.close();
       }
-    } catch (final IOException | JSONException e) {
+    } catch (final IOException e) {
       Log.e(LOGTAG, "Error writing extra file", e);
       return false;
     }

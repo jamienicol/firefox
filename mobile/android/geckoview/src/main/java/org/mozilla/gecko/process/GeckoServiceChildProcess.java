@@ -212,4 +212,26 @@ public class GeckoServiceChildProcess extends Service {
   public static ISurfaceAllocator getSurfaceAllocator(final IBinder client) throws RemoteException {
     return sProcessManager.getSurfaceAllocator(client);
   }
+
+  /**
+   * Asks the parent process to submit a report for a Java crash in this process.
+   *
+   * @param extras JSON object containing the crash annotations.
+   * @return Whether the report was handed off to the parent process. Always false when not called
+   *     from a started child process.
+   */
+  public static boolean reportJavaCrash(final String extras) {
+    final IProcessManager procMan = sProcessManager;
+    if (procMan == null) {
+      return false;
+    }
+
+    try {
+      procMan.reportJavaCrash(extras);
+      return true;
+    } catch (final RemoteException e) {
+      Log.e(LOGTAG, "Cannot report Java crash to parent", e);
+      return false;
+    }
+  }
 }

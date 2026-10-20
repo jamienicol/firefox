@@ -51,26 +51,23 @@ class ChildStartupCrashTest : BaseSessionTest() {
     fun crashContentBeforeGeckoLoaded() {
         assumeTrue(BuildConfig.MOZ_CRASHREPORTER)
 
-        // TODO: bug 1989887
-        assumeThat(sessionRule.env.isIsolatedProcess, equalTo(false))
+        // RuntimeCrashTestService doesn't enable the app zygote.
         assumeThat(sessionRule.env.isAppZygoteProcess, equalTo(false))
 
         val client = TestCrashHandler.Client(targetContext)
         assertTrue(client.connect(timeout))
         client.setEvalNextCrashDump(
-            GeckoRuntime.CRASHED_PROCESS_VISIBILITY_MAIN,
-            "main",
+            GeckoRuntime.CRASHED_PROCESS_VISIBILITY_FOREGROUND_CHILD,
+            "content",
             null,
             "Simulated child process startup crash",
         )
 
-        val runtime =
-            Instance(
-                    targetContext,
-                    temporaryProfile.get(),
-                    listOf("MOZ_ANDROID_TEST_CHILD_STARTUP_CRASH=tab"),
-                )
-                .start()
+        val env = mutableListOf("MOZ_ANDROID_TEST_CHILD_STARTUP_CRASH=tab")
+        if (sessionRule.env.isIsolatedProcess) {
+            env.add("MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS=1")
+        }
+        val runtime = Instance(targetContext, temporaryProfile.get(), env).start()
         try {
             runtime.loadTestPath(HELLO_HTML_PATH)
 

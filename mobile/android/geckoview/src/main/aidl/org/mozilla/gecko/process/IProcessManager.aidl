@@ -13,4 +13,7 @@ interface IProcessManager {
     void getEditableParent(in IGeckoEditableChild child, long tabId);
     // Returns the interface that child processes should use to allocate Surfaces.
     ISurfaceAllocator getSurfaceAllocator(in IBinder client);
+    // Reports a Java crash that could not be handled by the native crash reporter.
+    // extras is a JSON object containing the crash annotations.
+    void reportJavaCrash(String extras);
 }

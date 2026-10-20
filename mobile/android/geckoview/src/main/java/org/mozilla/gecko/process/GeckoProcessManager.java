@@ -13,12 +13,19 @@ import androidx.annotation.NonNull;
 import androidx.collection.ArrayMap;
 import androidx.collection.ArraySet;
 import androidx.collection.SimpleArrayMap;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoNetworkManager;
 import org.mozilla.gecko.GeckoThread;
@@ -30,9 +37,11 @@ import org.mozilla.gecko.gfx.ISurfaceAllocator;
 import org.mozilla.gecko.gfx.RemoteSurfaceAllocator;
 import org.mozilla.gecko.mozglue.JNIObject;
 import org.mozilla.gecko.process.ServiceAllocator.PriorityLevel;
+import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.XPCOMEventTarget;
 import org.mozilla.geckoview.GeckoResult;
+import org.mozilla.geckoview.GeckoRuntime;
 
 public final class GeckoProcessManager {
   private static final String LOGTAG = "GeckoProcessManager";
@@ -70,6 +79,7 @@ public final class GeckoProcessManager {
   /** The IProcessManager implementation handed to an individual child process. */
   private static final class ProcessManagerProxy extends IProcessManager.Stub {
     private final ChildConnection mConnection;
+    private final AtomicBoolean mCrashReported = new AtomicBoolean(false);
 
     ProcessManagerProxy(@NonNull final ChildConnection connection) {
       mConnection = connection;
@@ -85,6 +95,61 @@ public final class GeckoProcessManager {
       // TODO(m_kato): This is a GPU process connection, we can use
       // GpuProcessConnection.getSurfaceAllocator() directly.
       return INSTANCE.getSurfaceAllocator(client);
+    }
+
+    @Override // IProcessManager
+    public void reportJavaCrash(final String extras) {
+      if (!mCrashReported.compareAndSet(false, true)) {
+        Log.w(LOGTAG, "Ignoring repeated Java crash report from child process");
+        return;
+      }
+
+      if (GeckoAppShell.getCrashHandlerService() == null) {
+        return;
+      }
+
+      final File dir = GeckoAppShell.getApplicationContext().getCacheDir();
+      final String id = UUID.randomUUID().toString();
+      final File dmpFile = new File(dir, id + ".dmp");
+      final File extraFile = new File(dir, id + ".extra");
+      try {
+        final String json = new JSONObject(extras).toString();
+        dir.mkdirs();
+        // Java crashes have no minidump.
+        new FileOutputStream(dmpFile).close();
+        try (final FileWriter writer = new FileWriter(extraFile)) {
+          writer.write(json);
+        }
+      } catch (final IOException | JSONException e) {
+        Log.e(LOGTAG, "Error writing Java crash report for child process", e);
+        dmpFile.delete();
+        extraFile.delete();
+        return;
+      }
+
+      final GeckoProcessType type = mConnection.getType();
+      final GeckoBundle message = new GeckoBundle(4);
+      message.putString(GeckoRuntime.EXTRA_MINIDUMP_PATH, dmpFile.getAbsolutePath());
+      message.putString(GeckoRuntime.EXTRA_EXTRAS_PATH, extraFile.getAbsolutePath());
+      message.putString(
+          GeckoRuntime.EXTRA_CRASH_PROCESS_VISIBILITY,
+          isContent(type)
+              ? GeckoRuntime.CRASHED_PROCESS_VISIBILITY_FOREGROUND_CHILD
+              : GeckoRuntime.CRASHED_PROCESS_VISIBILITY_BACKGROUND_CHILD);
+      message.putString(GeckoRuntime.EXTRA_CRASH_PROCESS_TYPE, getCrashProcessType(type));
+      EventDispatcher.getInstance().dispatch("GeckoView:ChildCrashReport", message);
+    }
+
+    // Matches the process type reported for native crashes, see
+    // XRE_ChildProcessTypeToAnnotation.
+    private static String getCrashProcessType(final GeckoProcessType type) {
+      if (isContent(type)) {
+        return "content";
+      }
+      if (type == GeckoProcessType.GMPLUGIN) {
+        return "plugin";
+      }
+      return type.toString();
     }
   }
 
