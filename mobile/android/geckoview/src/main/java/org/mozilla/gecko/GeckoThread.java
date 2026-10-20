@@ -480,6 +480,8 @@ public class GeckoThread extends Thread {
     // things that are happening on the JVM side.
     maybeStartGeckoProfiler(env);
 
+    maybeSimulateChildStartupCrash(env);
+
     GeckoLoader.loadMozGlue(context);
     setState(State.MOZGLUE_READY);
 
@@ -574,6 +576,20 @@ public class GeckoThread extends Thread {
               context.unregisterComponentCallbacks(mMemoryController);
             },
             e -> Log.e(LOGTAG, "Unable to unregister the MemoryController", e));
+  }
+
+  // Used by tests to exercise Java crash reporting in a child process before Gecko is loaded.
+  // MOZ_ANDROID_TEST_CHILD_STARTUP_CRASH holds the Gecko process type that should crash, which
+  // Gecko passes as the last argument to child processes.
+  private void maybeSimulateChildStartupCrash(final @NonNull List<String> env) {
+    final String[] args = mInitInfo.args;
+    if (!isChildProcess() || args == null || args.length == 0) {
+      return;
+    }
+
+    if (env.contains("MOZ_ANDROID_TEST_CHILD_STARTUP_CRASH=" + args[args.length - 1])) {
+      throw new IllegalStateException("Simulated child process startup crash");
+    }
   }
 
   // This may start the gecko profiler early by looking at the environment variables.

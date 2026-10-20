@@ -32,6 +32,7 @@ public class TestCrashHandler extends Service {
   private static final int MSG_EVAL_NEXT_CRASH_DUMP = 1;
   private static final int MSG_CRASH_DUMP_EVAL_RESULT = 2;
   private static final String LOGTAG = "TestCrashHandler";
+  private static final String EXPECTED_JAVA_EXCEPTION = "TestCrashHandler.expectedJavaException";
 
   public static final class EvalResult {
     private static final String BUNDLE_KEY_RESULT = "TestCrashHandler.EvalResult.mResult";
@@ -120,11 +121,28 @@ public class TestCrashHandler extends Service {
         final String expectedProcessVisibility,
         final String expectedProcessType,
         final String expectedRemoteType) {
+      setEvalNextCrashDump(
+          expectedProcessVisibility, expectedProcessType, expectedRemoteType, null);
+    }
+
+    /**
+     * Like {@link #setEvalNextCrashDump(String, String, String)}, but optionally expects a crash
+     * reported from Java without involving the native crash reporter.
+     *
+     * @param expectedJavaException If non-null, the Java stack trace annotation of the incoming
+     *     crash is expected to contain this string, instead of a MOZ_CRASH reason.
+     */
+    public void setEvalNextCrashDump(
+        final String expectedProcessVisibility,
+        final String expectedProcessType,
+        final String expectedRemoteType,
+        final String expectedJavaException) {
       setEvalResult(null);
       final Bundle bundle = new Bundle();
       bundle.putString(GeckoRuntime.EXTRA_CRASH_PROCESS_VISIBILITY, expectedProcessVisibility);
       bundle.putString(GeckoRuntime.EXTRA_CRASH_PROCESS_TYPE, expectedProcessType);
       bundle.putString(GeckoRuntime.EXTRA_CRASH_REMOTE_TYPE, expectedRemoteType);
+      bundle.putString(EXPECTED_JAVA_EXCEPTION, expectedJavaException);
       final Message msg = Message.obtain(null, MSG_EVAL_NEXT_CRASH_DUMP, bundle);
       msg.replyTo = mMessenger;
 
@@ -184,6 +202,7 @@ public class TestCrashHandler extends Service {
     private String mExpectedProcessVisibility;
     private String mExpectedProcessType;
     private String mExpectedRemoteType;
+    private String mExpectedJavaException;
 
     MessageHandler() {}
 
@@ -195,6 +214,7 @@ public class TestCrashHandler extends Service {
         mExpectedProcessVisibility = bundle.getString(GeckoRuntime.EXTRA_CRASH_PROCESS_VISIBILITY);
         mExpectedProcessType = bundle.getString(GeckoRuntime.EXTRA_CRASH_PROCESS_TYPE);
         mExpectedRemoteType = bundle.getString(GeckoRuntime.EXTRA_CRASH_REMOTE_TYPE);
+        mExpectedJavaException = bundle.getString(EXPECTED_JAVA_EXCEPTION);
         return;
       }
 
@@ -228,6 +248,10 @@ public class TestCrashHandler extends Service {
 
     public String getExpectedRemoteType() {
       return mExpectedRemoteType;
+    }
+
+    public String getExpectedJavaException() {
+      return mExpectedJavaException;
     }
   }
 
@@ -263,10 +287,19 @@ public class TestCrashHandler extends Service {
     final boolean extrasFileExists = extrasFile.exists();
     try {
       final JSONObject annotations = readExtraFile(extrasFile.getPath());
-      final String moz_crash_reason = annotations.getString("MozCrashReason");
+      final String expectedJavaException = mMsgHandler.getExpectedJavaException();
+      if (expectedJavaException != null) {
+        final String javaStackTrace = annotations.optString("JavaStackTrace");
+        if (!javaStackTrace.contains(expectedJavaException)) {
+          return new EvalResult(
+              false, "Expected Java stack trace containing " + expectedJavaException);
+        }
+      } else {
+        final String moz_crash_reason = annotations.getString("MozCrashReason");
 
-      if (!moz_crash_reason.startsWith("MOZ_CRASH(")) {
-        return new EvalResult(false, "Missing or invalid child crash annotations");
+        if (!moz_crash_reason.startsWith("MOZ_CRASH(")) {
+          return new EvalResult(false, "Missing or invalid child crash annotations");
+        }
       }
 
       extrasFile.delete();

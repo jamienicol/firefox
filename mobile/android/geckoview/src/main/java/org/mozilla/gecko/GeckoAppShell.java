@@ -123,8 +123,7 @@ public class GeckoAppShell {
 
       // reportJavaCrash should have caused us to hard crash. If we're still here,
       // it probably means Gecko is not loaded, and we should do something else.
-      if (BuildConfig.MOZ_CRASHREPORTER && BuildConfig.MOZILLA_OFFICIAL) {
-        // Only use Java crash reporter if enabled on official build.
+      if (BuildConfig.MOZ_CRASHREPORTER) {
         return super.reportException(thread, exc);
       }
       return false;
