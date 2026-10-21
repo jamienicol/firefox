@@ -226,6 +226,12 @@ struct ProcInfoRequest {
  * - This function is sometimes observably slow to resolve, in particular
  *   under Windows.
  *
+ * # Limitations
+ *
+ * This cannot obtain information about Android isolated processes when called
+ * from a separate process. Use `ProcInfoParent::GetProcInfo()` to request
+ * information from the process instead.
+ *
  * # Error-handling and race conditions
  *
  * Requesting low-level information on a process and its threads is inherently

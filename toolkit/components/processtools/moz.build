@@ -18,6 +18,9 @@ XPIDL_SOURCES += [
 EXPORTS.mozilla += [
     "ProcInfo.h",
     "ProcInfo_linux.h",
+    "ProcInfoChild.h",
+    "ProcInfoIPCUtils.h",
+    "ProcInfoParent.h",
 ]
 
 EXPORTS += [
@@ -27,7 +30,11 @@ EXPORTS += [
 UNIFIED_SOURCES += [
     "ProcessToolsService.cpp",
     "ProcInfo_common.cpp",
+    "ProcInfoChild.cpp",
+    "ProcInfoParent.cpp",
 ]
+
+IPDL_SOURCES += ["PProcInfo.ipdl"]
 
 FINAL_LIBRARY = "xul"
 
