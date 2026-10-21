@@ -55,6 +55,7 @@
 #include "mozilla/PageloadEvent.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/ProcInfoParent.h"
 #include "mozilla/ProcessHangMonitor.h"
 #include "mozilla/ProcessHangMonitorIPC.h"
 #include "mozilla/ProfilerLabels.h"
@@ -1563,6 +1564,24 @@ void ContentParent::Init() {
 
   (void)SendInitProfiler(ProfilerParent::CreateForProcess(OtherPid()));
 
+  // On Android content processes may be isolated, meaning we must create a
+  // ProcInfoParent to allow ChromeUtils::RequestProcInfo() to query the process
+  // info remotely. On other platforms we deliberately do not create the actor
+  // so that the parent process will obtain the required information itself:
+  // content sandboxing may in fact prevent the remote path from working.
+#ifdef MOZ_WIDGET_ANDROID
+  Endpoint<PProcInfoParent> procInfoParent;
+  Endpoint<PProcInfoChild> procInfoChild;
+  if (NS_SUCCEEDED(PProcInfo::CreateEndpoints(
+          mozilla::ipc::EndpointProcInfo::Current(), OtherEndpointProcInfo(),
+          &procInfoParent, &procInfoChild))) {
+    mProcInfoParent = ProcInfoParent::Create(std::move(procInfoParent));
+    if (mProcInfoParent) {
+      (void)SendInitProcInfo(std::move(procInfoChild));
+    }
+  }
+#endif
+
   RefPtr<GeckoMediaPluginServiceParent> gmps(
       GeckoMediaPluginServiceParent::GetSingleton());
   if (gmps) {
@@ -1885,6 +1904,11 @@ void ContentParent::ActorDestroy(ActorDestroyReason why) {
   if (mHangMonitorActor) {
     ProcessHangMonitor::RemoveProcess(mHangMonitorActor);
     mHangMonitorActor = nullptr;
+  }
+
+  if (mProcInfoParent) {
+    mProcInfoParent->Shutdown();
+    mProcInfoParent = nullptr;
   }
 
   RefPtr<FileSystemSecurity> fss = FileSystemSecurity::Get();

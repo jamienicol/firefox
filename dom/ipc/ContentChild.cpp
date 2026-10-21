@@ -32,6 +32,7 @@
 #include "mozilla/NullPrincipal.h"
 #include "mozilla/PerfStats.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/ProcInfoChild.h"
 #include "mozilla/ProcessHangMonitorIPC.h"
 #include "mozilla/RemoteLazyInputStreamChild.h"
 #include "mozilla/RemoteMediaManagerChild.h"
@@ -1557,6 +1558,12 @@ mozilla::ipc::IPCResult ContentChild::RecvInitGMPService(
 mozilla::ipc::IPCResult ContentChild::RecvInitProfiler(
     Endpoint<PProfilerChild>&& aEndpoint) {
   mProfilerController = ChildProfilerController::Create(std::move(aEndpoint));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult ContentChild::RecvInitProcInfo(
+    Endpoint<PProcInfoChild>&& aEndpoint) {
+  mProcInfoChild = ProcInfoChild::Create(std::move(aEndpoint));
   return IPC_OK();
 }
 
@@ -3169,6 +3176,11 @@ void ContentChild::ShutdownInternal() {
   }
 
   GetIPCChannel()->SetAbortOnError(false);
+
+  if (mProcInfoChild) {
+    mProcInfoChild->Shutdown();
+    mProcInfoChild = nullptr;
+  }
 
   if (mProfilerController) {
     const bool isProfiling = profiler_is_active();

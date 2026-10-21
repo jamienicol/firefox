@@ -73,6 +73,7 @@ class CrashReporterInitArgs;
 
 namespace mozilla {
 class PClipboardWriteRequestParent;
+class ProcInfoParent;
 class PRemoteSpellcheckEngineParent;
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
@@ -1591,6 +1592,8 @@ class ContentParent final : public PContentParent,
   // object instead of the child process's lifetime.
   UniqueFileHandle mChildXSocketFdDup;
 #endif
+
+  RefPtr<ProcInfoParent> mProcInfoParent;
 
   RefPtr<PProcessHangMonitorParent> mHangMonitorActor;
 

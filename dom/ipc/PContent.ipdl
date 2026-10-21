@@ -47,6 +47,7 @@ include protocol PSpeechRecognition;
 include protocol PRemoteWorkerDebuggerManager;
 include protocol PRemoteWorkerService;
 include protocol PProfiler;
+include protocol PProcInfo;
 include protocol PScriptCache;
 include protocol PSessionStorageObserver;
 include CrashReporterInitArgs;
@@ -604,6 +605,7 @@ child:
     async InitGMPService(Endpoint<PGMPServiceChild> service);
     async InitProcessHangMonitor(Endpoint<PProcessHangMonitorChild> hangMonitor);
     async InitProfiler(Endpoint<PProfilerChild> aEndpoint);
+    async InitProcInfo(Endpoint<PProcInfoChild> aEndpoint);
 
     // Give the content process its endpoints to the compositor.
     async InitRendering(

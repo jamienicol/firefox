@@ -49,6 +49,7 @@ class nsIOpenWindowInfo;
 namespace mozilla {
 class RemoteSpellcheckEngineChild;
 class ChildProfilerController;
+class ProcInfoChild;
 
 namespace ipc {
 class UntypedEndpoint;
@@ -180,6 +181,9 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvInitProfiler(
       Endpoint<PProfilerChild>&& aEndpoint);
+
+  mozilla::ipc::IPCResult RecvInitProcInfo(
+      Endpoint<PProcInfoChild>&& aEndpoint);
 
   mozilla::ipc::IPCResult RecvGMPsChanged(
       nsTArray<GMPCapabilityData>&& capabilities);
@@ -929,6 +933,7 @@ class ContentChild final : public PContentChild,
   RefPtr<ipc::SharedMap> mSharedData;
 
   RefPtr<ChildProfilerController> mProfilerController;
+  RefPtr<ProcInfoChild> mProcInfoChild;
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   nsCOMPtr<nsIFile> mProfileDir;
