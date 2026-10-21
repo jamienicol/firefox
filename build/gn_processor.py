@@ -12,6 +12,7 @@ import tempfile
 from collections import defaultdict, deque
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy
+from itertools import combinations
 from pathlib import Path
 from shutil import which
 
@@ -213,7 +214,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
         "mips64el": "mips64",
         "loong64": "loongarch64",
     }
-    oses = {
+    os_targets = {
         "android": "Android",
         "linux": "Linux",
         "mac": "Darwin",
@@ -221,18 +222,25 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
         "openbsd": "OpenBSD",
         "win": "WINNT",
     }
+    # TARGET_OS is used in addition to OS_TARGET so we can distinguish between
+    # macOS and iOS (which both have OS_TARGET == "Darwin").
+    target_oses = {
+        "android": "Android",
+        "linux": "GNU",
+        "mac": "OSX",
+        "ios": "iOS",
+        "openbsd": "OpenBSD",
+        "win": "WINNT",
+    }
 
     mozbuild_args = {
         "MOZ_DEBUG": "1" if input_vars.get("is_debug") else None,
-        "OS_TARGET": oses[input_vars["target_os"]],
+        "OS_TARGET": os_targets[input_vars["target_os"]],
+        "TARGET_OS": target_oses[input_vars["target_os"]],
         "TARGET_CPU": cpus.get(input_vars["target_cpu"], input_vars["target_cpu"]),
     }
     if "ozone_platform_x11" in input_vars:
         mozbuild_args["MOZ_X11"] = "1" if input_vars["ozone_platform_x11"] else None
-    if input_vars["target_os"] == "mac":
-        mozbuild_args["TARGET_OS"] = "OSX"
-    if input_vars["target_os"] == "ios":
-        mozbuild_args["TARGET_OS"] = "iOS"
 
     gn_out["mozbuild_args"] = mozbuild_args
     all_deps = find_deps(gn_result["targets"], gn_target)
@@ -752,6 +760,32 @@ def find_common_attrs(config_attributes):
     return common_attrs
 
 
+# Order in which keys of mozbuild_args are combined into conditions. This
+# doesn't affect correctness, but keys tried first claim the attributes they
+# have in common, so putting coarse keys before the keys that refine them
+# keeps the generated moz.build files compact. Unlisted keys come last.
+CONDITION_KEY_ORDER = ("MOZ_DEBUG", "OS_TARGET", "TARGET_OS", "TARGET_CPU", "MOZ_X11")
+
+
+def condition_key_combinations(all_args):
+    # Returns every combination of the keys in `all_args`, from least to most
+    # specific: the empty combination, then each single key, then each pair,
+    # and so on, with combinations of the same size ordered by
+    # CONDITION_KEY_ORDER. Trying broader combinations first means narrower
+    # ones only see what the broader ones couldn't express, and ending with
+    # all the keys ensures every configuration can be told apart.
+    keys = sorted(
+        {k for args in all_args for k in args},
+        key=lambda k: (
+            CONDITION_KEY_ORDER.index(k)
+            if k in CONDITION_KEY_ORDER
+            else len(CONDITION_KEY_ORDER),
+            k,
+        ),
+    )
+    return [c for n in range(len(keys) + 1) for c in combinations(keys, n)]
+
+
 def write_mozbuild(topsrcdir, write_mozbuild_variables, relsrcdir, configs):
     target_srcdir = mozpath.join(topsrcdir, relsrcdir)
     mkdir(target_srcdir)
@@ -820,39 +854,37 @@ def write_mozbuild(topsrcdir, write_mozbuild_variables, relsrcdir, configs):
         all_args = [args for args, _ in configs]
 
         # Start with attributes that will be a part of the mozconfig
-        # for every configuration, then factor by other potentially useful
+        # for every configuration, then factor by increasingly specific
         # combinations.
-        # FIXME: this is a time-bomb. See bug 1775202.
-        for attrs in (
-            (),
-            ("MOZ_DEBUG",),
-            ("OS_TARGET",),
-            ("OS_TARGET", "TARGET_OS"),
-            ("TARGET_CPU",),
-            ("MOZ_DEBUG", "OS_TARGET"),
-            ("OS_TARGET", "MOZ_X11"),
-            ("OS_TARGET", "TARGET_CPU"),
-            ("OS_TARGET", "TARGET_CPU", "MOZ_X11"),
-            ("OS_TARGET", "TARGET_CPU", "MOZ_DEBUG"),
-            ("OS_TARGET", "TARGET_CPU", "MOZ_DEBUG", "MOZ_X11"),
-        ):
+        for attrs in condition_key_combinations(all_args):
+            # Each pass prunes what it writes from `configs`, so once nothing
+            # is left there is nothing more to write.
+            if not any(any(a.values()) for _, a in configs):
+                break
+
             conditions = set()
             for args in all_args:
                 cond = tuple((k, args.get(k) or "") for k in attrs)
                 conditions.add(cond)
 
             for cond in sorted(conditions):
-                common_attrs = find_common_attrs([
+                matching = [
                     attrs
                     for args, attrs in configs
                     if all((args.get(k) or "") == v for k, v in cond)
-                ])
+                ]
+                if not any(any(a.values()) for a in matching):
+                    continue
+                common_attrs = find_common_attrs(matching)
                 if any(common_attrs.values()):
                     if cond:
                         mb.write_condition(dict(cond))
                     mb.write_attrs(common_attrs)
                     if cond:
                         mb.terminate_condition()
+
+        if any(any(a.values()) for _, a in configs):
+            raise Exception(f"Could not express the configurations of {relsrcdir}")
 
         mb.finalize()
     return target_mozbuild
@@ -913,15 +945,12 @@ def write_mozbuild_files(
             for v in all_mozbuild_results
         }
 
-        for attrs in (
-            (),
-            ("OS_TARGET",),
-            ("OS_TARGET", "TARGET_OS"),
-            ("OS_TARGET", "MOZ_DEBUG"),
-            ("OS_TARGET", "TARGET_OS", "MOZ_DEBUG"),
-            ("OS_TARGET", "TARGET_CPU"),
-            ("OS_TARGET", "TARGET_CPU", "MOZ_X11"),
+        for attrs in condition_key_combinations(
+            v["mozbuild_args"] for v in all_mozbuild_results
         ):
+            if not any(dirs_by_config.values()):
+                break
+
             conditions = set()
             for args in dirs_by_config.keys():
                 cond = tuple((k, dict(args).get(k) or "") for k in attrs)
@@ -937,7 +966,7 @@ def write_mozbuild_files(
                             common_dirs &= dir_set
 
                 for args, dir_set in dirs_by_config.items():
-                    if all(dict(args).get(k) == v for k, v in cond):
+                    if all((dict(args).get(k) or "") == v for k, v in cond):
                         dir_set -= common_dirs
 
                 if common_dirs:
@@ -946,6 +975,9 @@ def write_mozbuild_files(
                     mb.write_mozbuild_list("DIRS", [f"/{d}" for d in common_dirs])
                     if cond:
                         mb.terminate_condition()
+
+        if any(dirs_by_config.values()):
+            raise Exception(f"Could not express the DIRS of {srcdir}")
 
     # Remove stale moz.builds and extra files.
     for root, dirs, files in os.walk(srcdir):

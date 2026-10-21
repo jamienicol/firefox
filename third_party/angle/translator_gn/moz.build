@@ -291,7 +291,7 @@ if CONFIG["OS_TARGET"] == "WINNT":
         "/third_party/angle/src/compiler/translator/tree_ops/hlsl/WrapSwitchStatementsInBlocks.cpp"
     ]
 
-if CONFIG["OS_TARGET"] == "Darwin" and CONFIG["TARGET_OS"] == "OSX":
+if CONFIG["TARGET_OS"] == "OSX":
 
     DEFINES["ANGLE_ENABLE_METAL"] = True
 
@@ -370,14 +370,6 @@ if CONFIG["MOZ_DEBUG"] == "1" and CONFIG["OS_TARGET"] == "WINNT":
 
     DEFINES["_HAS_ITERATOR_DEBUGGING"] = "0"
 
-if not CONFIG["MOZ_X11"] and CONFIG["OS_TARGET"] == "Linux":
-
-    DEFINES["EGL_NO_X11"] = True
-
-if CONFIG["MOZ_X11"] == "1" and CONFIG["OS_TARGET"] == "Linux":
-
-    DEFINES["ANGLE_USE_X11"] = True
-
 if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "aarch64":
 
     DEFINES["_GNU_SOURCE"] = True
@@ -393,5 +385,13 @@ if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86":
 if CONFIG["OS_TARGET"] == "Linux" and CONFIG["TARGET_CPU"] == "x86_64":
 
     DEFINES["_GNU_SOURCE"] = True
+
+if not CONFIG["MOZ_X11"] and CONFIG["OS_TARGET"] == "Linux":
+
+    DEFINES["EGL_NO_X11"] = True
+
+if CONFIG["MOZ_X11"] == "1" and CONFIG["OS_TARGET"] == "Linux":
+
+    DEFINES["ANGLE_USE_X11"] = True
 
 Library("translator_gn")
