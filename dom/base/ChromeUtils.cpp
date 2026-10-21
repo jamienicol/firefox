@@ -37,6 +37,7 @@
 #include "mozilla/PerfStats.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ProcInfo.h"
+#include "mozilla/ProcInfoParent.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/ProfilerMarkers.h"
 #include "mozilla/RemoteMediaManagerChild.h"
@@ -1924,6 +1925,67 @@ static WebIDLProcType ProcTypeToWebIDL(mozilla::ProcType aType) {
 
 #undef PROCTYPE_TO_WEBIDL_CASE
 
+using SingleProcInfoPromise = MozPromise<ProcInfo, nsresult, true>;
+
+// Merges the results of aLocalPromise, as returned by GetProcInfo(), with those
+// of aRemotePromises. Processes for which a remote request fails are skipped.
+static RefPtr<ProcInfoPromise> MergeProcInfo(
+    RefPtr<ProcInfoPromise>&& aLocalPromise,
+    nsTArray<RefPtr<SingleProcInfoPromise>>&& aRemotePromises) {
+  if (aRemotePromises.IsEmpty()) {
+    return std::move(aLocalPromise);
+  }
+
+  RefPtr<nsISerialEventTarget> target = GetCurrentSerialEventTarget();
+  return aLocalPromise->Then(
+      target, __func__,
+      [target, remotePromises = std::move(aRemotePromises)](
+          HashMap<base::ProcessId, ProcInfo>&& aSysProcInfo) mutable
+          -> RefPtr<ProcInfoPromise> {
+        return SingleProcInfoPromise::AllSettled(target, remotePromises)
+            ->Then(target, __func__,
+                   [sysProcInfo = std::move(aSysProcInfo)](
+                       SingleProcInfoPromise::AllSettledPromiseType::
+                           ResolveOrRejectValue&& aResults) mutable {
+                     for (auto& result : aResults.ResolveValue()) {
+                       if (result.IsReject()) {
+                         continue;
+                       }
+                       ProcInfo& info = result.ResolveValue();
+                       base::ProcessId pid = info.pid;
+                       if (!sysProcInfo.put(pid, std::move(info))) {
+                         return ProcInfoPromise::CreateAndReject(
+                             NS_ERROR_OUT_OF_MEMORY, __func__);
+                       }
+                     }
+                     return ProcInfoPromise::CreateAndResolve(
+                         std::move(sysProcInfo), __func__);
+                   });
+      },
+      [](nsresult aRv) {
+        return ProcInfoPromise::CreateAndReject(aRv, __func__);
+      });
+}
+
+// Requests aInfo's system info from the process itself, which must be
+// connected to aProcInfoParent.
+static RefPtr<SingleProcInfoPromise> RequestRemoteProcInfo(
+    ProcInfoParent* aProcInfoParent, ProcInfo&& aInfo) {
+  return aProcInfoParent->GetProcInfo()->Then(
+      GetMainThreadSerialEventTarget(), __func__,
+      [info = std::move(aInfo)](RemoteProcInfo&& aRemoteInfo) mutable {
+        info.memory = aRemoteInfo.memory();
+        info.cpuTime = aRemoteInfo.cpuTime();
+        info.cpuCycleCount = aRemoteInfo.cpuCycleCount();
+        info.threads = std::move(aRemoteInfo.threads());
+        return SingleProcInfoPromise::CreateAndResolve(std::move(info),
+                                                       __func__);
+      },
+      [](nsresult aRv) {
+        return SingleProcInfoPromise::CreateAndReject(aRv, __func__);
+      });
+}
+
 /* static */
 already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
                                                        ErrorResult& aRv) {
@@ -1967,6 +2029,10 @@ already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
       /* aOrigin = */ ""_ns,
       /* aWindowInfo = */ nsTArray<WindowInfo>(),
       /* aUtilityInfo = */ nsTArray<UtilityInfo>());
+
+  // Processes whose info cannot be read from the parent process, which we
+  // instead request from the process itself over IPC.
+  nsTArray<RefPtr<SingleProcInfoPromise>> remotePromises;
 
   // First handle non-ContentParent processes.
   for (auto& geckoProcess : mozilla::ipc::GeckoChildProcessHost::GetAll()) {
@@ -2017,6 +2083,17 @@ already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
         NS_WARNING("Error adding actors");
         continue;
       }
+    }
+
+    if (ProcInfoParent* procInfoParent =
+            ProcInfoParent::Get(geckoProcess->GetChildID())) {
+      ProcInfo info;
+      info.pid = childPid;
+      info.type = type;
+      info.utilityActors = std::move(utilityActors);
+      remotePromises.AppendElement(
+          RequestRemoteProcInfo(procInfoParent, std::move(info)));
+      continue;
     }
 
     requests.EmplaceBack(
@@ -2125,6 +2202,20 @@ already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
         }
       }
     }
+
+    if (ProcInfoParent* procInfoParent =
+            ProcInfoParent::Get(contentParent->Process()->GetChildID())) {
+      ProcInfo info;
+      info.pid = pid;
+      info.childId = contentParent->ChildID();
+      info.type = type;
+      info.origin = origin;
+      info.windows = std::move(windows);
+      remotePromises.AppendElement(
+          RequestRemoteProcInfo(procInfoParent, std::move(info)));
+      continue;
+    }
+
     requests.EmplaceBack(
         /* aPid = */ pid,
         /* aProcessType = */ type,
@@ -2141,7 +2232,8 @@ already_AddRefed<Promise> ChromeUtils::RequestProcInfo(GlobalObject& aGlobal,
 
   // Now place background request.
   RefPtr<nsISerialEventTarget> target = global->SerialEventTarget();
-  mozilla::GetProcInfo(std::move(requests))
+  MergeProcInfo(mozilla::GetProcInfo(std::move(requests)),
+                std::move(remotePromises))
       ->Then(
           target, __func__,
           [target,
