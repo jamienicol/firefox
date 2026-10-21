@@ -14,6 +14,7 @@
 #include "mozIGeckoMediaPluginService.h"
 #include "mozilla/Casting.h"
 #include "mozilla/FOGIPC.h"
+#include "mozilla/ProcInfoParent.h"
 #include "mozilla/dom/KeySystemNames.h"
 #include "mozilla/dom/WidevineCDMManifestBinding.h"
 #include "mozilla/ipc/Endpoint.h"
@@ -447,6 +448,22 @@ nsresult GMPParent::LoadProcess() {
       }
       GMP_PARENT_LOG_DEBUG("{}: Sent preload-libs ('{}') to child process",
                            __FUNCTION__, mLibs.get());
+    }
+#endif
+
+#ifdef MOZ_WIDGET_ANDROID
+    Endpoint<PProcInfoParent> procInfoParent;
+    Endpoint<PProcInfoChild> procInfoChild;
+    if (NS_SUCCEEDED(PProcInfo::CreateEndpoints(
+            mozilla::ipc::EndpointProcInfo::Current(), OtherEndpointProcInfo(),
+            &procInfoParent, &procInfoChild)) &&
+        SendInitProcInfo(std::move(procInfoChild))) {
+      NS_DispatchToMainThread(NS_NewRunnableFunction(
+          "GMPParent::CreateProcInfoParent",
+          [endpoint = std::move(procInfoParent)]() mutable {
+            RefPtr<ProcInfoParent> actor =
+                ProcInfoParent::Create(std::move(endpoint));
+          }));
     }
 #endif
 

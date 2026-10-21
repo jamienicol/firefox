@@ -8,6 +8,7 @@ include ProfilerTypes;
 include protocol PGMPContent;
 include protocol PGMPTimer;
 include protocol PGMPStorage;
+include protocol PProcInfo;
 include protocol PProfiler;
 
 #if defined(XP_WIN)
@@ -54,6 +55,7 @@ child:
   async CloseActive();
   async InitGMPContentChild(Endpoint<PGMPContentChild> endpoint);
   async InitProfiler(Endpoint<PProfilerChild> endpoint);
+  async InitProcInfo(Endpoint<PProcInfoChild> endpoint);
   async PreferenceUpdate(Pref pref);
 
   // Tells the GMP process to flush any pending telemetry.

@@ -15,6 +15,7 @@
 namespace mozilla {
 
 class ChildProfilerController;
+class ProcInfoChild;
 
 namespace gmp {
 
@@ -71,6 +72,9 @@ class GMPChild : public PGMPChild {
   mozilla::ipc::IPCResult RecvInitProfiler(
       Endpoint<mozilla::PProfilerChild>&& aEndpoint);
 
+  mozilla::ipc::IPCResult RecvInitProcInfo(
+      Endpoint<mozilla::PProcInfoChild>&& aEndpoint);
+
   mozilla::ipc::IPCResult RecvPreferenceUpdate(const Pref& aPref);
 
   mozilla::ipc::IPCResult RecvShutdown(ShutdownResolver&& aResolver);
@@ -100,6 +104,7 @@ class GMPChild : public PGMPChild {
   RefPtr<GMPStorageChild> mStorage;
 
   RefPtr<ChildProfilerController> mProfilerController;
+  RefPtr<ProcInfoChild> mProcInfoChild;
 
   MessageLoop* mGMPMessageLoop;
   nsString mPluginPath;

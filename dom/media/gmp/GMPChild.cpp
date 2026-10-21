@@ -31,6 +31,7 @@
 #include "gmp-video-encode.h"
 #include "mozilla/BackgroundHangMonitor.h"
 #include "mozilla/FOGIPC.h"
+#include "mozilla/ProcInfoChild.h"
 #include "mozilla/TextUtils.h"
 #include "mozilla/glean/GleanTestsTestMetrics.h"
 #include "mozilla/ipc/CrashReporterClient.h"
@@ -603,6 +604,11 @@ void GMPChild::ActorDestroy(ActorDestroyReason aWhy) {
   glean::FlushFOGData(
       [](ByteBuf&& aBuf) { glean::SendFOGData(std::move(aBuf)); });
 
+  if (mProcInfoChild) {
+    mProcInfoChild->Shutdown();
+    mProcInfoChild = nullptr;
+  }
+
   if (mProfilerController) {
     mProfilerController->Shutdown();
     mProfilerController = nullptr;
@@ -706,6 +712,12 @@ mozilla::ipc::IPCResult GMPChild::RecvInitProfiler(
     Endpoint<PProfilerChild>&& aEndpoint) {
   mProfilerController =
       mozilla::ChildProfilerController::Create(std::move(aEndpoint));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult GMPChild::RecvInitProcInfo(
+    Endpoint<PProcInfoChild>&& aEndpoint) {
+  mProcInfoChild = ProcInfoChild::Create(std::move(aEndpoint));
   return IPC_OK();
 }
 
