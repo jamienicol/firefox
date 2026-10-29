@@ -2976,6 +2976,11 @@ public class GeckoSessionTestRule implements TestRule {
     webExtensionApiCall("CrashGpuProcess", null);
   }
 
+  /** Starts a utility process and causes it to crash. */
+  public void crashUtilityProcess() {
+    webExtensionApiCall("CrashUtilityProcess", null);
+  }
+
   /** Clears sites from the HSTS list. */
   public void clearHSTSState() {
     webExtensionApiCall("ClearHSTSState", null);

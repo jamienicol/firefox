@@ -261,6 +261,37 @@ this.test = class extends ExtensionAPI {
           return gfxInfo.crashGPUProcessForTests();
         },
 
+        async crashUtilityProcess() {
+          const utilityProcessTest = Cc[
+            "@mozilla.org/utility-process-test;1"
+          ].createInstance(Ci.nsIUtilityProcessTest);
+          const pid = await utilityProcessTest.startProcess();
+
+          // A utility process crash would otherwise shut down Gecko.
+          const shutdownOnCrash = Services.env.get(
+            "MOZ_CRASHREPORTER_SHUTDOWN"
+          );
+          Services.env.set("MOZ_CRASHREPORTER_SHUTDOWN", "");
+          const utilityShutdown = new Promise(resolve => {
+            const observer = (subject, topic, data) => {
+              if (parseInt(data, 10) === pid) {
+                Services.obs.removeObserver(observer, "ipc:utility-shutdown");
+                resolve();
+              }
+            };
+            Services.obs.addObserver(observer, "ipc:utility-shutdown");
+          });
+
+          utilityProcessTest.noteIntentionalCrash(pid);
+          const processTools = Cc[
+            "@mozilla.org/processtools-service;1"
+          ].getService(Ci.nsIProcessToolsService);
+          processTools.crash(pid);
+
+          await utilityShutdown;
+          Services.env.set("MOZ_CRASHREPORTER_SHUTDOWN", shutdownOnCrash);
+        },
+
         async clearHSTSState() {
           const sss = Cc["@mozilla.org/ssservice;1"].getService(
             Ci.nsISiteSecurityService

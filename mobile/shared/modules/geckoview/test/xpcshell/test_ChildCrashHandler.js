@@ -24,17 +24,11 @@ add_setup(async function () {
   });
 });
 
-add_task(async function test_remoteType() {
-  const childID = 123;
-  const remoteType = "webIsolated=https://example.com";
-  // Force-set a remote type for the process that we are going to "crash" next.
-  lazy.ChildCrashHandler.childMap.set(childID, remoteType);
-
-  // Mock a process crash being notified.
+function simulateCrash(processType, childID) {
   const propertyBag = Cc["@mozilla.org/hash-property-bag;1"].createInstance(
     Ci.nsIWritablePropertyBag2
   );
-  propertyBag.setPropertyAsBool("abnormal", true);
+  propertyBag.setPropertyAsACString("processType", processType);
   propertyBag.setPropertyAsAString("dumpID", "a-dump-id");
 
   // Set up a listener to receive the crash report event emitted by the handler.
@@ -50,48 +44,47 @@ add_task(async function test_remoteType() {
     "GeckoView:ChildCrashReport",
   ]);
 
-  // Simulate a crash.
-  lazy.ChildCrashHandler.observe(propertyBag, "ipc:content-shutdown", childID);
+  lazy.ChildCrashHandler.observe(
+    propertyBag,
+    "ipc:child-crash-recorded",
+    childID
+  );
 
-  const [aEvent, aData] = await crashReportPromise;
+  return crashReportPromise.finally(() => {
+    lazy.EventDispatcher.instance.unregisterListener(listener, [
+      "GeckoView:ChildCrashReport",
+    ]);
+  });
+}
+
+add_task(async function test_remoteType() {
+  const childID = "123";
+  const remoteType = "webIsolated=https://example.com";
+  // Force-set a remote type for the process that we are going to "crash" next.
+  lazy.ChildCrashHandler.childMap.set(childID, remoteType);
+
+  const [aEvent, aData] = await simulateCrash("content", childID);
   Assert.equal(
     "GeckoView:ChildCrashReport",
     aEvent,
     "expected a child crash report"
   );
   Assert.equal("webIsolated", aData?.remoteType, "expected remote type prefix");
+  Assert.equal("content", aData?.processType, "expected process type");
+  Assert.equal(
+    "FOREGROUND_CHILD",
+    aData?.processVisibility,
+    "expected process visibility"
+  );
 });
 
 add_task(async function test_extensions_process_crash() {
-  const childID = 123;
+  const childID = "123";
   const remoteType = "extension";
   // Force-set a remote type for the process that we are going to "crash" next.
   lazy.ChildCrashHandler.childMap.set(childID, remoteType);
 
-  // Mock a process crash being notified.
-  const propertyBag = Cc["@mozilla.org/hash-property-bag;1"].createInstance(
-    Ci.nsIWritablePropertyBag2
-  );
-  propertyBag.setPropertyAsBool("abnormal", true);
-  propertyBag.setPropertyAsAString("dumpID", "a-dump-id");
-
-  // Set up a listener to receive the crash report event emitted by the handler.
-  let listener;
-  const crashReportPromise = new Promise(resolve => {
-    listener = {
-      onEvent(aEvent, aData) {
-        resolve([aEvent, aData]);
-      },
-    };
-  });
-  lazy.EventDispatcher.instance.registerListener(listener, [
-    "GeckoView:ChildCrashReport",
-  ]);
-
-  // Simulate a crash.
-  lazy.ChildCrashHandler.observe(propertyBag, "ipc:content-shutdown", childID);
-
-  const [aEvent, aData] = await crashReportPromise;
+  const [aEvent, aData] = await simulateCrash("content", childID);
   Assert.equal(
     "GeckoView:ChildCrashReport",
     aEvent,
@@ -101,6 +94,34 @@ add_task(async function test_extensions_process_crash() {
   Assert.equal(
     "BACKGROUND_CHILD",
     aData?.processVisibility,
-    "expected process type"
+    "expected process visibility"
+  );
+});
+
+add_task(async function test_non_content_process_crash() {
+  for (const processType of ["gpu", "utility", "socket", "plugin"]) {
+    const [aEvent, aData] = await simulateCrash(processType, "456");
+    Assert.equal(
+      "GeckoView:ChildCrashReport",
+      aEvent,
+      `expected a child crash report for ${processType}`
+    );
+    Assert.equal(processType, aData?.processType, "expected process type");
+    Assert.equal(undefined, aData?.remoteType, "expected no remote type");
+    Assert.equal(
+      "BACKGROUND_CHILD",
+      aData?.processVisibility,
+      "expected process visibility"
+    );
+  }
+});
+
+add_task(async function test_content_shutdown_clears_remote_type() {
+  const childID = "789";
+  lazy.ChildCrashHandler.childMap.set(childID, "web");
+  lazy.ChildCrashHandler.observe(null, "ipc:content-shutdown", childID);
+  Assert.ok(
+    !lazy.ChildCrashHandler.childMap.has(childID),
+    "expected remote type to be forgotten on shutdown"
   );
 });

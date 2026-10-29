@@ -1995,6 +1995,10 @@ void ContentParent::ActorDestroy(ActorDestroyReason why) {
 
         if (mCrashReporter->HasMinidump()) {
           dumpID = mCrashReporter->MinidumpID();
+          if (mCreatedPairedMinidumps) {
+            CrashReporterHost::NotifyCrashObservers(GeckoProcessType_Content,
+                                                    OtherChildID(), dumpID);
+          }
         }
         processType = mCrashReporter->ProcessType();
       } else {
@@ -4434,7 +4438,7 @@ void ContentParent::GeneratePairedMinidump(const char* aReason) {
 void ContentParent::HandleOrphanedMinidump(nsString* aDumpId) {
   if (CrashReporter::FinalizeOrphanedMinidump(
           OtherChildID(), GeckoProcessType_Content, aDumpId)) {
-    CrashReporterHost::RecordCrash(GeckoProcessType_Content,
+    CrashReporterHost::RecordCrash(GeckoProcessType_Content, OtherChildID(),
                                    nsICrashService::CRASH_TYPE_CRASH, *aDumpId);
   } else {
     NS_WARNING(nsPrintfCString("content process childID = %d pid = %" PRIPID

@@ -8,9 +8,12 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/glean/IpcMetrics.h"
+#include "mozilla/Services.h"
 #include "nsServiceManagerUtils.h"
+#include "nsHashPropertyBag.h"
 #include "nsICrashService.h"
 #include "nsIDUtils.h"
+#include "nsIObserverService.h"
 #include "nsXULAppAPI.h"
 #include "nsIFile.h"
 
@@ -66,7 +69,8 @@ bool CrashReporterHost::GenerateCrashReport() {
   }
 
   FinalizeCrashReport();
-  RecordCrash(mProcessType, nsICrashService::CRASH_TYPE_CRASH, mDumpID);
+  RecordCrash(mProcessType, mChildID, nsICrashService::CRASH_TYPE_CRASH,
+              mDumpID);
   return true;
 }
 
@@ -143,12 +147,12 @@ const char* CrashReporterHost::ProcessType() const {
 
 /* static */
 void CrashReporterHost::RecordCrash(GeckoProcessType aProcessType,
-                                    int32_t aCrashType,
+                                    GeckoChildID aChildID, int32_t aCrashType,
                                     const nsString& aChildDumpID) {
   if (!NS_IsMainThread()) {
     RefPtr<Runnable> runnable = NS_NewRunnableFunction(
         "ipc::CrashReporterHost::RecordCrash", [&]() -> void {
-          CrashReporterHost::RecordCrash(aProcessType, aCrashType,
+          CrashReporterHost::RecordCrash(aProcessType, aChildID, aCrashType,
                                          aChildDumpID);
         });
     RefPtr<nsIThread> mainThread = do_GetMainThread();
@@ -158,6 +162,9 @@ void CrashReporterHost::RecordCrash(GeckoProcessType aProcessType,
 
   RecordCrashWithTelemetry(aProcessType, aCrashType);
   NotifyCrashService(aProcessType, aCrashType, aChildDumpID);
+  if (aCrashType == nsICrashService::CRASH_TYPE_CRASH) {
+    NotifyCrashObservers(aProcessType, aChildID, aChildDumpID);
+  }
 }
 
 /* static */
@@ -210,6 +217,29 @@ void CrashReporterHost::NotifyCrashService(GeckoProcessType aProcessType,
   RefPtr<dom::Promise> promise;
   crashService->AddCrash(processType, aCrashType, aChildDumpID,
                          getter_AddRefs(promise));
+}
+
+/* static */
+void CrashReporterHost::NotifyCrashObservers(GeckoProcessType aProcessType,
+                                             GeckoChildID aChildID,
+                                             const nsString& aChildDumpID) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  if (!obs) {
+    return;
+  }
+
+  RefPtr props = MakeRefPtr<nsHashPropertyBag>();
+  props->SetPropertyAsACString(
+      u"processType"_ns,
+      nsDependentCString(XRE_ChildProcessTypeToAnnotation(aProcessType)));
+  props->SetPropertyAsAString(u"dumpID"_ns, aChildDumpID);
+
+  nsAutoString childID;
+  childID.AppendInt(aChildID);
+  obs->NotifyObservers((nsIPropertyBag2*)props, "ipc:child-crash-recorded",
+                       childID.get());
 }
 
 void CrashReporterHost::AddAnnotationBool(CrashReporter::Annotation aKey,

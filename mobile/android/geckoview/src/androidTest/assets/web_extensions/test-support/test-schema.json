@@ -315,6 +315,14 @@
       },
 
       {
+        "name": "crashUtilityProcess",
+        "type": "function",
+        "async": true,
+        "description": "Starts a utility process and causes it to crash.",
+        "parameters": []
+      },
+
+      {
         "name": "clearHSTSState",
         "type": "function",
         "async": true,

@@ -76,11 +76,20 @@ class CrashReporterHost {
   const char* ProcessType() const;
 
   // This is a static helper function to notify the crash service that a
-  // crash has occurred and record the crash with telemetry. This can be called
-  // from any thread, and if not called from the main thread, will post a
-  // synchronous message to the main thread.
-  static void RecordCrash(GeckoProcessType aProcessType, int32_t aCrashType,
-                          const nsString& aChildDumpID);
+  // crash has occurred and record the crash with telemetry. For crashes (not
+  // hangs) it also notifies "ipc:child-crash-recorded" observers, with
+  // aChildID as the data and a property bag holding "processType" and
+  // "dumpID". This can be called from any thread, and if not called from the
+  // main thread, will post a synchronous message to the main thread.
+  static void RecordCrash(GeckoProcessType aProcessType, GeckoChildID aChildID,
+                          int32_t aCrashType, const nsString& aChildDumpID);
+
+  // Notify "ipc:child-crash-recorded" observers without recording the crash.
+  // Only needed for minidumps which do not go through RecordCrash. Must be
+  // called on the main thread.
+  static void NotifyCrashObservers(GeckoProcessType aProcessType,
+                                   GeckoChildID aChildID,
+                                   const nsString& aChildDumpID);
 
  private:
   CrashReporter::ThreadId GetRawThreadId() const {

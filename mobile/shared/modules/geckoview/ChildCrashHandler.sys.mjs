@@ -57,19 +57,17 @@ export var ChildCrashHandler = {
       }
 
       case "ipc:content-shutdown":
-      // Intentional fall-through
-      case "compositor:process-aborted": {
+        this.childMap.delete(childID);
+        break;
+
+      case "ipc:child-crash-recorded": {
         aSubject.QueryInterface(Ci.nsIPropertyBag2);
 
         const disableReporting = Services.env.get(
           "MOZ_CRASHREPORTER_NO_REPORT"
         );
 
-        if (
-          !aSubject.get("abnormal") ||
-          !AppConstants.MOZ_CRASHREPORTER ||
-          disableReporting
-        ) {
+        if (!AppConstants.MOZ_CRASHREPORTER || disableReporting) {
           return;
         }
 
@@ -84,23 +82,23 @@ export var ChildCrashHandler = {
         debug`Notifying child process crash, dump ID ${dumpID}`;
         const [minidumpPath, extrasPath] = getPendingMinidump(dumpID);
 
-        let remoteType = this.childMap.get(childID);
-        this.childMap.delete(childID);
-
-        if (remoteType?.length) {
-          // Only send the remote type prefix since everything after a "=" is
-          // dynamic, and used to control the process pool to use.
-          remoteType = remoteType.split("=")[0];
+        const processType = aSubject.get("processType");
+        let remoteType;
+        if (processType === "content") {
+          remoteType = this.childMap.get(childID);
+          if (remoteType?.length) {
+            // Only send the remote type prefix since everything after a "="
+            // is dynamic, and used to control the process pool to use.
+            remoteType = remoteType.split("=")[0];
+          }
         }
 
-        // Report GPU and extension process crashes as occuring in a background
-        // process, and others as foreground.
+        // Only report crashes of non-extension content processes as
+        // occurring in a foreground process, and all others as background.
         const processVisibility =
-          aTopic === "compositor:process-aborted" || remoteType === "extension"
-            ? "BACKGROUND_CHILD"
-            : "FOREGROUND_CHILD";
-
-        const processType = aSubject.get("processType");
+          processType === "content" && remoteType !== "extension"
+            ? "FOREGROUND_CHILD"
+            : "BACKGROUND_CHILD";
 
         lazy.EventDispatcher.instance.sendRequest(
           "GeckoView:ChildCrashReport",

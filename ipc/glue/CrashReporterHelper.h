@@ -77,7 +77,8 @@ class CrashReporterHelper {
    * one (disabled, or the dummy implementation).
    */
   void MaybeTerminateProcess(const nsAString& aMinidumpId) {
-    if (!PR_GetEnv("MOZ_CRASHREPORTER_SHUTDOWN")) {
+    const char* shutdown = PR_GetEnv("MOZ_CRASHREPORTER_SHUTDOWN");
+    if (!shutdown || !*shutdown) {
       return;
     }
     if (aMinidumpId.IsEmpty() && CrashReporter::GetEnabled()) {
@@ -98,7 +99,7 @@ class CrashReporterHelper {
     GeckoChildID child_id = static_cast<Derived*>(this)->OtherChildID();
     if (CrashReporter::FinalizeOrphanedMinidump(child_id, Derived::PROCESS_TYPE,
                                                 &aMinidumpId)) {
-      CrashReporterHost::RecordCrash(Derived::PROCESS_TYPE,
+      CrashReporterHost::RecordCrash(Derived::PROCESS_TYPE, child_id,
                                      nsICrashService::CRASH_TYPE_CRASH,
                                      aMinidumpId);
     } else {

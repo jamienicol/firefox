@@ -32,6 +32,8 @@ public class TestCrashHandler extends Service {
   private static final int MSG_EVAL_NEXT_CRASH_DUMP = 1;
   private static final int MSG_CRASH_DUMP_EVAL_RESULT = 2;
   private static final String LOGTAG = "TestCrashHandler";
+  private static final String BUNDLE_KEY_EXPECT_MOZ_CRASH_REASON =
+      "TestCrashHandler.expectMozCrashReason";
 
   public static final class EvalResult {
     private static final String BUNDLE_KEY_RESULT = "TestCrashHandler.EvalResult.mResult";
@@ -120,8 +122,22 @@ public class TestCrashHandler extends Service {
         final String expectedProcessVisibility,
         final String expectedProcessType,
         final String expectedRemoteType) {
+      setEvalNextCrashDump(
+          expectedProcessVisibility, expectedProcessType, expectedRemoteType, true);
+    }
+
+    /**
+     * @param expectMozCrashReason Whether the incoming crash is expected to have been caused by
+     *     MOZ_CRASH, rather than by e.g. a signal sent from another process.
+     */
+    public void setEvalNextCrashDump(
+        final String expectedProcessVisibility,
+        final String expectedProcessType,
+        final String expectedRemoteType,
+        final boolean expectMozCrashReason) {
       setEvalResult(null);
       final Bundle bundle = new Bundle();
+      bundle.putBoolean(BUNDLE_KEY_EXPECT_MOZ_CRASH_REASON, expectMozCrashReason);
       bundle.putString(GeckoRuntime.EXTRA_CRASH_PROCESS_VISIBILITY, expectedProcessVisibility);
       bundle.putString(GeckoRuntime.EXTRA_CRASH_PROCESS_TYPE, expectedProcessType);
       bundle.putString(GeckoRuntime.EXTRA_CRASH_REMOTE_TYPE, expectedRemoteType);
@@ -184,6 +200,7 @@ public class TestCrashHandler extends Service {
     private String mExpectedProcessVisibility;
     private String mExpectedProcessType;
     private String mExpectedRemoteType;
+    private boolean mExpectMozCrashReason;
 
     MessageHandler() {}
 
@@ -195,6 +212,7 @@ public class TestCrashHandler extends Service {
         mExpectedProcessVisibility = bundle.getString(GeckoRuntime.EXTRA_CRASH_PROCESS_VISIBILITY);
         mExpectedProcessType = bundle.getString(GeckoRuntime.EXTRA_CRASH_PROCESS_TYPE);
         mExpectedRemoteType = bundle.getString(GeckoRuntime.EXTRA_CRASH_REMOTE_TYPE);
+        mExpectMozCrashReason = bundle.getBoolean(BUNDLE_KEY_EXPECT_MOZ_CRASH_REASON);
         return;
       }
 
@@ -228,6 +246,10 @@ public class TestCrashHandler extends Service {
 
     public String getExpectedRemoteType() {
       return mExpectedRemoteType;
+    }
+
+    public boolean getExpectMozCrashReason() {
+      return mExpectMozCrashReason;
     }
   }
 
@@ -279,8 +301,10 @@ public class TestCrashHandler extends Service {
       // TODO: remove this when bug 2082922 is fixed
       expectAnnotations = !annotations.optString("MinidumpRemoteExecutorForTesting").equals("1");
 
-      if (expectAnnotations && !annotations.getString("MozCrashReason").startsWith("MOZ_CRASH(")) {
-        return new EvalResult(false, "Missing or invalid child crash annotations");
+      if (mMsgHandler.getExpectMozCrashReason()) {
+        if (expectAnnotations && && !annotations.getString("MozCrashReason").startsWith("MOZ_CRASH(")) {
+          return new EvalResult(false, "Missing or invalid child crash annotations");
+        }
       }
 
       final String dumperError = annotations.optString("DumperError");

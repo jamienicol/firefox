@@ -89,6 +89,9 @@ const APIS = {
   CrashGpuProcess() {
     return browser.test.crashGpuProcess();
   },
+  CrashUtilityProcess() {
+    return browser.test.crashUtilityProcess();
+  },
   ClearHSTSState() {
     return browser.test.clearHSTSState();
   },
