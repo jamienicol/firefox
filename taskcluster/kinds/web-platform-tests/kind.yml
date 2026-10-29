@@ -121,6 +121,7 @@ tasks:
             by-variant:
                 no-fission:
                     by-test-platform:
+                        android.*: 2
                         linux.*: 2
                         default: default
                 geckoview-isolated-process: 2
@@ -157,7 +158,7 @@ tasks:
             by-variant:
                 no-fission:
                     by-test-platform:
-                        android.*: built-projects
+                        android.*: ['mozilla-central']
                         linux2404-64/debug: ['mozilla-central']
                         linux2404-64(-shippable)?/opt: ['mozilla-central']
                         linux2404-64-asan/opt: ['mozilla-central']
@@ -175,7 +176,6 @@ tasks:
                 privatebrowsing-inc-origin-init: []
                 default:
                     by-test-platform:
-                        android.*: []
                         .*-wayland.*: []
                         default: built-projects
         mozharness:
