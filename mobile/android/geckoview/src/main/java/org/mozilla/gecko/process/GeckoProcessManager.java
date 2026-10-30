@@ -703,6 +703,11 @@ public final class GeckoProcessManager {
     return mIsolatedProcess;
   }
 
+  @WrapForJNI(calledFrom = "gecko")
+  private static boolean isIsolatedContentProcessEnabled() {
+    return INSTANCE.mIsolatedProcess;
+  }
+
   /** true if app Zygote preloading is enabled. */
   public boolean isAppZygoteEnabled() {
     return mAppZygote;

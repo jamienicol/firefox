@@ -251,6 +251,11 @@ perf:
           Process isolation category: 0=other, 1=shared_web, 2=site_isolated, 3=coop_isolated
         type: quantity
         unit: integer
+      android_isolated_process_enabled:
+        description: |
+          Whether content processes are run as Android isolated processes,
+          android only.
+        type: boolean
       interaction_count:
         description: |
           Number of distinct user interactions on the page, per the W3C event

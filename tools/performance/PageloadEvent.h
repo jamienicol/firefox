@@ -63,6 +63,7 @@ struct PageLoadDomainExtra;
   _(androidAppLinkLaunchType, uint32_t)        \
   _(androidAppLinkToNavigationStart, uint32_t) \
   _(androidIsolationCategory, uint32_t)        \
+  _(androidIsolatedProcessEnabled, bool)       \
   _(interactionCount, uint32_t)                \
   _(inpLongest, uint32_t)                      \
   _(inpP98, uint32_t)                          \

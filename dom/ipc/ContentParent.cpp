@@ -6443,6 +6443,8 @@ mozilla::ipc::IPCResult ContentParent::RecvRecordPageLoadEvent(
     isolationCategory = AndroidIsolationCategory::OTHER;
   }
   aPageloadEventData.set_androidIsolationCategory(isolationCategory);
+  aPageloadEventData.set_androidIsolatedProcessEnabled(
+      java::GeckoProcessManager::IsIsolatedContentProcessEnabled());
 #endif
 
   // If the domain information exists, then we need to send it using a special
