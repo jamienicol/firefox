@@ -10746,6 +10746,14 @@
 #endif
   mirror: once
 
+# On Android, use a performance hint session for the GPU process's Renderer,
+# Compositor and CanvasRender threads, or if that is unavailable, keep them on
+# the big CPU cores. See GPUThreadPerformanceHints.
+- name: layers.gpu-process.thread-performance-hints
+  type: bool
+  value: false
+  mirror: once
+
 - name: layers.gpu-process.allow-headless
   type: bool
   value: false

@@ -90,6 +90,9 @@
 
 #  include "skia/include/ports/SkTypeface_cairo.h"
 #endif
+#ifdef MOZ_WIDGET_ANDROID
+#  include "mozilla/gfx/GPUThreadPerformanceHints.h"
+#endif
 #ifdef ANDROID
 #  include "mozilla/layers/AndroidHardwareBuffer.h"
 #  include "mozilla/layers/AndroidImageReader.h"
@@ -408,6 +411,9 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
   // Make sure to do this *after* we update gfxVars above.
   wr::RenderThread::Start(aWrNamespace);
   gfx::CanvasRenderThread::Start();
+#ifdef MOZ_WIDGET_ANDROID
+  GPUThreadPerformanceHints::Start();
+#endif
   image::ImageMemoryReporter::InitForWebRender();
 
   // Since gfxPlatform::Init is never called for the GPU process, ensure that

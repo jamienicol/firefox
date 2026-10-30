@@ -48,6 +48,7 @@
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "GLLibraryEGL.h"
+#  include "mozilla/gfx/GPUThreadPerformanceHints.h"
 #  include "mozilla/webrender/RenderAndroidSurfaceTextureHost.h"
 #endif
 
@@ -281,6 +282,10 @@ void RenderThread::ShutDownTask() {
     mRenderTextureOps.clear();
   }
 
+#ifdef MOZ_WIDGET_ANDROID
+  mPerformanceHints = nullptr;
+#endif
+
   // These must be destroyed before the thread pools as they hold a reference to
   // the worker threads.
   mShaders = nullptr;
@@ -396,6 +401,18 @@ bool RenderThread::GetPowerIsCharging() {
   MOZ_ASSERT_UNREACHABLE("unexpected to be called");
   return false;
 }
+
+#ifdef MOZ_WIDGET_ANDROID
+void RenderThread::SetPerformanceHints(
+    UniquePtr<gfx::GPUThreadPerformanceHints> aHints) {
+  MOZ_ASSERT(IsInRenderThread());
+
+  if (mHasShutdown) {
+    return;
+  }
+  mPerformanceHints = std::move(aHints);
+}
+#endif
 
 void RenderThread::AddRenderer(wr::WindowId aWindowId,
                                UniquePtr<RendererOGL> aRenderer) {
@@ -921,6 +938,12 @@ void RenderThread::UpdateAndRender(
 
   TimeStamp end = TimeStamp::Now();
   RefPtr<const WebRenderPipelineInfo> info = renderer->GetLastPipelineInfo();
+
+#ifdef MOZ_WIDGET_ANDROID
+  if (render && mPerformanceHints) {
+    mPerformanceHints->DidRenderFrame(start, end);
+  }
+#endif
 
   layers::CompositorThread()->Dispatch(
       NewRunnableFunction("NotifyDidRenderRunnable", &NotifyDidRender,

@@ -31,6 +31,9 @@ namespace mozilla {
 namespace gl {
 class GLContext;
 }  // namespace gl
+namespace gfx {
+class GPUThreadPerformanceHints;
+}  // namespace gfx
 namespace layers {
 class CompositorBridgeParent;
 class Fence;
@@ -374,6 +377,11 @@ class RenderThread final {
   void SetBatteryInfo(const hal::BatteryInformation& aBatteryInfo);
   bool GetPowerIsCharging();
 
+#ifdef MOZ_WIDGET_ANDROID
+  /// Can only be called from the render thread.
+  void SetPerformanceHints(UniquePtr<gfx::GPUThreadPerformanceHints> aHints);
+#endif
+
   void BeginShaderWarmupIfNeeded();
 
  private:
@@ -531,6 +539,11 @@ class RenderThread final {
   std::map<wr::WindowId, UniquePtr<RendererOGL>> mRenderers;
 
   DataMutex<Maybe<hal::BatteryInformation>> mBatteryInfo;
+
+#ifdef MOZ_WIDGET_ANDROID
+  // Only accessed on the render thread.
+  UniquePtr<gfx::GPUThreadPerformanceHints> mPerformanceHints;
+#endif
 
   struct PendingFrameInfo {
     TimeStamp mStartTime;
