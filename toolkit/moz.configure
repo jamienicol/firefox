@@ -2725,11 +2725,11 @@ with only_when(compile_environment & target_is_osx):
         help="{Enable|Disable} build-time compilation of ANGLE's internal Metal shaders",
     )
 
-    enable_angle_metal_shader_compilation_option = depends(
+    enable_angle_metal_shader_compilation = depends(
         "--enable-angle-metal-shader-compilation"
     )(lambda value: value)
 
-with only_when(enable_angle_metal_shader_compilation_option):
+with only_when(enable_angle_metal_shader_compilation):
     option(
         "--with-metal-toolchain",
         env="METAL_TOOLCHAIN_DIR",
@@ -2741,7 +2741,7 @@ with only_when(enable_angle_metal_shader_compilation_option):
     # if Xcode's Metal toolchain should be used. Returns None if no Metal
     # toolchain is available and the feature was only enabled by default.
     @depends(
-        enable_angle_metal_shader_compilation_option,
+        enable_angle_metal_shader_compilation.origin,
         "--with-metal-toolchain",
         host,
         want_bootstrap,
@@ -2779,7 +2779,17 @@ with only_when(enable_angle_metal_shader_compilation_option):
             "xcodebuild", "-version", onerror=lambda: ""
         ):
             log.info("Installing the Xcode Metal toolchain component...")
-            subprocess.call(["xcodebuild", "-downloadComponent", "MetalToolchain"])
+            ret = subprocess.run([
+                "xcodebuild",
+                "-downloadComponent",
+                "MetalToolchain",
+            ]).returncode
+            if ret:
+                log.warning(
+                    "Failed to install the Xcode Metal toolchain component "
+                    "(exit status %d).",
+                    ret,
+                )
             if has_xcode_metal():
                 return namespace(path=None)
         if enable.origin != "default":
@@ -2809,7 +2819,7 @@ with only_when(enable_angle_metal_shader_compilation_option):
     set_config("MOZ_ANGLE_METAL_SHADER_COMPILATION", angle_metal_shader_compilation)
 
 with only_when(
-    enable_angle_metal_shader_compilation_option
+    enable_angle_metal_shader_compilation
     & depends(host)(lambda h: h.os != "OSX")
 ):
     option(
