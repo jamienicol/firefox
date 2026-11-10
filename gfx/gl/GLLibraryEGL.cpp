@@ -382,9 +382,14 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayForWebRenderAndroidGLES(
     nsACString* const out_failureId) {
   StaticMutexAutoLock lock(sMutex);
   // Get() may return system EGL after failing to initialize bundled ANGLE.
+#  ifdef __arm__
+  if (!IsANGLE() || !IsGlANGLE()) {
+    *out_failureId = "FEATURE_FAILURE_WR_ANGLE_GL_UNSUPPORTED"_ns;
+#  else
   if (!IsANGLE() ||
       !IsExtensionSupported(EGLLibExtension::ANGLE_platform_angle_vulkan)) {
     *out_failureId = "FEATURE_FAILURE_WR_ANGLE_VULKAN_UNSUPPORTED"_ns;
+#  endif
     return nullptr;
   }
   if (!IsExtensionSupported(
@@ -396,7 +401,11 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayForWebRenderAndroidGLES(
   // WebGL uses the default key (0). Keep WebRender's display separate even
   // when both use the same ANGLE backend and underlying GPU.
   const EGLAttrib attribs[] = {LOCAL_EGL_PLATFORM_ANGLE_TYPE_ANGLE,
+#  ifdef __arm__
+                               LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE,
+#  else
                                LOCAL_EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE,
+#  endif
                                LOCAL_EGL_PLATFORM_ANGLE_DISPLAY_KEY_ANGLE, 1,
                                LOCAL_EGL_NONE};
   const EGLDisplay display = fGetPlatformDisplay(LOCAL_EGL_PLATFORM_ANGLE_ANGLE,
