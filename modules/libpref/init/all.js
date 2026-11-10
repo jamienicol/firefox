@@ -4267,3 +4267,5 @@ pref("general.smoothScroll", true, sticky);
 #if defined(MOZ_ARTIFACT_BUILDS) && defined(XP_MACOSX)
   pref("dom.ipc.processLaunch.useMacPlists", true);
 #endif
+
+pref("gfx.webrender.enable-angle", true);
