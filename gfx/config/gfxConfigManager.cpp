@@ -97,8 +97,6 @@ void gfxConfigManager::Init() {
   mFeatureWrAngleBackend = mFeatureGlAngle;
 #endif
   mFeatureGPUProcess = &gfxConfig::GetFeature(Feature::GPU_PROCESS);
-  mFeatureGLNorm16Textures =
-      &gfxConfig::GetFeature(Feature::GL_NORM16_TEXTURES);
 }
 
 void gfxConfigManager::EmplaceUserPref(const char* aPrefName,
@@ -150,7 +148,6 @@ void gfxConfigManager::ConfigureWebRender() {
   MOZ_ASSERT(mFeatureWrScissoredCacheClears);
   MOZ_ASSERT(mFeatureHwCompositing);
   MOZ_ASSERT(mFeatureGPUProcess);
-  MOZ_ASSERT(mFeatureGLNorm16Textures);
 
   // Initialize WebRender native compositor usage
   mFeatureWrCompositor->SetDefaultFromPref("gfx.webrender.compositor", true,
@@ -324,10 +321,6 @@ void gfxConfigManager::ConfigureWebRender() {
   }
   ConfigureFromBlocklist(nsIGfxInfo::FEATURE_WEBRENDER_SCISSORED_CACHE_CLEARS,
                          mFeatureWrScissoredCacheClears);
-
-  mFeatureGLNorm16Textures->EnableByDefault();
-  ConfigureFromBlocklist(nsIGfxInfo::FEATURE_GL_NORM16_TEXTURES,
-                         mFeatureGLNorm16Textures);
 }
 
 }  // namespace gfx

@@ -391,6 +391,8 @@ RefPtr<WebRenderAPI::CreatePromise> WebRenderAPI::Create(
             .mUseLayerCompositor = useLayerCompositor,
             .mUseTripleBuffering = useTripleBuffering,
             .mSupportsExternalBufferTextures = supportsExternalBufferTextures,
+            .mSupportsNorm16Textures =
+                swgl || (gl && gl->IsSupported(gl::GLFeature::texture_norm16)),
 #ifdef XP_DARWIN
             .mIOSurfaceImageKind = ioSurfaceImageKind,
 #endif

@@ -361,7 +361,8 @@ static TextureFactoryIdentifier GetProcessTextureFactoryIdentifier() {
       software ? WebRenderBackend::SOFTWARE : WebRenderBackend::HARDWARE,
       compositorType, XRE_GetProcessType(), /* aMaxTextureSize */ 4096,
       useANGLE, useDComp, useLayerCompositor, useCompositorWnd, false, false,
-      false, supportsD3D11NV12, syncHandle);
+      false, supportsD3D11NV12, /* aSupportsNorm16Textures */ false,
+      syncHandle);
 }
 
 mozilla::ipc::IPCResult VideoBridgeParent::RecvGetTextureFactoryIdentifier(

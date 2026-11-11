@@ -508,7 +508,7 @@ DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::layers::TextureFactoryIdentifier,
                                   mUseCompositorWnd, mSupportsTextureBlitting,
                                   mSupportsPartialUploads,
                                   mSupportsComponentAlpha, mSupportsD3D11NV12,
-                                  mSyncHandle);
+                                  mSupportsNorm16Textures, mSyncHandle);
 
 DEFINE_IPC_SERIALIZER_WITH_FIELDS(mozilla::layers::TextureInfo,
                                   mCompositableType, mUsageType, mTextureFlags);
