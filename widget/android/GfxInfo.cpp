@@ -24,7 +24,6 @@ class GfxInfo::GLStrings {
   nsCString mVendor;
   nsCString mRenderer;
   nsCString mVersion;
-  nsTArray<nsCString> mExtensions;
   bool mReady;
 
   // Pref names to use for caching. The OS build fingerprint is used to check
@@ -38,6 +37,8 @@ class GfxInfo::GLStrings {
       "gfxinfo.gl-strings.renderer";
   constexpr static const char* kCachePrefNameVersion =
       "gfxinfo.gl-strings.version";
+  // We no longer cache the extension list, but keep this constant so we can
+  // clear existing values.
   constexpr static const char* kCachePrefNameExtensions =
       "gfxinfo.gl-strings.extensions";
 
@@ -70,11 +71,6 @@ class GfxInfo::GLStrings {
   // This spoofed value wins, even if the environment variable
   // MOZ_GFX_SPOOF_GL_VERSION was set.
   void SpoofVersion(const nsCString& s) { mVersion = s; }
-
-  const nsTArray<nsCString>& Extensions() {
-    EnsureInitialized();
-    return mExtensions;
-  }
 
   void EnsureInitialized() {
     if (mReady) {
@@ -120,13 +116,6 @@ class GfxInfo::GLStrings {
       if (mVersion.IsEmpty()) {
         Preferences::GetCString(kCachePrefNameVersion, mVersion);
       }
-      if (mExtensions.IsEmpty()) {
-        nsCString extensions;
-        Preferences::GetCString(kCachePrefNameExtensions, extensions);
-        for (auto extension : extensions.Split(' ')) {
-          mExtensions.AppendElement(extension);
-        }
-      }
 
       mReady = true;
       return;
@@ -156,29 +145,24 @@ class GfxInfo::GLStrings {
     if (mVersion.IsEmpty()) {
       mVersion.Assign(gl->VersionString());
     }
-    if (mExtensions.IsEmpty()) {
-      mExtensions = gl->ExtensionStrings().Clone();
-    }
 
     // Cache the GL strings so we can avoid expensive GL Context
     // initialization on next launch. Make sure we use the actual values
     // obtained from GL rather than any spoofed values.
-    CacheStrings(gl->VendorString(), gl->RendererString(), gl->VersionString(),
-                 gl->ExtensionStrings());
+    CacheStrings(gl->VendorString(), gl->RendererString(), gl->VersionString());
 
     mReady = true;
   }
 
   void CacheStrings(const nsCString& aVendor, const nsCString& aRenderer,
-                    const nsCString& aVersion,
-                    Span<const nsCString> aExtensions) {
+                    const nsCString& aVersion) {
     const nsCString fingerprint = java::sdk::Build::FINGERPRINT()->ToCString();
 
     Preferences::SetCString(kCachePrefNameVendor, aVendor);
     Preferences::SetCString(kCachePrefNameRenderer, aRenderer);
     Preferences::SetCString(kCachePrefNameVersion, aVersion);
-    Preferences::SetCString(kCachePrefNameExtensions,
-                            StringJoin(" "_ns, aExtensions));
+    // We no longer cache the extension list. Clear any existing value.
+    Preferences::ClearUser(kCachePrefNameExtensions);
     // Save the fingerprint last so that if we're killed part way through
     // writing these prefs the next launch doesn't attempt to use partially
     // cached data.
@@ -857,8 +841,7 @@ void GfxInfo::ReportGLStrings(gfx::GfxInfoGLStrings&& aStrings) {
   // Sanity check the provided strings match our cached values.
   if (aStrings.vendor() != mGLStrings->Vendor() ||
       aStrings.renderer() != mGLStrings->Renderer() ||
-      aStrings.version() != mGLStrings->Version() ||
-      aStrings.extensions() != mGLStrings->Extensions()) {
+      aStrings.version() != mGLStrings->Version()) {
     gfxCriticalNoteOnce << "Received unexpected GLStrings: "
                         << aStrings.vendor().get() << ", "
                         << aStrings.renderer().get() << ", "
@@ -866,7 +849,7 @@ void GfxInfo::ReportGLStrings(gfx::GfxInfoGLStrings&& aStrings) {
 
     // Update the cache if they differ.
     mGLStrings->CacheStrings(aStrings.vendor(), aStrings.renderer(),
-                             aStrings.version(), aStrings.extensions());
+                             aStrings.version());
   }
 }
 
