@@ -3378,7 +3378,8 @@ TextureFactoryIdentifier WebRenderBridgeParent::GetTextureFactoryIdentifier() {
       capabilities.mUseANGLE, capabilities.mUseDComp,
       capabilities.mUseLayerCompositor,
       mLateInit->mAsyncImageManager->UseCompositorWnd(), false, false, false,
-      supportsD3D11NV12, mLateInit->mApi->GetSyncHandle());
+      supportsD3D11NV12, capabilities.mSupportsNorm16Textures,
+      mLateInit->mApi->GetSyncHandle());
   return ident;
 }
 

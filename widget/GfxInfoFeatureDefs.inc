@@ -147,8 +147,8 @@ GFXINFO_FEATURE(AV1_HW_ENCODE, "av1.hw-encode")
 GFXINFO_FEATURE(HEVC_HW_ENCODE, "hevc.hw-encode")
 /* Whether Windows Media Fundation hardware DRM is supported, starting in 141. */
 GFXINFO_FEATURE(WMF_HW_DRM, "wmf.hw-drm")
-/* Whether OpenGL is allowed to use normalized 16-bit texture formats, starting in 141. */
-GFXINFO_FEATURE_MISMATCHED(GL_NORM16_TEXTURES, GL_NORM16, "gl.norm16-textures")
+/* (Unused) Whether OpenGL is allowed to use normalized 16-bit texture formats, starting in 141. */
+GFXINFO_FEATURE_RETIRED(GL_NORM16_TEXTURES, "gl.norm16-textures")
 /* Whether hardware accelerated video encoding is supported, starting in 141. */
 GFXINFO_FEATURE(HARDWARE_VIDEO_ENCODING, "hardwarevideoencoding")
 /* Whether WebGPU's GPUExternalTexture API is supported, starting in 143. */

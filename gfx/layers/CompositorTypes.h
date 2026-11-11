@@ -182,6 +182,7 @@ struct TextureFactoryIdentifier {
   bool mSupportsPartialUploads;
   bool mSupportsComponentAlpha;
   bool mSupportsD3D11NV12;
+  bool mSupportsNorm16Textures;
   SyncHandle mSyncHandle;
 
   explicit TextureFactoryIdentifier(
@@ -191,7 +192,8 @@ struct TextureFactoryIdentifier {
       bool aCompositorUseDComp = false, bool aUseLayerCompositor = false,
       bool aUseCompositorWnd = false, bool aSupportsTextureBlitting = false,
       bool aSupportsPartialUploads = false, bool aSupportsComponentAlpha = true,
-      bool aSupportsD3D11NV12 = false, SyncHandle aSyncHandle = {})
+      bool aSupportsD3D11NV12 = false, bool aSupportsNorm16Textures = false,
+      SyncHandle aSyncHandle = {})
       : mParentBackend(aLayersBackend),
         mWebRenderBackend(WebRenderBackend::HARDWARE),
         mWebRenderCompositor(WebRenderCompositor::DRAW),
@@ -205,6 +207,7 @@ struct TextureFactoryIdentifier {
         mSupportsPartialUploads(aSupportsPartialUploads),
         mSupportsComponentAlpha(aSupportsComponentAlpha),
         mSupportsD3D11NV12(aSupportsD3D11NV12),
+        mSupportsNorm16Textures(aSupportsNorm16Textures),
         mSyncHandle(aSyncHandle) {}
 
   explicit TextureFactoryIdentifier(
@@ -215,7 +218,8 @@ struct TextureFactoryIdentifier {
       bool aCompositorUseDComp = false, bool aUseLayerCompositor = false,
       bool aUseCompositorWnd = false, bool aSupportsTextureBlitting = false,
       bool aSupportsPartialUploads = false, bool aSupportsComponentAlpha = true,
-      bool aSupportsD3D11NV12 = false, SyncHandle aSyncHandle = {})
+      bool aSupportsD3D11NV12 = false, bool aSupportsNorm16Textures = false,
+      SyncHandle aSyncHandle = {})
       : mParentBackend(LayersBackend::LAYERS_WR),
         mWebRenderBackend(aWebRenderBackend),
         mWebRenderCompositor(aWebRenderCompositor),
@@ -229,6 +233,7 @@ struct TextureFactoryIdentifier {
         mSupportsPartialUploads(aSupportsPartialUploads),
         mSupportsComponentAlpha(aSupportsComponentAlpha),
         mSupportsD3D11NV12(aSupportsD3D11NV12),
+        mSupportsNorm16Textures(aSupportsNorm16Textures),
         mSyncHandle(aSyncHandle) {}
 };
 

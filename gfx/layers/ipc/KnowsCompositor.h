@@ -86,6 +86,11 @@ class KnowsCompositor {
     return lock.ref().mTextureFactoryIdentifier.mSupportsD3D11NV12;
   }
 
+  bool SupportsNorm16Textures() const {
+    auto lock = mData.Lock();
+    return lock.ref().mTextureFactoryIdentifier.mSupportsNorm16Textures;
+  }
+
   bool SupportsD3D11() const {
     auto lock = mData.Lock();
     return SupportsD3D11(lock.ref().mTextureFactoryIdentifier);

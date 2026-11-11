@@ -12,7 +12,7 @@
 #include "MediaDecoderOwner.h"
 #include "mozilla/AbstractThread.h"
 #include "mozilla/gfx/BuildConstants.h"
-#include "mozilla/gfx/gfxVars.h"
+#include "mozilla/layers/ImageBridgeChild.h"
 
 using namespace mozilla::layers;
 
@@ -20,6 +20,11 @@ mozilla::LazyLogModule gVideoFrameContainer("VideoFrameContainer");
 
 namespace mozilla {
 #define NS_DispatchToMainThread(...) CompileError_UseAbstractMainThreadInstead
+
+static bool SupportsNorm16Textures() {
+  RefPtr<ImageBridgeChild> bridge = ImageBridgeChild::GetSingleton();
+  return bridge && bridge->SupportsNorm16Textures();
+}
 
 VideoFrameContainer::VideoFrameContainer(
     MediaDecoderOwner* aOwner, already_AddRefed<ImageContainer> aContainer)
@@ -30,8 +35,7 @@ VideoFrameContainer::VideoFrameContainer(
       mPendingPrincipalHandle(PRINCIPAL_HANDLE_NONE),
       mFrameIDForPendingPrincipalHandle(0),
       mMainThread(aOwner->AbstractMainThread()),
-      mSupportsOnly8BitImage(kIsAndroid &&
-                             !gfx::gfxVars::AllowGLNorm16Textures()) {
+      mSupportsOnly8BitImage(kIsAndroid && !SupportsNorm16Textures()) {
   NS_ASSERTION(aOwner, "aOwner must not be null");
   NS_ASSERTION(mImageContainer, "aContainer must not be null");
 }

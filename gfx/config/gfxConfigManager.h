@@ -30,7 +30,6 @@ class gfxConfigManager {
         mFeatureWrAngleBackend(nullptr),
         mFeatureD3D11Compositing(nullptr),
         mFeatureGPUProcess(nullptr),
-        mFeatureGLNorm16Textures(nullptr),
         mWrForceEnabled(false),
         mWrSoftwareForceEnabled(false),
         mWrCompositorForceEnabled(false),
@@ -77,7 +76,6 @@ class gfxConfigManager {
   FeatureState* mFeatureWrAngleBackend;
   FeatureState* mFeatureD3D11Compositing;
   FeatureState* mFeatureGPUProcess;
-  FeatureState* mFeatureGLNorm16Textures;
 
   /**
    * Prefs
