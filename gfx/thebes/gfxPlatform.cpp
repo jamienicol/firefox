@@ -2505,7 +2505,7 @@ void gfxPlatform::InitWebRenderConfig() {
     // want to keep the disk cache enabled. However, it is slow enough that
     // eagerly warming up the cache with shaders which may not be required can
     // negatively impact performance. See bug 2007127.
-    if (jni::GetAPIVersion() == 34) {
+    if (jni::GetAPIVersion() == 34 && !gfxVars::UseWebRenderANGLE()) {
       const nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service();
       nsAutoString renderer;
       gfxInfo->GetAdapterDeviceID(renderer);
