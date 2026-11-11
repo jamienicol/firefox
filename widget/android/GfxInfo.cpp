@@ -877,8 +877,8 @@ void GfxInfo::ReportGLStrings(gfx::GfxInfoGLStrings&& aStrings) {
                         << aStrings.version().get();
 
     // Update the cache if they differ.
-    mGLStrings->CacheStrings(aStrings.vendor(), aStrings.renderer(),
-                             aStrings.version(), aStrings.extensions());
+    // mGLStrings->CacheStrings(aStrings.vendor(), aStrings.renderer(),
+    //                          aStrings.version(), aStrings.extensions());
   }
 }
 
