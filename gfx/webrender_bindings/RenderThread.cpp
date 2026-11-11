@@ -1350,8 +1350,7 @@ void RenderThread::InitDeviceTask() {
   if (mSingletonGL) {
     gfx::GfxInfoGLStrings strings(mSingletonGL->VendorString(),
                                   mSingletonGL->RendererString(),
-                                  mSingletonGL->VersionString(),
-                                  mSingletonGL->ExtensionStrings().Clone());
+                                  mSingletonGL->VersionString());
     if (XRE_IsGPUProcess()) {
       gfx::GPUParent::GetSingleton()->ReportGLStrings(std::move(strings));
     } else if (nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service()) {
