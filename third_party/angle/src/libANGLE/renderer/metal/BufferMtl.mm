@@ -159,6 +159,15 @@ angle::Result BufferMtl::setData(const gl::Context *context,
     }
     auto dataSpan = ANGLE_UNSAFE_TODO(
         angle::Span<const uint8_t>(static_cast<const uint8_t *>(dataForImpl), intendedSize));
+
+    // The new storage is not in use by the GPU, so write the data directly rather than via a staged
+    // blit. This keeps the buffer's CPU memory up to date, allowing subsequent unsynchronized
+    // mappings to write to it directly.
+    ContextMtl *contextMtl = mtl::GetImpl(context);
+    if (mShadowCopy.size() == 0 && !mBuffer->isBeingUsedByGPU(contextMtl))
+    {
+        return copyDataToExistingBufferViaCPU(contextMtl, dataSpan, 0);
+    }
     return setSubDataImpl(context, dataSpan, 0, feedback);
 }
 
@@ -247,7 +256,23 @@ angle::Result BufferMtl::mapRange(const gl::Context *context,
     {
         ContextMtl *contextMtl = mtl::GetImpl(context);
         uint8_t *ptr           = nullptr;
-        if (mShadowCopy.size() == 0)
+        // An unsynchronized write would normally go directly to the buffer's CPU memory, then be
+        // uploaded with didModifyRange. If the GPU has written to a managed buffer since its CPU
+        // memory was last synchronized then some drivers upload stale data from outside the
+        // modified range, so instead stage the write and blit it on unmap.
+        const bool stageMapping = mShadowCopy.size() == 0 && (access & GL_MAP_WRITE_BIT) != 0 &&
+                                  (access & GL_MAP_UNSYNCHRONIZED_BIT) != 0 &&
+                                  (access & GL_MAP_PERSISTENT_BIT_EXT) == 0 &&
+                                  mBuffer->storageMode() == MTLStorageModeManaged &&
+                                  mBuffer->isCPUReadMemNeedSync() &&
+                                  isOffsetAndSizeMetalBlitCompatible(offset, length);
+        if (stageMapping)
+        {
+            ANGLE_CHECK_GL_ALLOC(contextMtl, mStagedMapping.resize(length));
+            mIsMappingStaged = true;
+            ptr              = mStagedMapping.data();
+        }
+        else if (mShadowCopy.size() == 0)
         {
             ptr = mBuffer
                       ->mapWithOpt(contextMtl, (access & GL_MAP_WRITE_BIT) == 0,
@@ -275,7 +300,13 @@ angle::Result BufferMtl::unmap(const gl::Context *context,
 
     markConversionBuffersDirty();
 
-    if (mShadowCopy.size() == 0)
+    if (mIsMappingStaged)
+    {
+        mIsMappingStaged = false;
+        ANGLE_TRY(updateExistingBufferViaBlitFromStagingBuffer(
+            contextMtl, mStagedMapping.span().first(len), offset));
+    }
+    else if (mShadowCopy.size() == 0)
     {
         ASSERT(mBuffer);
         if (mState.getAccessFlags() & GL_MAP_WRITE_BIT)

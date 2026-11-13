@@ -272,6 +272,11 @@ class BufferMtl : public BufferImpl, public BufferHolderMtl
     // Optional client side shadow buffer
     angle::MemoryBuffer mShadowCopy;
 
+    // Client memory returned by unsynchronized write mappings while the buffer's CPU memory is out
+    // of date with the GPU. Its contents are uploaded with a staged blit on unmap.
+    angle::MemoryBuffer mStagedMapping;
+    bool mIsMappingStaged = false;
+
     // A cache of converted vertex data.
     std::vector<VertexConversionBufferMtl> mVertexConversionBuffers;
 
