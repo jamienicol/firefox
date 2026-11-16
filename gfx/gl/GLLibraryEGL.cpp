@@ -63,6 +63,7 @@ static const char* sEGLLibraryExtensionNames[] = {
     "EGL_ANGLE_platform_angle_d3d",
     "EGL_ANGLE_platform_angle_metal",
     "EGL_ANGLE_platform_angle_opengl",
+    "EGL_ANGLE_platform_angle_vulkan",
     "EGL_ANGLE_platform_angle_display_key",
     "EGL_ANGLE_platform_angle_device_id",
     "EGL_EXT_device_enumeration",
@@ -1132,14 +1133,18 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
       AutoTArray<EGLAttrib, 7> attrib_list;
 
 #ifdef MOZ_WIDGET_ANDROID
-      // On Android, ANGLE may be compiled with multiple backends, so
-      // explicitly request the GLES backend.
-      if (!IsExtensionSupported(EGLLibExtension::ANGLE_platform_angle_opengl)) {
-        *out_failureId = "FEATURE_FAILURE_ANGLE_GL_UNSUPPORTED"_ns;
+      const bool useVulkan = gfx::gfxVars::AllowVulkanANGLE();
+      const auto backendExtension =
+          useVulkan ? EGLLibExtension::ANGLE_platform_angle_vulkan
+                    : EGLLibExtension::ANGLE_platform_angle_opengl;
+      if (!IsExtensionSupported(backendExtension)) {
+        *out_failureId = "FEATURE_FAILURE_ANGLE_BACKEND_UNSUPPORTED"_ns;
         return nullptr;
       }
       attrib_list.AppendElement(LOCAL_EGL_PLATFORM_ANGLE_TYPE_ANGLE);
-      attrib_list.AppendElement(LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE);
+      attrib_list.AppendElement(
+          useVulkan ? LOCAL_EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE
+                    : LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE);
 #endif
 
       if (aFlags.mAngleDisplayKey) {
