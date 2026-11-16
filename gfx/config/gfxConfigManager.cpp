@@ -4,6 +4,8 @@
 
 #include "mozilla/gfx/gfxConfigManager.h"
 
+#include <algorithm>
+
 #include "gfxConfig.h"
 #include "gfxPlatform.h"
 #include "mozilla/Components.h"
@@ -46,6 +48,8 @@ void gfxConfigManager::Init() {
       gfx_webrender_scissored_cache_clears_force_enabled_AtStartup();
   EmplaceUserPref(StaticPrefs::GetPrefName_gfx_webrender_enable_angle(),
                   mWrAngleEnabled);
+  EmplaceUserPref(StaticPrefs::GetPrefName_gfx_angle_vulkan_enabled(),
+                  mAngleVulkanEnabled);
 #ifdef XP_WIN
   mWrRequireAngle = StaticPrefs::gfx_webrender_require_angle_AtStartup();
   mWrDCompWinEnabled = StaticPrefs::gfx_webrender_dcomp_win_enabled_AtStartup();
@@ -87,14 +91,15 @@ void gfxConfigManager::Init() {
   mFeatureHwCompositing = &gfxConfig::GetFeature(Feature::HW_COMPOSITING);
 #ifdef XP_WIN
   mFeatureD3D11HwAngle = &gfxConfig::GetFeature(Feature::D3D11_HW_ANGLE);
-  mFeatureWrAngleBackend = mFeatureD3D11HwAngle;
+  mFeatureWrAngleBackends = {mFeatureD3D11HwAngle};
   mFeatureD3D11Compositing = &gfxConfig::GetFeature(Feature::D3D11_COMPOSITING);
 #elif defined(XP_MACOSX)
   mFeatureMetalAngle = &gfxConfig::GetFeature(Feature::WEBRENDER_ANGLE_METAL);
-  mFeatureWrAngleBackend = mFeatureMetalAngle;
+  mFeatureWrAngleBackends = {mFeatureMetalAngle};
 #elif defined(MOZ_WIDGET_ANDROID)
   mFeatureGlAngle = &gfxConfig::GetFeature(Feature::WEBRENDER_ANGLE_GL);
-  mFeatureWrAngleBackend = mFeatureGlAngle;
+  mFeatureVulkanAngle = &gfxConfig::GetFeature(Feature::WEBRENDER_ANGLE_VULKAN);
+  mFeatureWrAngleBackends = {mFeatureGlAngle, mFeatureVulkanAngle};
 #endif
   mFeatureGPUProcess = &gfxConfig::GetFeature(Feature::GPU_PROCESS);
   mFeatureGLNorm16Textures =
@@ -220,17 +225,25 @@ void gfxConfigManager::ConfigureWebRender() {
                            mFeatureGlAngle);
   }
 
+  if (mFeatureVulkanAngle) {
+    mFeatureVulkanAngle->SetDefaultFromPref(
+        StaticPrefs::GetPrefName_gfx_angle_vulkan_enabled(), true,
+        StaticPrefs::GetPrefDefault_gfx_angle_vulkan_enabled(),
+        mAngleVulkanEnabled);
+    ConfigureFromBlocklist(nsIGfxInfo::FEATURE_WEBRENDER_ANGLE_VULKAN,
+                           mFeatureVulkanAngle);
+  }
+
   mFeatureWrAngle->SetDefaultFromPref(
       StaticPrefs::GetPrefName_gfx_webrender_enable_angle(), true,
       StaticPrefs::GetPrefDefault_gfx_webrender_enable_angle(),
       mWrAngleEnabled);
-  if (!mFeatureWrAngleBackend) {
-    mFeatureWrAngle->Disable(FeatureStatus::Unavailable, "OS not supported",
-                             "FEATURE_FAILURE_OS_NOT_SUPPORTED"_ns);
-  } else if (!mFeatureWrAngleBackend->IsEnabled()) {
-    mFeatureWrAngle->ForceDisable(FeatureStatus::UnavailableNoAngle,
-                                  "ANGLE backend is disabled",
-                                  mFeatureWrAngleBackend->GetFailureId());
+  if (std::none_of(
+          mFeatureWrAngleBackends.begin(), mFeatureWrAngleBackends.end(),
+          [](FeatureState* aBackend) { return aBackend->IsEnabled(); })) {
+    mFeatureWrAngle->ForceDisable(FeatureStatus::Unavailable,
+                                  "No ANGLE backend is enabled",
+                                  "FEATURE_FAILURE_NO_ANGLE_BACKEND"_ns);
   }
 
   if (mWrRequireAngle && mFeatureWr->IsEnabled() &&

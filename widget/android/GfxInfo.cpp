@@ -667,6 +667,17 @@ nsresult GfxInfo::GetFeatureStatusImpl(
     }
   }
 
+  if (aFeature == FEATURE_WEBRENDER_ANGLE_VULKAN) {
+    // Use ANGLE on Vulkan on devices where the system GL driver is already
+    // ANGLE on Vulkan, avoiding "double ANGLE".
+    if (mGLStrings->Renderer().LowerCaseFindASCII("angle") >= 0) {
+      *aStatus = nsIGfxInfo::FEATURE_STATUS_OK;
+    } else {
+      *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+      aFailureId = "FEATURE_FAILURE_VULKAN_NON_ANGLE_GL";
+    }
+  }
+
   return GfxInfoBase::GetFeatureStatusImpl(
       aFeature, aStatus, aSuggestedDriverVersion, aDriverInfo, aFailureId, &os);
 }
