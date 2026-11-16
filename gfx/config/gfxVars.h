@@ -148,6 +148,7 @@ class MOZ_STACK_CLASS gfxVarsCollectUpdates;
   _(ForceAImageReaderAndroid, bool, false)                         \
   _(AllowMetalAngleWebGL, bool, false)                             \
   _(CanUseVulkanHardwareVideoDecoding, bool, false)                \
+  _(AllowVulkanANGLE, bool, false)                                 \
   GFX_VARS_LIST_ANDROID(_)                                         \
 /* Add new entries above this line. */
 

@@ -26,6 +26,7 @@ class MockGfxInfo final : public nsIGfxInfo {
   int32_t mStatusGLNorm16Textures = nsIGfxInfo::FEATURE_STATUS_OK;
   int32_t mStatusMetalAngle = nsIGfxInfo::FEATURE_STATUS_OK;
   int32_t mStatusGlAngle = nsIGfxInfo::FEATURE_STATUS_OK;
+  int32_t mStatusVulkanAngle = nsIGfxInfo::FEATURE_STATUS_OK;
   Maybe<bool> mHasBattery = Some(false);
   const char* mVendorId = "0x10de";
   const char* mDeviceId = "";
@@ -65,6 +66,9 @@ class MockGfxInfo final : public nsIGfxInfo {
         break;
       case nsIGfxInfo::FEATURE_WEBRENDER_ANGLE_GL:
         *_retval = mStatusGlAngle;
+        break;
+      case nsIGfxInfo::FEATURE_WEBRENDER_ANGLE_VULKAN:
+        *_retval = mStatusVulkanAngle;
         break;
       default:
         return NS_ERROR_NOT_IMPLEMENTED;
@@ -289,8 +293,9 @@ class GfxConfigManager : public ::testing::Test, public gfxConfigManager {
     mFeatureD3D11HwAngle = &mFeatures.mD3D11HwAngle;
     mFeatureMetalAngle = &mFeatures.mMetalAngle;
     mFeatureGlAngle = &mFeatures.mGlAngle;
+    mFeatureVulkanAngle = &mFeatures.mVulkanAngle;
     // Test as if we're on Windows by default.
-    mFeatureWrAngleBackend = mFeatureD3D11HwAngle;
+    mFeatureWrAngleBackends = {mFeatureD3D11HwAngle};
     mFeatureD3D11Compositing = &mFeatures.mD3D11Compositing;
 
     // By default, turn everything on. This effectively assumes we are on
@@ -304,6 +309,7 @@ class GfxConfigManager : public ::testing::Test, public gfxConfigManager {
     // Keep the existing tests on the non-layer compositor configuration.
     mWrLayerCompositorEnabled = false;
     mWrAngleEnabled.emplace(true);
+    mAngleVulkanEnabled.emplace(true);
     mWrPartialPresent = true;
     mWrShaderCache.emplace(true);
     mWrOptimizedShaders = true;
@@ -328,6 +334,7 @@ class GfxConfigManager : public ::testing::Test, public gfxConfigManager {
     mFeatures.mD3D11HwAngle.Reset();
     mFeatures.mMetalAngle.Reset();
     mFeatures.mGlAngle.Reset();
+    mFeatures.mVulkanAngle.Reset();
     mFeatures.mD3D11Compositing.Reset();
     mFeatures.mGPUProcess.Reset();
     mFeatures.mGLNorm16Textures.Reset();
@@ -346,6 +353,7 @@ class GfxConfigManager : public ::testing::Test, public gfxConfigManager {
     FeatureState mD3D11HwAngle;
     FeatureState mMetalAngle;
     FeatureState mGlAngle;
+    FeatureState mVulkanAngle;
     FeatureState mD3D11Compositing;
     FeatureState mGPUProcess;
     FeatureState mGLNorm16Textures;
@@ -673,7 +681,7 @@ TEST_F(GfxConfigManager, WebRenderD3D11HwAngleDisabledAndRequired) {
 }
 
 TEST_F(GfxConfigManager, WebRenderGlAngleEnabled) {
-  mFeatureWrAngleBackend = mFeatureGlAngle;
+  mFeatureWrAngleBackends = {mFeatureGlAngle};
   ConfigureWebRender();
 
   EXPECT_TRUE(mFeatures.mGlAngle.IsEnabled());
@@ -682,7 +690,7 @@ TEST_F(GfxConfigManager, WebRenderGlAngleEnabled) {
 }
 
 TEST_F(GfxConfigManager, WebRenderGlAngleBlocked) {
-  mFeatureWrAngleBackend = mFeatureGlAngle;
+  mFeatureWrAngleBackends = {mFeatureGlAngle};
   mMockGfxInfo->mStatusGlAngle = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
   ConfigureWebRender();
 
@@ -692,7 +700,7 @@ TEST_F(GfxConfigManager, WebRenderGlAngleBlocked) {
 }
 
 TEST_F(GfxConfigManager, WebRenderGlAngleDisabledByPref) {
-  mFeatureWrAngleBackend = mFeatureGlAngle;
+  mFeatureWrAngleBackends = {mFeatureGlAngle};
   mWrAngleEnabled = Some(false);
   ConfigureWebRender();
 
@@ -702,7 +710,7 @@ TEST_F(GfxConfigManager, WebRenderGlAngleDisabledByPref) {
 }
 
 TEST_F(GfxConfigManager, WebRenderMetalAngleBlocked) {
-  mFeatureWrAngleBackend = mFeatureMetalAngle;
+  mFeatureWrAngleBackends = {mFeatureMetalAngle};
   mMockGfxInfo->mStatusMetalAngle = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
   ConfigureWebRender();
 
@@ -718,6 +726,52 @@ TEST_F(GfxConfigManager, WebRenderMetalAngleBlocked) {
   EXPECT_TRUE(mFeatures.mGPUProcess.IsEnabled());
   EXPECT_FALSE(mFeatures.mMetalAngle.IsEnabled());
   EXPECT_TRUE(mFeatures.mGLNorm16Textures.IsEnabled());
+}
+
+// Ensures ANGLE's Vulkan backend can be disabled by its pref.
+TEST_F(GfxConfigManager, WebRenderVulkanAngleDisabledByPref) {
+  mFeatureWrAngleBackends = {mFeatureVulkanAngle};
+  mAngleVulkanEnabled = Some(false);
+  ConfigureWebRender();
+
+  EXPECT_FALSE(mFeatures.mVulkanAngle.IsEnabled());
+  EXPECT_FALSE(mFeatures.mWrAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWr.IsEnabled());
+}
+
+// Ensure ANGLE remains enabled when some backends are blocked but at least one
+// is still enabled.
+TEST_F(GfxConfigManager, WebRenderAngleBackendsPartiallyBlocked) {
+  mFeatureWrAngleBackends = {mFeatureGlAngle, mFeatureVulkanAngle};
+  mMockGfxInfo->mStatusGlAngle = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+  ConfigureWebRender();
+
+  EXPECT_FALSE(mFeatures.mGlAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mVulkanAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWrAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWr.IsEnabled());
+}
+
+// Ensure ANGLE is disabled when all available backends are blocked.
+TEST_F(GfxConfigManager, WebRenderAngleBackendsAllBlocked) {
+  mFeatureWrAngleBackends = {mFeatureGlAngle, mFeatureVulkanAngle};
+  mMockGfxInfo->mStatusGlAngle = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+  mMockGfxInfo->mStatusVulkanAngle = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;
+  ConfigureWebRender();
+
+  EXPECT_FALSE(mFeatures.mGlAngle.IsEnabled());
+  EXPECT_FALSE(mFeatures.mVulkanAngle.IsEnabled());
+  EXPECT_FALSE(mFeatures.mWrAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWr.IsEnabled());
+}
+
+// Ensure ANGLE is disabled when there are no available backends.
+TEST_F(GfxConfigManager, WebRenderAngleNoBackends) {
+  mFeatureWrAngleBackends = {};
+  ConfigureWebRender();
+
+  EXPECT_FALSE(mFeatures.mWrAngle.IsEnabled());
+  EXPECT_TRUE(mFeatures.mWr.IsEnabled());
 }
 
 TEST_F(GfxConfigManager, WebRenderGPUProcessDisabled) {

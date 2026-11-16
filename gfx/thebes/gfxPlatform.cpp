@@ -2500,6 +2500,10 @@ void gfxPlatform::InitWebRenderConfig() {
     gfxVars::SetUseWebRenderANGLE(true);
   }
 
+  if (gfxConfig::IsEnabled(Feature::WEBRENDER_ANGLE_VULKAN)) {
+    gfxVars::SetAllowVulkanANGLE(true);
+  }
+
   if (gfxConfig::IsEnabled(Feature::WEBRENDER_SHADER_CACHE)) {
     gfxVars::SetUseWebRenderProgramBinaryDisk(true);
     bool warmUp = true;

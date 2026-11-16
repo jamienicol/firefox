@@ -7447,6 +7447,11 @@
 # Prefs starting with "gfx."
 #---------------------------------------------------------------------------
 
+- name: gfx.angle.vulkan.enabled
+  type: bool
+  value: false
+  mirror: once
+
 - name: gfx.apitrace.enabled
   type: bool
   value: false

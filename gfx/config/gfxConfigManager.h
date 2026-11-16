@@ -8,6 +8,7 @@
 #include "gfxTypes.h"
 #include "nsCOMPtr.h"
 #include "nsIGfxInfo.h"
+#include "nsTArray.h"
 
 namespace mozilla {
 namespace gfx {
@@ -27,7 +28,7 @@ class gfxConfigManager {
         mFeatureD3D11HwAngle(nullptr),
         mFeatureMetalAngle(nullptr),
         mFeatureGlAngle(nullptr),
-        mFeatureWrAngleBackend(nullptr),
+        mFeatureVulkanAngle(nullptr),
         mFeatureD3D11Compositing(nullptr),
         mFeatureGPUProcess(nullptr),
         mFeatureGLNorm16Textures(nullptr),
@@ -73,7 +74,8 @@ class gfxConfigManager {
   FeatureState* mFeatureD3D11HwAngle;
   FeatureState* mFeatureMetalAngle;
   FeatureState* mFeatureGlAngle;
-  FeatureState* mFeatureWrAngleBackend;
+  FeatureState* mFeatureVulkanAngle;
+  AutoTArray<FeatureState*, 2> mFeatureWrAngleBackends;
   FeatureState* mFeatureD3D11Compositing;
   FeatureState* mFeatureGPUProcess;
   FeatureState* mFeatureGLNorm16Textures;
@@ -83,6 +85,7 @@ class gfxConfigManager {
    */
   Maybe<bool> mWrCompositorEnabled;
   Maybe<bool> mWrAngleEnabled;
+  Maybe<bool> mAngleVulkanEnabled;
   bool mWrForceEnabled;
   bool mWrSoftwareForceEnabled;
   bool mWrCompositorForceEnabled;

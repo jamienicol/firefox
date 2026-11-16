@@ -167,3 +167,5 @@ GFXINFO_FEATURE(WEBRENDER_ANGLE_METAL, "webrender.angle-metal")
 GFXINFO_FEATURE(WEBRENDER_ANGLE_GL, "webrender.angle-gl")
 /* Whether YUV DMA-BUFs can be passed directly to the Wayland compositor. */
 GFXINFO_FEATURE(DMABUF_YUV_DIRECT_COMPOSITION, "dmabuf-yuv-direct-composition")
+/* Whether WebRender is supported via ANGLE's Vulkan backend, starting in 162. */
+GFXINFO_FEATURE(WEBRENDER_ANGLE_VULKAN, "webrender.angle-vulkan")
