@@ -72,6 +72,9 @@ bool CheckContextLost(const GLContext* gl);
 // EGL_ANGLE_platform_angle_opengl
 #define LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE          0x320E
 
+// EGL_ANGLE_platform_angle_vulkan
+#define LOCAL_EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE            0x3450
+
 // EGL_ANGLE_platform_angle_display_key
 #define LOCAL_EGL_PLATFORM_ANGLE_DISPLAY_KEY_ANGLE            0x34DC
 
