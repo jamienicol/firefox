@@ -101,6 +101,7 @@ bool CheckContextLost(const GLContext* gl);
 
 // EGL_ANGLE_feature_control
 #define LOCAL_EGL_FEATURE_OVERRIDES_ENABLED_ANGLE       0x3466
+#define LOCAL_EGL_FEATURE_OVERRIDES_DISABLED_ANGLE      0x3467
 
 // WGL_NV_DX_interop
 #define LOCAL_WGL_ACCESS_READ_ONLY                      0x0000
