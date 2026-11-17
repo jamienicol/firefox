@@ -382,42 +382,6 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayForMetalDevice(
   return EglDisplay::Create(*this, display, false, lock);
 }  // namespace gl
 
-#ifdef MOZ_WIDGET_ANDROID
-std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayForWebRenderAndroidGLES(
-    nsACString* const out_failureId) {
-  StaticMutexAutoLock lock(sMutex);
-  // Get() may return system EGL after failing to initialize bundled ANGLE.
-  if (!IsANGLE() ||
-      !IsExtensionSupported(EGLLibExtension::ANGLE_platform_angle_opengl)) {
-    *out_failureId = "FEATURE_FAILURE_WR_ANGLE_GL_UNSUPPORTED"_ns;
-    return nullptr;
-  }
-  if (!IsExtensionSupported(
-          EGLLibExtension::ANGLE_platform_angle_display_key)) {
-    *out_failureId = "FEATURE_FAILURE_WR_ANGLE_DISPLAY_KEY_UNSUPPORTED"_ns;
-    return nullptr;
-  }
-
-  // WebGL uses the default key (0). Keep WebRender's display separate even
-  // when both use the same ANGLE backend and underlying GPU.
-  const EGLAttrib attribs[] = {LOCAL_EGL_PLATFORM_ANGLE_TYPE_ANGLE,
-                               LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE,
-                               LOCAL_EGL_PLATFORM_ANGLE_DISPLAY_KEY_ANGLE, 1,
-                               LOCAL_EGL_NONE};
-  const EGLDisplay display = fGetPlatformDisplay(LOCAL_EGL_PLATFORM_ANGLE_ANGLE,
-                                                 EGL_DEFAULT_DISPLAY, attribs);
-  if (!display) {
-    *out_failureId = "FEATURE_FAILURE_WR_ANGLE_GET_DISPLAY"_ns;
-    return nullptr;
-  }
-  auto egl = EglDisplay::Create(*this, display, false, lock);
-  if (!egl) {
-    *out_failureId = "FEATURE_FAILURE_WR_ANGLE_INIT_DISPLAY"_ns;
-  }
-  return egl;
-}
-#endif
-
 static bool IsAccelAngleSupported(nsACString* const out_failureId) {
   if (!gfx::gfxVars::AllowWebglAccelAngle()) {
     if (out_failureId->IsEmpty()) {
@@ -1165,7 +1129,7 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
     MOZ_ASSERT(!aFlags.mForceSoftware,
                "Software rendering not supported by EGL on this platform");
     if (!aFlags.mForceSoftware) {
-      AutoTArray<EGLAttrib, 5> attrib_list;
+      AutoTArray<EGLAttrib, 7> attrib_list;
 
 #ifdef MOZ_WIDGET_ANDROID
       // On Android, ANGLE may be compiled with multiple backends, so
@@ -1177,6 +1141,16 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
       attrib_list.AppendElement(LOCAL_EGL_PLATFORM_ANGLE_TYPE_ANGLE);
       attrib_list.AppendElement(LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE);
 #endif
+
+      if (aFlags.mAngleDisplayKey) {
+        if (!IsExtensionSupported(
+                EGLLibExtension::ANGLE_platform_angle_display_key)) {
+          *out_failureId = "FEATURE_FAILURE_ANGLE_DISPLAY_KEY_UNSUPPORTED"_ns;
+          return nullptr;
+        }
+        attrib_list.AppendElement(LOCAL_EGL_PLATFORM_ANGLE_DISPLAY_KEY_ANGLE);
+        attrib_list.AppendElement(*aFlags.mAngleDisplayKey);
+      }
 
       if (IsExtensionSupported(
               EGLLibExtension::ANGLE_display_power_preference)) {
