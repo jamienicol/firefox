@@ -147,6 +147,11 @@ struct EGLCreateDisplayFlags {
   // may be ignored. Ignored if mForceSoftware is true or if there is only a
   // single GPU.
   bool mPreferHighPower = false;
+  // Key that can be used to ensure ANGLE uses a unique display for an otherwise
+  // identical set of flags. The extension `ANGLE_platform_angle_display_key`
+  // must be supported if `Some`. If the extension is supported then `None` is
+  // equivalent  to `Some(0)`
+  Maybe<EGLAttrib> mAngleDisplayKey = Nothing();
 };
 
 // -
@@ -205,10 +210,6 @@ class GLLibraryEGL final {
   std::shared_ptr<EglDisplay> CreateDisplay(ID3D11Device*);
   std::shared_ptr<EglDisplay> CreateDisplayForMetalDevice(
       uint64_t aMetalDeviceRegistryID);
-#ifdef MOZ_WIDGET_ANDROID
-  std::shared_ptr<EglDisplay> CreateDisplayForWebRenderAndroidGLES(
-      nsACString* const out_failureId);
-#endif
   std::shared_ptr<EglDisplay> DefaultDisplay(nsACString* const out_failureId);
 
   bool IsExtensionSupported(EGLLibExtension aKnownExtension) const {
