@@ -155,6 +155,7 @@ tasks:
             - inc-origin-init
             - privatebrowsing-inc-origin-init
             - csp-next
+            - geckoview-isolated-process
         run-on-projects:
             by-variant:
                 no-fission:
@@ -180,6 +181,10 @@ tasks:
                         linux2404-64/debug: built-projects
                         linux2404-64(-shippable)?/opt: built-projects
                         linux2404-64-asan/opt: built-projects
+                        default: []
+                geckoview-isolated-process:
+                    by-test-platform:
+                        android-em.*/debug: built-projects
                         default: []
                 default:
                     by-test-platform:
