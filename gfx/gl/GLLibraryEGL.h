@@ -74,6 +74,7 @@ enum class EGLLibExtension {
   ANGLE_device_creation,
   ANGLE_device_creation_d3d11,
   ANGLE_display_power_preference,
+  ANGLE_feature_control,
   ANGLE_platform_angle,
   ANGLE_platform_angle_d3d,
   ANGLE_platform_angle_metal,
@@ -95,6 +96,7 @@ enum class EGLLibExtension {
  * this array, remember to add to the string names in GLLibraryEGL.cpp.
  */
 enum class EGLExtension {
+  ANDROID_blob_cache,
   KHR_image_base,
   KHR_image_pixmap,
   KHR_gl_texture_2D_image,
@@ -153,6 +155,7 @@ struct EGLCreateDisplayFlags {
   // must be supported if `Some`. If the extension is supported then `None` is
   // equivalent  to `Some(0)`
   Maybe<EGLAttrib> mAngleDisplayKey = Nothing();
+  bool mPersistVulkanPipelineCache = false;
 };
 
 // -
@@ -801,7 +804,8 @@ class EglDisplay final {
  public:
   static std::shared_ptr<EglDisplay> Create(
       GLLibraryEGL&, EGLDisplay, bool isWarp,
-      const StaticMutexAutoLock& aProofOfLock);
+      const StaticMutexAutoLock& aProofOfLock,
+      bool aPersistVulkanPipelineCache = false);
 
   // Only `public` for make_shared.
   EglDisplay(const PrivateUseOnly&, GLLibraryEGL&, EGLDisplay, bool isWarp);

@@ -20,6 +20,15 @@
 #include "nsDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
 #include "nsPrintfCString.h"
+#ifdef MOZ_WIDGET_ANDROID
+#  include "mozilla/Span.h"
+#  include "nsIDirectoryEnumerator.h"
+#  include "nsIFile.h"
+#  include "nsIInputStream.h"
+#  include "nsIOutputStream.h"
+#  include "nsISafeOutputStream.h"
+#  include "nsNetUtil.h"
+#endif
 #ifdef XP_WIN
 #  include <d3d11.h>
 
@@ -59,6 +68,7 @@ static const char* sEGLLibraryExtensionNames[] = {
     "EGL_ANGLE_device_creation",
     "EGL_ANGLE_device_creation_d3d11",
     "EGL_ANGLE_display_power_preference",
+    "EGL_ANGLE_feature_control",
     "EGL_ANGLE_platform_angle",
     "EGL_ANGLE_platform_angle_d3d",
     "EGL_ANGLE_platform_angle_metal",
@@ -73,6 +83,7 @@ static const char* sEGLLibraryExtensionNames[] = {
 
 // should match the order of EGLExtension, and be null-terminated.
 static const char* sEGLExtensionNames[] = {
+    "EGL_ANDROID_blob_cache",
     "EGL_KHR_image_base",
     "EGL_KHR_image_pixmap",
     "EGL_KHR_gl_texture_2D_image",
@@ -111,6 +122,156 @@ static const char* sEGLDeviceExtensionNames[] = {
     "EGL_ANGLE_device_d3d",
     "EGL_ANGLE_device_metal",
 };
+
+#ifdef MOZ_WIDGET_ANDROID
+namespace {
+
+struct AngleBlobCache {
+  StaticMutex mMutex;
+  nsString mDirectory MOZ_GUARDED_BY(mMutex);
+  int64_t mSize MOZ_GUARDED_BY(mMutex) = 0;
+
+  already_AddRefed<nsIFile> Entry(const void* aKey, intptr_t aKeySize)
+      MOZ_REQUIRES(mMutex) {
+    if (!aKey || aKeySize <= 0 || aKeySize > 32) {
+      return nullptr;
+    }
+    nsAutoCString name;
+    for (const auto byte : Span(static_cast<const uint8_t*>(aKey), aKeySize)) {
+      name.AppendPrintf("%02x", static_cast<unsigned>(byte));
+    }
+    nsCOMPtr<nsIFile> file;
+    if (NS_FAILED(NS_NewLocalFile(mDirectory, getter_AddRefs(file))) ||
+        NS_FAILED(file->AppendNative(name))) {
+      return nullptr;
+    }
+    return file.forget();
+  }
+};
+
+AngleBlobCache& GetAngleBlobCache() {
+  static AngleBlobCache cache;
+  return cache;
+}
+
+constexpr int64_t kMaxAngleBlobSize = 64 * 1024;
+constexpr int64_t kMaxAngleBlobCacheSize = 64 * 1024 * 1024;
+
+bool InitAngleBlobCache() {
+  auto& cache = GetAngleBlobCache();
+  StaticMutexAutoLock lock(cache.mMutex);
+  if (!cache.mDirectory.IsEmpty()) {
+    return true;
+  }
+  const auto& profile = gfx::gfxVars::ProfDirectory();
+  nsCOMPtr<nsIFile> dir;
+  if (profile.IsEmpty() ||
+      NS_FAILED(NS_NewLocalFile(profile, getter_AddRefs(dir))) ||
+      NS_FAILED(dir->AppendNative("angle-vulkan-cache"_ns))) {
+    return false;
+  }
+  nsresult rv = dir->Create(nsIFile::DIRECTORY_TYPE, 0700);
+  if (NS_FAILED(rv) && rv != NS_ERROR_FILE_ALREADY_EXISTS) {
+    return false;
+  }
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
+  if (NS_FAILED(dir->GetDirectoryEntries(getter_AddRefs(entries)))) {
+    return false;
+  }
+  nsCOMPtr<nsIFile> entry;
+  int64_t totalSize = 0;
+  while (NS_SUCCEEDED(entries->GetNextFile(getter_AddRefs(entry))) && entry) {
+    int64_t size = 0;
+    if (NS_SUCCEEDED(entry->GetFileSize(&size))) {
+      totalSize += size;
+    }
+  }
+  if (NS_FAILED(dir->GetPath(cache.mDirectory))) {
+    return false;
+  }
+  cache.mSize = totalSize;
+  return true;
+}
+
+void SetAngleBlob(const void* aKey, intptr_t aKeySize, const void* aValue,
+                  intptr_t aValueSize) {
+  if (aValueSize < 0 || aValueSize > kMaxAngleBlobSize) {
+    return;
+  }
+  auto& cache = GetAngleBlobCache();
+  StaticMutexAutoLock lock(cache.mMutex);
+  nsCOMPtr<nsIFile> file = cache.Entry(aKey, aKeySize);
+  if (!file) {
+    return;
+  }
+  int64_t oldSize = 0;
+  file->GetFileSize(&oldSize);
+  const auto newSize = cache.mSize - oldSize + aValueSize;
+  if (!aValueSize) {
+    if (NS_SUCCEEDED(file->Remove(false))) {
+      cache.mSize = newSize;
+    }
+    return;
+  }
+  const auto size = static_cast<uint32_t>(aValueSize);
+  nsCOMPtr<nsIOutputStream> stream;
+  if (newSize > kMaxAngleBlobCacheSize ||
+      NS_FAILED(NS_NewAtomicFileOutputStream(getter_AddRefs(stream), file, -1,
+                                             0600))) {
+    return;
+  }
+  uint32_t written = 0;
+  if (NS_FAILED(
+          stream->Write(static_cast<const char*>(aValue), size, &written)) ||
+      written != size) {
+    stream->Close();
+    return;
+  }
+  nsCOMPtr<nsISafeOutputStream> safeStream = do_QueryInterface(stream);
+  if (NS_SUCCEEDED(safeStream->Finish())) {
+    cache.mSize = newSize;
+  }
+}
+
+intptr_t GetAngleBlob(const void* aKey, intptr_t aKeySize, void* aValue,
+                      intptr_t aValueSize) {
+  auto& cache = GetAngleBlobCache();
+  StaticMutexAutoLock lock(cache.mMutex);
+  nsCOMPtr<nsIFile> file = cache.Entry(aKey, aKeySize);
+  int64_t size;
+  if (!file || NS_FAILED(file->GetFileSize(&size)) || size <= 0 ||
+      size > kMaxAngleBlobSize) {
+    return 0;
+  }
+  if (!aValue || aValueSize < size) {
+    return size;
+  }
+  const auto length = static_cast<uint32_t>(size);
+  nsCOMPtr<nsIInputStream> stream;
+  uint32_t read = 0;
+  if (NS_FAILED(NS_NewLocalFileInputStream(getter_AddRefs(stream), file)) ||
+      NS_FAILED(stream->Read(static_cast<char*>(aValue), length, &read)) ||
+      read != length) {
+    return 0;
+  }
+  return size;
+}
+
+void RegisterAngleBlobCache(const EglDisplay& aDisplay) {
+  if (!aDisplay.IsExtensionSupported(EGLExtension::ANDROID_blob_cache)) {
+    return;
+  }
+  using SetBlobCacheFuncs = void(GLAPIENTRY*)(
+      EGLDisplay, decltype(&SetAngleBlob), decltype(&GetAngleBlob));
+  const auto setBlobCacheFuncs = reinterpret_cast<SetBlobCacheFuncs>(
+      aDisplay.mLib->fGetProcAddress("eglSetBlobCacheFuncsANDROID"));
+  if (setBlobCacheFuncs) {
+    setBlobCacheFuncs(aDisplay.mDisplay, SetAngleBlob, GetAngleBlob);
+  }
+}
+
+}  // namespace
+#endif
 
 PRLibrary* LoadApitraceLibrary() {
   const char* path = nullptr;
@@ -957,7 +1118,7 @@ static void MarkExtensions(const char* rawExtString, bool shouldDumpExts,
 // static
 std::shared_ptr<EglDisplay> EglDisplay::Create(
     GLLibraryEGL& lib, const EGLDisplay display, const bool isWarp,
-    const StaticMutexAutoLock& aProofOfLock) {
+    const StaticMutexAutoLock& aProofOfLock, bool aPersistVulkanPipelineCache) {
   // Retrieve the EglDisplay if it already exists
   {
     const auto itr = lib.mActiveDisplays.find(display);
@@ -978,6 +1139,11 @@ std::shared_ptr<EglDisplay> EglDisplay::Create(
 
   const auto ret =
       std::make_shared<EglDisplay>(PrivateUseOnly{}, lib, display, isWarp);
+#ifdef MOZ_WIDGET_ANDROID
+  if (aPersistVulkanPipelineCache) {
+    RegisterAngleBlobCache(*ret);
+  }
+#endif
   // Insert if there is no existing display entry, or assign if there is an
   // expired weak_ptr that failed to lock above and was awaiting removal.
   lib.mActiveDisplays.insert_or_assign(display, ret);
@@ -1130,7 +1296,8 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
     MOZ_ASSERT(!aFlags.mForceSoftware,
                "Software rendering not supported by EGL on this platform");
     if (!aFlags.mForceSoftware) {
-      AutoTArray<EGLAttrib, 7> attrib_list;
+      AutoTArray<EGLAttrib, 9> attrib_list;
+      bool persistVulkanPipelineCache = false;
 
 #ifdef MOZ_WIDGET_ANDROID
       const bool useVulkan = gfx::gfxVars::AllowVulkanANGLE();
@@ -1145,6 +1312,18 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
       attrib_list.AppendElement(
           useVulkan ? LOCAL_EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE
                     : LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE);
+
+      persistVulkanPipelineCache =
+          useVulkan && aFlags.mPersistVulkanPipelineCache &&
+          IsExtensionSupported(EGLLibExtension::ANGLE_feature_control) &&
+          InitAngleBlobCache();
+      if (persistVulkanPipelineCache) {
+        static constexpr const char* enabledFeatures[] = {
+            "preferGlobalPipelineCache", "syncMonolithicPipelinesToBlobCache",
+            nullptr};
+        attrib_list.AppendElement(LOCAL_EGL_FEATURE_OVERRIDES_ENABLED_ANGLE);
+        attrib_list.AppendElement(reinterpret_cast<EGLAttrib>(enabledFeatures));
+      }
 #endif
 
       if (aFlags.mAngleDisplayKey) {
@@ -1175,7 +1354,8 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
           fGetPlatformDisplay(LOCAL_EGL_PLATFORM_ANGLE_ANGLE,
                               EGL_DEFAULT_DISPLAY, attrib_list.Elements());
       if (display) {
-        ret = EglDisplay::Create(*this, display, false, aProofOfLock);
+        ret = EglDisplay::Create(*this, display, false, aProofOfLock,
+                                 persistVulkanPipelineCache);
       }
     }
   } else {
