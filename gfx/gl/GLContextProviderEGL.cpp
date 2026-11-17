@@ -1025,7 +1025,10 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateForCompositorANGLE(
   // WebGL uses the default key (0). Keep WebRender's display separate even
   // when both use the same ANGLE backend and underlying GPU.
   const auto egl = lib->CreateDisplay(
-      EGLCreateDisplayFlags{.mAngleDisplayKey = Some(1)}, out_failureId);
+      EGLCreateDisplayFlags{.mAngleDisplayKey = Some(1),
+                            .mPersistVulkanPipelineCache =
+                                gfxVars::UseWebRenderProgramBinaryDisk()},
+      out_failureId);
   if (!egl) {
     return nullptr;
   }
