@@ -74,6 +74,7 @@ enum class EGLLibExtension {
   ANGLE_device_creation,
   ANGLE_device_creation_d3d11,
   ANGLE_display_power_preference,
+  ANGLE_feature_control,
   ANGLE_platform_angle,
   ANGLE_platform_angle_d3d,
   ANGLE_platform_angle_metal,

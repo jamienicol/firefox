@@ -59,6 +59,7 @@ static const char* sEGLLibraryExtensionNames[] = {
     "EGL_ANGLE_device_creation",
     "EGL_ANGLE_device_creation_d3d11",
     "EGL_ANGLE_display_power_preference",
+    "EGL_ANGLE_feature_control",
     "EGL_ANGLE_platform_angle",
     "EGL_ANGLE_platform_angle_d3d",
     "EGL_ANGLE_platform_angle_metal",
@@ -1130,7 +1131,7 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
     MOZ_ASSERT(!aFlags.mForceSoftware,
                "Software rendering not supported by EGL on this platform");
     if (!aFlags.mForceSoftware) {
-      AutoTArray<EGLAttrib, 7> attrib_list;
+      AutoTArray<EGLAttrib, 9> attrib_list;
 
 #ifdef MOZ_WIDGET_ANDROID
       const bool useVulkan = gfx::gfxVars::AllowVulkanANGLE();
@@ -1145,6 +1146,15 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
       attrib_list.AppendElement(
           useVulkan ? LOCAL_EGL_PLATFORM_ANGLE_TYPE_VULKAN_ANGLE
                     : LOCAL_EGL_PLATFORM_ANGLE_TYPE_OPENGLES_ANGLE);
+
+      if (useVulkan &&
+          IsExtensionSupported(EGLLibExtension::ANGLE_feature_control)) {
+        static constexpr const char* disabledFeatures[] = {
+            "preferGlobalPipelineCache", nullptr};
+        attrib_list.AppendElement(LOCAL_EGL_FEATURE_OVERRIDES_DISABLED_ANGLE);
+        attrib_list.AppendElement(
+            reinterpret_cast<EGLAttrib>(disabledFeatures));
+      }
 #endif
 
       if (aFlags.mAngleDisplayKey) {
