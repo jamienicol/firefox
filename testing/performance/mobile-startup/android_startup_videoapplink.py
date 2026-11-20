@@ -143,7 +143,11 @@ class ImageAnalzer:
         )  # enabling notifications for android
         if self.test != "homeview_startup":
             self.create_background_tabs()
-        self.device.shell(f"am force-stop {self.package_name}")
+        # Cancel jobs first: a job still running when the app is force-stopped gets
+        # rescheduled and can relaunch the app before the measured launch.
+        self.device.shell(
+            f"cmd jobscheduler cancel {self.package_name}; am force-stop {self.package_name}"
+        )
         # Extra delay needed to avoid shutdown thread active during startup
         time.sleep(3)
         if self.test_url.startswith("https"):
