@@ -124,7 +124,6 @@ tasks:
                         android.*: 2
                         linux.*: 2
                         default: default
-                geckoview-isolated-process: 2
                 default: default
         chunks: dynamic
         default-chunks:
