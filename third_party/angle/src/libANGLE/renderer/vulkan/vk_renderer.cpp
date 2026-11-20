@@ -7703,10 +7703,11 @@ angle::Result Renderer::syncPipelineCacheVk(const gl::Context *contextGL)
     }
     else
     {
-        // If enableAsyncPipelineCacheCompression is disabled, to avoid the risk, set kMaxTotalSize
-        // to 64k.
-        constexpr size_t kMaxTotalSize = 64 * 1024;
-        CompressAndStorePipelineCacheVk(globalOps, this, pipelineCacheData, kMaxTotalSize);
+        // Allow a full cache when immediate writes are requested.
+        const size_t maxTotalSize = mFeatures.syncPipelineCacheToBlobCacheEveryFrame.enabled
+                                        ? 2 * mBlobCacheSizeLimit
+                                        : 64 * 1024;
+        CompressAndStorePipelineCacheVk(globalOps, this, pipelineCacheData, maxTotalSize);
     }
 
     return angle::Result::Continue;

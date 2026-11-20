@@ -1026,8 +1026,7 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateForCompositorANGLE(
   // when both use the same ANGLE backend and underlying GPU.
   const auto egl = lib->CreateDisplay(
       EGLCreateDisplayFlags{.mAngleDisplayKey = Some(1),
-                            .mPersistVulkanPipelineCache =
-                                gfxVars::UseWebRenderProgramBinaryDisk()},
+                            .mPersistVulkanPipelineCache = aHardwareWebRender},
       out_failureId);
   if (!egl) {
     return nullptr;

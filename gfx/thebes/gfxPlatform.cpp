@@ -2504,7 +2504,14 @@ void gfxPlatform::InitWebRenderConfig() {
     gfxVars::SetAllowVulkanANGLE(true);
   }
 
-  if (gfxConfig::IsEnabled(Feature::WEBRENDER_SHADER_CACHE)) {
+  bool useProgramBinaryDisk =
+      gfxConfig::IsEnabled(Feature::WEBRENDER_SHADER_CACHE);
+#ifdef MOZ_WIDGET_ANDROID
+  useProgramBinaryDisk =
+      useProgramBinaryDisk &&
+      !(gfxVars::UseWebRenderANGLE() && gfxVars::AllowVulkanANGLE());
+#endif
+  if (useProgramBinaryDisk) {
     gfxVars::SetUseWebRenderProgramBinaryDisk(true);
     bool warmUp = true;
 #ifdef MOZ_WIDGET_ANDROID

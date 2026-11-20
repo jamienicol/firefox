@@ -1296,7 +1296,7 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
     MOZ_ASSERT(!aFlags.mForceSoftware,
                "Software rendering not supported by EGL on this platform");
     if (!aFlags.mForceSoftware) {
-      AutoTArray<EGLAttrib, 9> attrib_list;
+      AutoTArray<EGLAttrib, 11> attrib_list;
       bool persistVulkanPipelineCache = false;
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -1320,9 +1320,14 @@ std::shared_ptr<EglDisplay> GLLibraryEGL::CreateDisplayLocked(
       if (persistVulkanPipelineCache) {
         static constexpr const char* enabledFeatures[] = {
             "preferGlobalPipelineCache", "syncMonolithicPipelinesToBlobCache",
-            nullptr};
+            "syncPipelineCacheToBlobCacheEveryFrame", nullptr};
+        static constexpr const char* disabledFeatures[] = {
+            "enableAsyncPipelineCacheCompression", nullptr};
         attrib_list.AppendElement(LOCAL_EGL_FEATURE_OVERRIDES_ENABLED_ANGLE);
         attrib_list.AppendElement(reinterpret_cast<EGLAttrib>(enabledFeatures));
+        attrib_list.AppendElement(LOCAL_EGL_FEATURE_OVERRIDES_DISABLED_ANGLE);
+        attrib_list.AppendElement(
+            reinterpret_cast<EGLAttrib>(disabledFeatures));
       }
 #endif
 
