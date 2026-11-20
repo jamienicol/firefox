@@ -53,6 +53,9 @@ CRITICAL_METRICS = {("newssite_applink_startup", "SM-A55")}
 VALID_IMAGES_DIR = "testing/performance/mobile-startup/expected_startup_screenshots"
 ERROR_THRESHOLD = 8  # This is the lower bound for the high pass filter to remove noise
 MAX_STARTUP_TIME = 25000  # 25000ms = 25 seconds
+# Testing showed 2 force-stops to be sufficient in preventing background
+# relaunches. Allow for another just in case.
+STOP_APP_ATTEMPTS = 3
 PROD_CHRM = "chrome-m"
 PROD_FENIX = "fenix"
 
@@ -142,11 +145,24 @@ class ImageAnalzer:
         )  # enabling notifications for android
         if self.test != "homeview_startup":
             self.create_background_tabs()
-        self.device.shell(f"am force-stop {self.package_name}")
-        # Extra delay needed to avoid shutdown thread active during startup
-        time.sleep(3)
+
+        self._ensure_application_stopped()
+
         if self.test_url.startswith("https"):
             self._add_cert_override()
+
+    def _ensure_application_stopped(self):
+        # Running `am force-stop` once is not sufficient as if there are
+        # running background jobs they may be rescheduled causing the app to be
+        # immediately relaunched. After multiple force-stops the jobs should no
+        # longer be immediately scheduled.
+        for _ in range(STOP_APP_ATTEMPTS):
+            self.device.shell(f"am force-stop {self.package_name}")
+            # Extra delay needed to avoid shutdown thread active during startup
+            time.sleep(3)
+            if not self.device.pidof(self.package_name):
+                break
+            print(f"{self.package_name} was relaunched after force-stop, retrying")
 
     def _add_cert_override(self):
         """Write cert_override.txt to the Fenix profile.
