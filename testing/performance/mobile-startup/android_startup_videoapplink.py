@@ -207,6 +207,12 @@ class ImageAnalzer:
         self.video_name = f"vid{run}_{self.browser}.mp4"
         video_location = f"/sdcard/Download/{self.video_name}"
 
+        pids = self.device.pidof(self.package_name)
+        if pids:
+            raise RuntimeError(
+                f"{self.package_name} is already running (PID {pids[0]}) before the measured launch"
+            )
+
         # Bug 1927548 - Recording command doesn't use mozdevice shell because the mozdevice shell
         # outputs an adbprocess obj whose adbprocess.proc.kill() does not work when called
         recording = subprocess.Popen([
