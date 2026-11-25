@@ -12945,6 +12945,13 @@
     type: RelaxedAtomicBool
     value: @IS_NIGHTLY_BUILD@
     mirror: always
+
+  # Does the isolated GMPlugin process run without a JVM, as an Android native
+  # service, on devices that support those (API 37+).
+-   name: media.gmp.android.native-service
+    type: RelaxedAtomicBool
+    value: false
+    mirror: always
 #endif
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)

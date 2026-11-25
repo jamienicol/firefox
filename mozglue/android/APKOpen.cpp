@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include "dlfcn.h"
 #include "APKOpen.h"
+#include "NativeChildService.h"
 #include <sys/time.h>
 #include <sys/syscall.h>
 #include <sys/resource.h>
@@ -481,8 +482,8 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(JNIEnv* jenv, jclass jc,
   FreeArgv(argv, argc);
 }
 
-extern "C" APKOPEN_EXPORT mozglueresult ChildProcessInit(int argc,
-                                                         char* argv[]) {
+static mozglueresult InitChildProcessWithoutJNI(int argc, char* argv[],
+                                                int* fds, size_t fdCount) {
   EnsureBaseProfilerInitialized();
 
   if (argc < 2) {
@@ -504,11 +505,26 @@ extern "C" APKOPEN_EXPORT mozglueresult ChildProcessInit(int argc,
     return FAILURE;
   }
   if (loadGeckoLibs().isErr()) {
+    __android_log_print(ANDROID_LOG_ERROR, "GeckoLibLoad",
+                        "Couldn't load Gecko libraries");
     return FAILURE;
+  }
+
+  if (fds) {
+    gBootstrap->XRE_SetAndroidNativeChildFds(fds, fdCount);
   }
 
   XREChildData childData;
   return NS_FAILED(gBootstrap->XRE_InitChildProcess(argc, argv, &childData));
+}
+
+extern "C" APKOPEN_EXPORT mozglueresult ChildProcessInit(int argc,
+                                                         char* argv[]) {
+  return InitChildProcessWithoutJNI(argc, argv, nullptr, 0);
+}
+
+int RunNativeChildProcess(int argc, char* argv[], int* fds, size_t fdCount) {
+  return InitChildProcessWithoutJNI(argc, argv, fds, fdCount);
 }
 
 // Does current process name end with ':media'?

@@ -46,6 +46,21 @@
                 android:process=":isolatedGmplugin{{ tag }}">
         </service>
         <service
+                android:name="org.mozilla.gecko.process.GeckoChildProcessServices$nativeGmplugin"
+                android:enabled="true"
+                android:exported="false"
+                android:isolatedProcess="true"
+                android:nativeService="true"
+                android:process=":nativeGmplugin"
+                tools:targetApi="37">
+            <property
+                    android:name="android.app.PROPERTY_NATIVE_SERVICE_LIBRARY_NAME"
+                    android:value="libmozglue.so" />
+            <property
+                    android:name="android.app.PROPERTY_NATIVE_SERVICE_FUNCTION_NAME"
+                    android:value="GeckoNativeChildService_onCreate" />
+        </service>
+        <service
                 android:name="org.mozilla.gecko.process.GeckoChildProcessServices$gpu"
                 android:enabled="true"
                 android:exported="false"

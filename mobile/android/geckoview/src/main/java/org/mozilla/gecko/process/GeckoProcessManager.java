@@ -27,6 +27,7 @@ import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.gfx.CompositorSurfaceManager;
 import org.mozilla.gecko.gfx.ISurfaceAllocator;
 import org.mozilla.gecko.gfx.RemoteSurfaceAllocator;
+import org.mozilla.gecko.mozglue.GeckoLoader;
 import org.mozilla.gecko.mozglue.JNIObject;
 import org.mozilla.gecko.process.ServiceAllocator.PriorityLevel;
 import org.mozilla.gecko.util.XPCOMEventTarget;
@@ -46,6 +47,7 @@ public final class GeckoProcessManager {
   private boolean mIsolatedProcess = false;
   private boolean mAppZygote = false;
   private volatile boolean mIsolatedGmp = false;
+  private volatile boolean mNativeGmp = false;
 
   public static GeckoProcessManager getInstance() {
     return INSTANCE;
@@ -717,6 +719,20 @@ public final class GeckoProcessManager {
     return mIsolatedGmp;
   }
 
+  /**
+   * Sets whether the isolated GMP plugin service runs without a JVM, as an Android native service,
+   * on devices that support those.
+   */
+  @WrapForJNI(calledFrom = "any")
+  private static void setNativeGmpEnabled(final boolean enabled) {
+    INSTANCE.mNativeGmp = enabled;
+  }
+
+  /** true if the isolated GMP plugin service should run as an Android native service. */
+  public boolean isNativeGmpEnabled() {
+    return mNativeGmp;
+  }
+
   public void crashChild(@NonNull final Selector selector) {
     XPCOMEventTarget.launcherThread()
         .execute(
@@ -931,16 +947,23 @@ public final class GeckoProcessManager {
         .bind()
         .map(
             child -> {
-              final int result =
-                  child.start(
-                      connection.createProcessManagerProxy(),
-                      mInstanceId,
-                      info.init.args,
-                      info.init.extras,
-                      info.init.flags,
-                      info.init.userSerialNumber,
-                      info.crashHandler,
-                      info.pfds);
+              final int result;
+              if (connection.isNativeService()) {
+                result =
+                    child.startNative(
+                        mInstanceId, info.init.args, getNativeChildEnv(info), info.pfds);
+              } else {
+                result =
+                    child.start(
+                        connection.createProcessManagerProxy(),
+                        mInstanceId,
+                        info.init.args,
+                        info.init.extras,
+                        info.init.flags,
+                        info.init.userSerialNumber,
+                        info.crashHandler,
+                        info.pfds);
+              }
               if (result == IChildProcess.STARTED_OK) {
                 return connection.getPid();
               } else {
@@ -948,6 +971,18 @@ public final class GeckoProcessManager {
               }
             })
         .then(GeckoResult::fromValue, error -> handleBindError(connection, error));
+  }
+
+  /**
+   * A native child cannot compute its own environment as it has no JVM, so we compute it here as
+   * GeckoThread would in a JVM child.
+   */
+  private static String[] getNativeChildEnv(final StartInfo info) {
+    final List<String> env = GeckoThread.getInitialEnv(info.init);
+    env.addAll(
+        GeckoLoader.getNativeChildEnvironment(
+            GeckoAppShell.getApplicationContext(), info.crashHandler));
+    return env.toArray(new String[0]);
   }
 
   private GeckoResult<Integer> handleBindError(

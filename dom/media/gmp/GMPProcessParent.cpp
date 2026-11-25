@@ -234,6 +234,8 @@ bool GMPProcessParent::Launch(int32_t aTimeoutMs) {
 #ifdef MOZ_WIDGET_ANDROID
   java::GeckoProcessManager::SetIsolatedGmpEnabled(
       StaticPrefs::media_gmp_android_isolated_process());
+  java::GeckoProcessManager::SetNativeGmpEnabled(
+      StaticPrefs::media_gmp_android_native_service());
 #endif
 
   bool launched = LaunchAndWaitForProcessHandle(std::move(args), aTimeoutMs);

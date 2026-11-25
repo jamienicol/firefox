@@ -12,6 +12,9 @@ public class GeckoChildProcessServices {
     /* package */ static final int MAX_NUM_ISOLATED_CONTENT_SERVICES = {{MOZ_ANDROID_CONTENT_SERVICE_COUNT}};
     public static final class gmplugin extends GeckoServiceChildProcess {}
     public static final class isolatedGmplugin extends GeckoServiceChildProcess {}
+    // Declared as an Android native service, so this class is never instantiated on devices
+    // that support those. See NativeChildService.cpp.
+    public static final class nativeGmplugin extends GeckoServiceChildProcess {}
     public static final class gpu extends GeckoServiceGpuProcess {}
     public static final class rdd extends GeckoServiceChildProcess {}
     public static final class utility extends GeckoServiceChildProcess {}

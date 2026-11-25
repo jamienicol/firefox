@@ -13,6 +13,7 @@
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "mozilla/jni/Utils.h"
+#  include "mozilla/GeckoArgs.h"
 #  ifdef MOZ_PROFILE_GENERATE
 extern "C" int __llvm_profile_dump(void);
 #  endif
@@ -70,6 +71,10 @@ class BootstrapImpl final : public Bootstrap {
 
   virtual void XRE_SetAndroidChildFds(JNIEnv* aEnv, jintArray aFds) override {
     ::XRE_SetAndroidChildFds(aEnv, aFds);
+  }
+
+  virtual void XRE_SetAndroidNativeChildFds(int* aFds, size_t aCount) override {
+    mozilla::geckoargs::SetPassedFileHandles(Span(aFds, aCount));
   }
 
 #  ifdef MOZ_PROFILE_GENERATE

@@ -106,6 +106,9 @@ class Bootstrap {
   virtual void XRE_SetGeckoThreadEnv(JNIEnv* aEnv) = 0;
 
   virtual void XRE_SetAndroidChildFds(JNIEnv* aEnv, jintArray aFds) = 0;
+
+  // Like XRE_SetAndroidChildFds, for child processes that run without a JVM.
+  virtual void XRE_SetAndroidNativeChildFds(int* aFds, size_t aCount) = 0;
 #  ifdef MOZ_PROFILE_GENERATE
   virtual void XRE_WriteLLVMProfData() = 0;
 #  endif

@@ -28,6 +28,8 @@ import org.mozilla.gecko.util.XPCOMEventTarget;
 
 /* package */ final class ServiceAllocator {
   private static final String LOGTAG = "ServiceAllocator";
+  // android:nativeService was introduced in API 37.
+  private static final int NATIVE_SERVICE_MIN_SDK = 37;
   private static final int MAX_NUM_ISOLATED_CONTENT_SERVICES =
       GeckoChildProcessServices.MAX_NUM_ISOLATED_CONTENT_SERVICES;
 
@@ -128,6 +130,13 @@ import org.mozilla.gecko.util.XPCOMEventTarget;
       }
     }
 
+    private class NativeGmpBindDelegate extends DefaultBindDelegate {
+      @Override
+      public String getServiceName() {
+        return ServiceUtils.buildNativeGmpSvcName();
+      }
+    }
+
     @RequiresApi(Build.VERSION_CODES.Q)
     private class IsolatedBindDelegate implements BindServiceDelegate {
       @Override
@@ -175,6 +184,10 @@ import org.mozilla.gecko.util.XPCOMEventTarget;
     private BindServiceDelegate getBindServiceDelegate() {
       if (mType == GeckoProcessType.GMPLUGIN
           && GeckoProcessManager.getInstance().isIsolatedGmpEnabled()) {
+        if (GeckoProcessManager.getInstance().isNativeGmpEnabled()
+            && Build.VERSION.SDK_INT >= NATIVE_SERVICE_MIN_SDK) {
+          return this.new NativeGmpBindDelegate();
+        }
         return this.new IsolatedGmpBindDelegate();
       }
 
@@ -185,6 +198,11 @@ import org.mozilla.gecko.util.XPCOMEventTarget;
 
       // Content services defer to the alloc policy
       return mAllocator.mContentAllocPolicy.getBindServiceDelegate(this);
+    }
+
+    /** true if this instance is hosted by an Android native service, ie runs without a JVM. */
+    public boolean isNativeService() {
+      return mBindDelegate instanceof NativeGmpBindDelegate;
     }
 
     public PriorityLevel getPriorityLevel() {

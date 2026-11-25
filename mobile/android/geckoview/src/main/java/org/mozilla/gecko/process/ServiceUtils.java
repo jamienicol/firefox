@@ -14,6 +14,7 @@ import androidx.annotation.NonNull;
 /* package */ final class ServiceUtils {
   private static final String DEFAULT_ISOLATED_CONTENT_SERVICE_NAME_SUFFIX = "0";
   private static final String ISOLATED_GMPLUGIN_SERVICE_NAME = "isolatedGmplugin";
+  private static final String NATIVE_GMPLUGIN_SERVICE_NAME = "nativeGmplugin";
 
   private ServiceUtils() {}
 
@@ -67,6 +68,14 @@ import androidx.annotation.NonNull;
   /** Obtain the name of the class for the GMP plugin service that runs in an isolated process. */
   public static String buildIsolatedGmpSvcName() {
     return GeckoChildProcessServices.class.getName() + "$" + ISOLATED_GMPLUGIN_SERVICE_NAME;
+  }
+
+  /**
+   * Obtain the name of the class for the GMP plugin service that runs in an isolated process
+   * without a JVM.
+   */
+  public static String buildNativeGmpSvcName() {
+    return GeckoChildProcessServices.class.getName() + "$" + NATIVE_GMPLUGIN_SERVICE_NAME;
   }
 
   /**

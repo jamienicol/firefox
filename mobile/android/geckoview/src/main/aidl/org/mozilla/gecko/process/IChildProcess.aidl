@@ -45,4 +45,16 @@ interface IChildProcess {
      *     and finally to the GPU process here.
      */
     ISurfaceAllocator getSurfaceAllocator(int allocatorId, in IBinder client);
+
+    /**
+     * Starts a child process that runs without a JVM (an Android native service), which is
+     * implemented in mozglue/android/NativeChildService.cpp. That implementation decodes this
+     * transaction by hand, so it must stay the last method in this interface and its parameters
+     * must only use types that are simple to read with the NDK's AParcel API.
+     * @param env Environment variables to set in the child, as "NAME=value" strings.
+     */
+    int startNative(in String mainProcessId,
+                    in String[] args,
+                    in String[] env,
+                    in ParcelFileDescriptor[] pfds);
 }

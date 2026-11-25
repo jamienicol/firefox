@@ -419,6 +419,28 @@ public class GeckoThread extends Thread {
     return result;
   }
 
+  public static List<String> getInitialEnv(final InitInfo info) {
+    final List<String> env = getEnvFromExtras(info.extras);
+
+    // In Gecko, the native crash reporter is enabled by default in opt builds, and
+    // disabled by default in debug builds. This may be inconsistent with whether a GeckoView
+    // handler is set, so default Gecko to follow GeckoView unless overridden (such as by a test
+    // harness).
+    if (env.contains("MOZ_CRASHREPORTER=1") || env.contains("MOZ_CRASHREPORTER_DISABLE=1")) {
+      // If explicitly set, pass settings to Gecko regardless of whether a GeckoView handler exists.
+      // Native crashes can still write out minidumps even if GeckoView doesn't process them.
+    } else if ((info.flags & FLAG_ENABLE_NATIVE_CRASHREPORTER) == 0 && !BuildConfig.DEBUG_BUILD) {
+      env.add(0, "MOZ_CRASHREPORTER_DISABLE=1");
+    } else if ((info.flags & FLAG_ENABLE_NATIVE_CRASHREPORTER) != 0 && BuildConfig.DEBUG_BUILD) {
+      env.add(0, "MOZ_CRASHREPORTER=1");
+    }
+
+    if (info.userSerialNumber != null) {
+      env.add(0, "MOZ_ANDROID_USER_SERIAL_NUMBER=" + info.userSerialNumber);
+    }
+    return env;
+  }
+
   // See GeckoLoader.java and APKOpen.cpp
   private int processType() {
     if (mInitInfo.xpcshell) {
@@ -466,26 +488,7 @@ public class GeckoThread extends Thread {
     }
 
     final Context context = GeckoAppShell.getApplicationContext();
-    final List<String> env = getEnvFromExtras(mInitInfo.extras);
-
-    // In Gecko, the native crash reporter is enabled by default in opt builds, and
-    // disabled by default in debug builds. This may be inconsistent with whether a GeckoView
-    // handler is set, so default Gecko to follow GeckoView unless overridden (such as by a test
-    // harness).
-    if (env.contains("MOZ_CRASHREPORTER=1") || env.contains("MOZ_CRASHREPORTER_DISABLE=1")) {
-      // If explicitly set, pass settings to Gecko regardless of whether a GeckoView handler exists.
-      // Native crashes can still write out minidumps even if GeckoView doesn't process them.
-    } else if ((mInitInfo.flags & FLAG_ENABLE_NATIVE_CRASHREPORTER) == 0
-        && !BuildConfig.DEBUG_BUILD) {
-      env.add(0, "MOZ_CRASHREPORTER_DISABLE=1");
-    } else if ((mInitInfo.flags & FLAG_ENABLE_NATIVE_CRASHREPORTER) != 0
-        && BuildConfig.DEBUG_BUILD) {
-      env.add(0, "MOZ_CRASHREPORTER=1");
-    }
-
-    if (mInitInfo.userSerialNumber != null) {
-      env.add(0, "MOZ_ANDROID_USER_SERIAL_NUMBER=" + mInitInfo.userSerialNumber);
-    }
+    final List<String> env = getInitialEnv(mInitInfo);
 
     maybeRegisterMemoryController(env);
 

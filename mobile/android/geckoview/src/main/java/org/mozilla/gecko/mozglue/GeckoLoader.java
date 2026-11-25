@@ -12,7 +12,9 @@ import dalvik.system.BaseDexClassLoader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
@@ -212,6 +214,25 @@ public final class GeckoLoader {
     final String base = mozglue.substring(0, lastSlash);
     Log.d(LOGTAG, "Library base=" + base);
     return base;
+  }
+
+  /**
+   * Returns the environment that setupGeckoEnvironment() would set up for a child process, for
+   * child processes that run without a JVM and so cannot compute it themselves.
+   */
+  @SuppressWarnings("deprecation") // for Build.CPU_ABI
+  public static List<String> getNativeChildEnvironment(
+      final Context context, final String crashHandlerName) {
+    final List<String> env = new ArrayList<>();
+    env.add("MOZ_ANDROID_PACKAGE_NAME=" + context.getPackageName());
+    env.add("LANG=" + Locale.getDefault().toString());
+    if (crashHandlerName != null) {
+      env.add("MOZ_ANDROID_CRASH_HANDLER=" + context.getPackageName() + "/" + crashHandlerName);
+    }
+    env.add("MOZ_ANDROID_CPU_ABI=" + Build.CPU_ABI);
+    env.add("GRE_HOME=" + getGREDir(context).getPath());
+    env.add("MOZ_ANDROID_LIBDIR=" + getLibraryBase());
+    return env;
   }
 
   private static void loadLibsSetupLocked(final Context context) {

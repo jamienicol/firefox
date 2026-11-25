@@ -172,6 +172,17 @@ public class GeckoServiceChildProcess extends Service {
           "Invalid call to IChildProcess.getSurfaceAllocator for non-GPU process.");
     }
 
+    @Override
+    public int startNative(
+        final String mainProcessId,
+        final String[] args,
+        final String[] env,
+        final ParcelFileDescriptor[] pfds) {
+      Log.e(LOGTAG, "Invalid call to IChildProcess.startNative for a JVM child process");
+      closeFds(pfds);
+      return IChildProcess.STARTED_FAIL;
+    }
+
     private void closeFds(final ParcelFileDescriptor[] pfds) {
       for (final ParcelFileDescriptor pfd : pfds) {
         try {
