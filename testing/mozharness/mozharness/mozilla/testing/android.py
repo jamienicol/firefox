@@ -196,6 +196,9 @@ class AndroidMixin:
 
         self.info("emulator env: %s" % str(env))
         command = ["emulator", "-avd", self.config["emulator_avd_name"]]
+        memory = self.config.get("emulator_memory")
+        if memory is not None:
+            command += ["-memory", str(memory)]
         if "emulator_extra_args" in self.config:
             command += self.config["emulator_extra_args"]
 

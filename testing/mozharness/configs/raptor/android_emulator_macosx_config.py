@@ -29,6 +29,9 @@ config = {
     "avds_dir_name": "android-device",
     "emulator_avd_name": "mozemulator-arm64",
     "emulator_process_name": "qemu-system-aarch64",
+    # 3GB is not enough for jetstream3: lmkd kills the content process
+    # mid-run.
+    "emulator_memory": 6144,
     "emulator_extra_args": [
         "-gpu",
         "swiftshader_indirect",
@@ -38,10 +41,6 @@ config = {
         "-ranchu",
         "-selinux",
         "permissive",
-        # 3GB is not enough for jetstream3: lmkd kills the content process
-        # mid-run.
-        "-memory",
-        "6144",
         "-cores",
         "4",
         "-skin",

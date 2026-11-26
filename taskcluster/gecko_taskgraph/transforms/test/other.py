@@ -589,6 +589,10 @@ def enable_code_coverage(config, tasks):
             if "jittest" in task["test-name"]:
                 task["instance-size"] = "xlarge"
 
+            # Ensure Android jobs run on an emulator with sufficient memory
+            if task["test-platform"].startswith("android-em-14-x86_64-"):
+                task["mozharness"]["config"].append("android/android14-x86_64-ccov.py")
+
             # Temporarily disable Mac tests on mozilla-central
             if "mac" in task["build-platform"]:
                 task["run-on-projects"] = []

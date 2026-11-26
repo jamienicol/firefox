@@ -10,6 +10,7 @@
 config = {
     "emulator_avd_name": "mozemulator-arm64",
     "emulator_process_name": "qemu-system-aarch64",
+    "emulator_memory": 4096,
     "emulator_extra_args": [
         "-gpu",
         "swiftshader_indirect",
@@ -19,8 +20,6 @@ config = {
         "-ranchu",
         "-selinux",
         "permissive",
-        "-memory",
-        "4096",
         "-cores",
         "4",
         "-skin",

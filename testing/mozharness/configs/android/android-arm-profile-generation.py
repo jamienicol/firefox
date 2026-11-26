@@ -10,6 +10,7 @@
 config = {
     "emulator_avd_name": "mozemulator-android30-x86",
     "emulator_process_name": "qemu-system-x86",
+    "emulator_memory": 4096,
     "emulator_extra_args": [
         "-gpu",
         "on",
@@ -19,8 +20,6 @@ config = {
         "-ranchu",
         "-selinux",
         "permissive",
-        "-memory",
-        "4096",
         "-cores",
         "4",
         "-skin",
