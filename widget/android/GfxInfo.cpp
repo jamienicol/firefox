@@ -7,12 +7,17 @@
 #include "AndroidBuild.h"
 #include "GLContext.h"
 #include "GLContextProvider.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/Services.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/java/HardwareCodecCapabilityUtilsWrappers.h"
 #include "nsExceptionHandler.h"
 #include "nsHashKeys.h"
+#include "nsIObserverService.h"
+#include "nsProxyRelease.h"
 #include "nsServiceManagerUtils.h"
+#include "nsThreadUtils.h"
 #include "nsUnicharUtils.h"
 #include "nsVersionComparator.h"
 #include "prenv.h"
@@ -20,12 +25,39 @@
 namespace mozilla {
 namespace widget {
 
+static constexpr const char* kVerifyGLStringsCacheTopic =
+    "browser-idle-startup-tasks-finished";
+
+struct NativeGLStrings {
+  nsCString mVendor;
+  nsCString mRenderer;
+  nsCString mVersion;
+  nsTArray<nsCString> mExtensions;
+};
+
+// Queries the GL strings from a context created using Android's system GLES
+// implementation, without initializing bundled ANGLE, so that the values remain
+// consistent regardless of which GL library the compositor ends up using. May
+// be called from any thread.
+static Maybe<NativeGLStrings> QueryNativeGLStrings() {
+  nsCString discardFailureId;
+  RefPtr<gl::GLContext> gl = gl::GLContextProviderEGL::CreateHeadlessNative(
+      {gl::CreateContextFlags::REQUIRE_COMPAT_PROFILE}, &discardFailureId);
+  if (!gl || !gl->MakeCurrent()) {
+    return Nothing();
+  }
+  return Some(NativeGLStrings{gl->VendorString(), gl->RendererString(),
+                              gl->VersionString(),
+                              gl->ExtensionStrings().Clone()});
+}
+
 class GfxInfo::GLStrings {
   nsCString mVendor;
   nsCString mRenderer;
   nsCString mVersion;
   nsTArray<nsCString> mExtensions;
   bool mReady;
+  bool mLoadedFromCache = false;
 
   // Pref names to use for caching. The OS build fingerprint is used to check
   // whether the cached values are still valid, and the others store the values
@@ -128,18 +160,14 @@ class GfxInfo::GLStrings {
         }
       }
 
+      mLoadedFromCache = true;
       mReady = true;
       return;
     }
 
-    // If the cache is invalid, query Android's system GLES implementation
-    // before choosing Gecko's backend, without initializing bundled ANGLE.
-    RefPtr<gl::GLContext> gl;
-    nsCString discardFailureId;
-    gl = gl::GLContextProviderEGL::CreateHeadlessNative(
-        {gl::CreateContextFlags::REQUIRE_COMPAT_PROFILE}, &discardFailureId);
-
-    if (!gl || !gl->MakeCurrent()) {
+    // If the cache is invalid, query Android's system GLES implementation.
+    const Maybe<NativeGLStrings> strings = QueryNativeGLStrings();
+    if (!strings) {
       // Setting mReady to true here means that we won't retry. Everything will
       // remain blocklisted forever. Ideally, we would like to update that once
       // any GLContext is successfully created, like the compositor's GLContext.
@@ -148,37 +176,62 @@ class GfxInfo::GLStrings {
     }
 
     if (mVendor.IsEmpty()) {
-      mVendor.Assign(gl->VendorString());
+      mVendor.Assign(strings->mVendor);
     }
     if (mRenderer.IsEmpty()) {
-      mRenderer.Assign(gl->RendererString());
+      mRenderer.Assign(strings->mRenderer);
     }
     if (mVersion.IsEmpty()) {
-      mVersion.Assign(gl->VersionString());
+      mVersion.Assign(strings->mVersion);
     }
     if (mExtensions.IsEmpty()) {
-      mExtensions = gl->ExtensionStrings().Clone();
+      mExtensions = strings->mExtensions.Clone();
     }
 
     // Cache the GL strings so we can avoid expensive GL Context
     // initialization on next launch. Make sure we use the actual values
     // obtained from GL rather than any spoofed values.
-    CacheStrings(gl->VendorString(), gl->RendererString(), gl->VersionString(),
-                 gl->ExtensionStrings());
+    CacheStrings(*strings);
 
     mReady = true;
   }
 
-  void CacheStrings(const nsCString& aVendor, const nsCString& aRenderer,
-                    const nsCString& aVersion,
-                    Span<const nsCString> aExtensions) {
+  bool LoadedFromCache() const { return mLoadedFromCache; }
+
+  // Verifies values loaded from the cache against those queried from a native
+  // GL context, updating the cache for subsequent launches if they differ. The
+  // values used by the current session are left unchanged.
+  void VerifyCache(const NativeGLStrings& aStrings) {
+    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_ASSERT(mLoadedFromCache);
+
+    nsCString cachedVendor, cachedRenderer, cachedVersion, cachedExtensions;
+    Preferences::GetCString(kCachePrefNameVendor, cachedVendor);
+    Preferences::GetCString(kCachePrefNameRenderer, cachedRenderer);
+    Preferences::GetCString(kCachePrefNameVersion, cachedVersion);
+    Preferences::GetCString(kCachePrefNameExtensions, cachedExtensions);
+
+    if (aStrings.mVendor != cachedVendor ||
+        aStrings.mRenderer != cachedRenderer ||
+        aStrings.mVersion != cachedVersion ||
+        StringJoin(" "_ns, aStrings.mExtensions) != cachedExtensions) {
+      gfxCriticalNoteOnce << "Cached GLStrings are stale: "
+                          << aStrings.mVendor.get() << ", "
+                          << aStrings.mRenderer.get() << ", "
+                          << aStrings.mVersion.get();
+      CacheStrings(aStrings);
+    }
+  }
+
+ private:
+  void CacheStrings(const NativeGLStrings& aStrings) {
     const nsCString fingerprint = java::sdk::Build::FINGERPRINT()->ToCString();
 
-    Preferences::SetCString(kCachePrefNameVendor, aVendor);
-    Preferences::SetCString(kCachePrefNameRenderer, aRenderer);
-    Preferences::SetCString(kCachePrefNameVersion, aVersion);
+    Preferences::SetCString(kCachePrefNameVendor, aStrings.mVendor);
+    Preferences::SetCString(kCachePrefNameRenderer, aStrings.mRenderer);
+    Preferences::SetCString(kCachePrefNameVersion, aStrings.mVersion);
     Preferences::SetCString(kCachePrefNameExtensions,
-                            StringJoin(" "_ns, aExtensions));
+                            StringJoin(" "_ns, aStrings.mExtensions));
     // Save the fingerprint last so that if we're killed part way through
     // writing these prefs the next launch doesn't attempt to use partially
     // cached data.
@@ -274,6 +327,40 @@ void GfxInfo::EnsureInitialized() {
 
   AddCrashReportAnnotations();
   mInitialized = true;
+
+  if (mGLStrings->LoadedFromCache()) {
+    if (nsCOMPtr<nsIObserverService> os = services::GetObserverService()) {
+      os->AddObserver(this, kVerifyGLStringsCacheTopic, false);
+    }
+  }
+}
+
+NS_IMETHODIMP
+GfxInfo::Observe(nsISupports* aSubject, const char* aTopic,
+                 const char16_t* aData) {
+  if (!strcmp(aTopic, kVerifyGLStringsCacheTopic)) {
+    if (nsCOMPtr<nsIObserverService> os = services::GetObserverService()) {
+      os->RemoveObserver(this, kVerifyGLStringsCacheTopic);
+    }
+    nsMainThreadPtrHandle<GfxInfo> self(
+        new nsMainThreadPtrHolder<GfxInfo>("GfxInfo", this));
+    NS_DispatchBackgroundTask(
+        NS_NewRunnableFunction("GfxInfo::QueryNativeGLStrings",
+                               [self]() {
+                                 Maybe<NativeGLStrings> strings =
+                                     QueryNativeGLStrings();
+                                 if (!strings) {
+                                   return;
+                                 }
+                                 NS_DispatchToMainThread(NS_NewRunnableFunction(
+                                     "GfxInfo::GLStrings::VerifyCache",
+                                     [self, strings = std::move(*strings)]() {
+                                       self->mGLStrings->VerifyCache(strings);
+                                     }));
+                               }),
+        NS_DISPATCH_EVENT_MAY_BLOCK);
+  }
+  return GfxInfoBase::Observe(aSubject, aTopic, aData);
 }
 
 NS_IMETHODIMP
@@ -862,24 +949,6 @@ uint32_t GfxInfo::OperatingSystemVersion() {
 GfxVersionEx GfxInfo::OperatingSystemVersionEx() {
   EnsureInitialized();
   return mOSVersionEx;
-}
-
-void GfxInfo::ReportGLStrings(gfx::GfxInfoGLStrings&& aStrings) {
-  EnsureInitialized();
-  // Sanity check the provided strings match our cached values.
-  if (aStrings.vendor() != mGLStrings->Vendor() ||
-      aStrings.renderer() != mGLStrings->Renderer() ||
-      aStrings.version() != mGLStrings->Version() ||
-      aStrings.extensions() != mGLStrings->Extensions()) {
-    gfxCriticalNoteOnce << "Received unexpected GLStrings: "
-                        << aStrings.vendor().get() << ", "
-                        << aStrings.renderer().get() << ", "
-                        << aStrings.version().get();
-
-    // Update the cache if they differ.
-    mGLStrings->CacheStrings(aStrings.vendor(), aStrings.renderer(),
-                             aStrings.version(), aStrings.extensions());
-  }
 }
 
 }  // namespace widget

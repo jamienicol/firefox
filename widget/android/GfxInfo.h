@@ -75,7 +75,8 @@ class GfxInfo : public GfxInfoBase {
   virtual uint32_t OperatingSystemVersion() override;
   GfxVersionEx OperatingSystemVersionEx() override;
 
-  void ReportGLStrings(gfx::GfxInfoGLStrings&& aStrings) override;
+  NS_IMETHOD Observe(nsISupports* aSubject, const char* aTopic,
+                     const char16_t* aData) override;
 
  protected:
   OperatingSystem GetOperatingSystem() override {
