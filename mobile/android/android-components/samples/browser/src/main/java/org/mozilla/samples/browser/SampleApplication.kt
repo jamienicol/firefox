@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import mozilla.components.browser.state.action.SystemAction
 import mozilla.components.browser.storage.sync.GlobalPlacesDependencyProvider
 import mozilla.components.feature.addons.update.GlobalAddonDependencyProvider
+import mozilla.components.lib.crash.CrashReporter
 import mozilla.components.lib.fetch.httpurlconnection.HttpURLConnectionClient
 import mozilla.components.service.glean.net.ConceptFetchHttpUploader
 import mozilla.components.support.base.facts.Facts
@@ -61,11 +62,13 @@ class SampleApplication : Application() {
 
         Log.addSink(AndroidLogSink())
 
-        components.crashReporter.install(this)
+        CrashReporter.registerDeferredInitializer { components.crashReporter.install(this) }
 
         if (!isMainProcess()) {
             return
         }
+
+        components.crashReporter.install(this)
 
         val httpClient = ConceptFetchHttpUploader(lazy { HttpURLConnectionClient() })
         val config = Configuration(httpClient = httpClient)
